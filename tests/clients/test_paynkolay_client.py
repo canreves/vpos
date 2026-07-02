@@ -162,3 +162,47 @@ async def test_initialize_payment_signs_request_and_parses_response() -> None:
         "cvv": "123",
         "card_holder": "PAYNKOLAY TEST",
     }
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_get_transaction_status_fetches_encoded_order_and_parses_response() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+    captured_request: httpx.Request | None = None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_request
+        captured_request = request
+        return httpx.Response(
+            status_code=200,
+            json={
+                "order_id": "order 1001",
+                "provider_transaction_id": "txn-1001",
+                "status": "captured",
+                "amount": "100.00",
+                "currency": "TRY",
+                "updated_at": "2026-07-02T12:00:00+03:00",
+                "authorization_code": "auth-1001",
+            },
+        )
+
+    async with PaynkolayClient(
+        settings.current,
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        response = await client.get_transaction_status(" order 1001 ")
+
+    assert response.status is PaymentStatus.CAPTURED
+    assert response.authorization_code == "auth-1001"
+    assert captured_request is not None
+    assert str(captured_request.url) == "https://dev-pos.example.test/payments/order%201001/status"
+
+
+@pytest.mark.negative
+@pytest.mark.asyncio
+async def test_get_transaction_status_rejects_blank_order_id() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+
+    async with PaynkolayClient(settings.current) as client:
+        with pytest.raises(ValueError, match="order_id must not be empty"):
+            await client.get_transaction_status("   ")

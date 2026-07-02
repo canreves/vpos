@@ -4,11 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
 from paynkolay_pos.config import PaymentEnvironment
-from paynkolay_pos.models import PaymentInitializeRequest, PaymentInitializeResponse
+from paynkolay_pos.models import (
+    PaymentInitializeRequest,
+    PaymentInitializeResponse,
+    TransactionStatusResponse,
+)
 from paynkolay_pos.security import canonicalize_fields, generate_hmac_signature
 
 PAYMENT_INITIALIZE_SIGNATURE_FIELDS = (
@@ -66,6 +71,16 @@ class PaynkolayClient:
             raise TypeError("provider response must be a JSON object")
         return decoded
 
+    async def get_json(self, path: str) -> dict[str, Any]:
+        """GET JSON from a provider endpoint and return the decoded object body."""
+
+        response = await self._client.get(path)
+        response.raise_for_status()
+        decoded = response.json()
+        if not isinstance(decoded, dict):
+            raise TypeError("provider response must be a JSON object")
+        return decoded
+
     async def initialize_payment(
         self,
         request: PaymentInitializeRequest,
@@ -92,6 +107,18 @@ class PaynkolayClient:
             outbound_payload,
         )
         return PaymentInitializeResponse.model_validate(response_payload)
+
+    async def get_transaction_status(self, order_id: str) -> TransactionStatusResponse:
+        """Fetch and validate the provider status for one merchant order."""
+
+        normalized_order_id = order_id.strip()
+        if not normalized_order_id:
+            raise ValueError("order_id must not be empty")
+
+        response_payload = await self.get_json(
+            f"/payments/{quote(normalized_order_id, safe='')}/status"
+        )
+        return TransactionStatusResponse.model_validate(response_payload)
 
     async def aclose(self) -> None:
         """Close the underlying HTTPX connection pool."""
