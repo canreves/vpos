@@ -95,18 +95,33 @@ class PaynkolayClient:
             secret_key=self._environment.merchant.secret_key,
             canonical_payload=canonical_payload,
         )
-        signed_request = request.model_copy(update={"signature": signature})
-        outbound_payload = signed_request.model_dump(mode="json")
+        outbound_payload: dict[str, Any] = {
+            "merchant_id": request.merchant_id,
+            "terminal_id": request.terminal_id,
+            "order_id": request.order_id,
+            "amount": request.canonical_amount,
+            "currency": request.currency.value,
+            "callback_url": request.callback_url,
+            "card": {
+                "brand": request.card.brand.value,
+                "pan": request.card.pan.get_secret_value(),
+                "expiry_month": request.card.expiry_month,
+                "expiry_year": request.card.expiry_year,
+                "cvv": request.card.cvv.get_secret_value(),
+                "card_holder": request.card.card_holder,
+            },
+            "requires_3ds": request.requires_3ds,
+            "correlation_id": request.correlation_id,
+            "signature": signature,
+        }
         card_payload = outbound_payload["card"]
         if not isinstance(card_payload, dict):
             raise TypeError("payment request card payload must be a JSON object")
-        card_payload["pan"] = signed_request.card.pan.get_secret_value()
-        card_payload["cvv"] = signed_request.card.cvv.get_secret_value()
         response_payload = await self.post_json(
             "/payments/initialize",
             outbound_payload,
         )
-        return PaymentInitializeResponse.model_validate(response_payload)
+        return PaymentInitializeResponse(**response_payload)
 
     async def get_transaction_status(self, order_id: str) -> TransactionStatusResponse:
         """Fetch and validate the provider status for one merchant order."""
@@ -118,7 +133,7 @@ class PaynkolayClient:
         response_payload = await self.get_json(
             f"/payments/{quote(normalized_order_id, safe='')}/status"
         )
-        return TransactionStatusResponse.model_validate(response_payload)
+        return TransactionStatusResponse(**response_payload)
 
     async def aclose(self) -> None:
         """Close the underlying HTTPX connection pool."""
