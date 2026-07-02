@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import SecretStr
 
-from paynkolay_pos.flows import PaymentFlow
+from paynkolay_pos.callbacks import (
+    CallbackSignatureVerificationError,
+    CallbackStore,
+    canonicalize_callback_signature_payload,
+)
+from paynkolay_pos.flows import PaymentFlow, PaymentFlowCallbackMismatchError
 from paynkolay_pos.models import (
+    CallbackPayload,
     PaymentInitializeRequest,
     PaymentInitializeResponse,
     PaymentStatus,
     TransactionStatusResponse,
 )
+from paynkolay_pos.security import generate_hmac_signature
 
 
 def valid_payment_request() -> PaymentInitializeRequest:
@@ -109,6 +117,37 @@ def status_response(status: PaymentStatus) -> TransactionStatusResponse:
     return TransactionStatusResponse.model_validate(payload)
 
 
+def signed_callback(
+    *,
+    secret_key: str = "callback-secret",
+    order_id: str = "order-1001",
+    provider_transaction_id: str = "txn-1001",
+    status: str = "captured",
+    amount: str = "100.00",
+    currency: str = "TRY",
+) -> CallbackPayload:
+    payload: dict[str, object] = {
+        "order_id": order_id,
+        "provider_transaction_id": provider_transaction_id,
+        "status": status,
+        "amount": amount,
+        "currency": currency,
+        "received_at": "2026-07-02T12:00:00+03:00",
+        "signature": "0" * 64,
+    }
+    if status in {"authorized", "captured"}:
+        payload["authorization_code"] = "auth-1001"
+    if status == "failed":
+        payload["failure_code"] = "issuer_declined"
+
+    callback = CallbackPayload.model_validate(payload)
+    payload["signature"] = generate_hmac_signature(
+        secret_key=secret_key,
+        canonical_payload=canonicalize_callback_signature_payload(callback),
+    )
+    return CallbackPayload.model_validate(payload)
+
+
 @pytest.mark.api
 @pytest.mark.asyncio
 async def test_payment_flow_waits_until_transaction_reaches_final_status() -> None:
@@ -139,6 +178,96 @@ async def test_payment_flow_waits_until_transaction_reaches_final_status() -> No
     assert response.authorization_code == "auth-1001"
     assert client.seen_order_ids == ["order-1001", "order-1001", "order-1001"]
     assert clock.now == 1.0
+
+
+@pytest.mark.callback
+@pytest.mark.asyncio
+async def test_payment_flow_waits_for_verified_matching_callback() -> None:
+    request = valid_payment_request()
+    final_status = status_response(PaymentStatus.CAPTURED)
+    callback = signed_callback()
+    callback_store = CallbackStore()
+    callback_store.add(callback)
+    client = FakePaymentClient(
+        PaymentInitializeResponse.model_validate(
+            {
+                "order_id": "order-1001",
+                "status": "created",
+                "amount": "100.00",
+                "currency": "TRY",
+            }
+        )
+    )
+
+    confirmed_callback = await PaymentFlow(client).wait_for_verified_callback(
+        request,
+        final_status,
+        callback_store=callback_store,
+        secret_key=SecretStr("callback-secret"),
+    )
+
+    assert confirmed_callback is callback
+
+
+@pytest.mark.callback
+@pytest.mark.negative
+@pytest.mark.asyncio
+async def test_payment_flow_rejects_callback_with_invalid_signature() -> None:
+    request = valid_payment_request()
+    final_status = status_response(PaymentStatus.CAPTURED)
+    callback = signed_callback(secret_key="different-secret")
+    callback_store = CallbackStore()
+    callback_store.add(callback)
+    client = FakePaymentClient(
+        PaymentInitializeResponse.model_validate(
+            {
+                "order_id": "order-1001",
+                "status": "created",
+                "amount": "100.00",
+                "currency": "TRY",
+            }
+        )
+    )
+
+    with pytest.raises(CallbackSignatureVerificationError):
+        await PaymentFlow(client).wait_for_verified_callback(
+            request,
+            final_status,
+            callback_store=callback_store,
+            secret_key=SecretStr("callback-secret"),
+        )
+
+
+@pytest.mark.callback
+@pytest.mark.negative
+@pytest.mark.asyncio
+async def test_payment_flow_rejects_verified_callback_that_disagrees_with_payment() -> None:
+    request = valid_payment_request()
+    final_status = status_response(PaymentStatus.CAPTURED)
+    callback = signed_callback(amount="99.00")
+    callback_store = CallbackStore()
+    callback_store.add(callback)
+    client = FakePaymentClient(
+        PaymentInitializeResponse.model_validate(
+            {
+                "order_id": "order-1001",
+                "status": "created",
+                "amount": "100.00",
+                "currency": "TRY",
+            }
+        )
+    )
+
+    with pytest.raises(
+        PaymentFlowCallbackMismatchError,
+        match="callback amount does not match payment evidence",
+    ):
+        await PaymentFlow(client).wait_for_verified_callback(
+            request,
+            final_status,
+            callback_store=callback_store,
+            secret_key=SecretStr("callback-secret"),
+        )
 
 
 @pytest.mark.negative
