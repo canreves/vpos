@@ -1,0 +1,49 @@
+[tool.poetry]
+name = "paynkolay-sanal-pos-automation"
+version = "0.1.0"
+description = "Paynkolay Sanal POS automation and test framework"
+authors = ["Paynkolay QA Automation Team"]
+readme = "guide/README_LEARNING.md"
+packages = [{ include = "paynkolay_pos", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<4.0"
+pydantic = "^2.11.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.25.0"
+pytest-xdist = "^3.6.0"
+httpx = "^0.28.0"
+playwright = "^1.49.0"
+allure-pytest = "^2.13.5"
+ruff = "^0.8.0"
+mypy = "^1.13.0"
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+markers = [
+    "smoke: fast checks for framework wiring and critical payment paths",
+    "config: configuration parsing and validation tests",
+    "api: Sanal POS API tests",
+    "three_ds: 3D Secure browser automation tests",
+    "callback: callback and webhook verification tests",
+    "negative: invalid payment and security scenarios",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+mypy_path = "src"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
