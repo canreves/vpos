@@ -7,7 +7,8 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr
+from pydantic.functional_validators import field_validator, model_validator
 
 from paynkolay_pos.config import CardBrand
 
