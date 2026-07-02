@@ -44,6 +44,13 @@ class PaymentStatus(StrEnum):
     REFUNDED = "refunded"
 
 
+class PaymentChannel(StrEnum):
+    """Payment channel metadata used by scenario coverage and provider payloads."""
+
+    E_COMMERCE = "e_commerce"
+    MOTO = "moto"
+
+
 class PaymentCardInput(StrictPaymentModel):
     """Card details submitted when initializing a payment in test environments."""
 
@@ -77,6 +84,9 @@ class PaymentInitializeRequest(StrictPaymentModel):
     callback_url: str = Field(pattern=r"^https://", min_length=12)
     card: PaymentCardInput
     requires_3ds: bool
+    installment_count: int = Field(default=1, ge=1, le=12)
+    payment_channel: PaymentChannel = PaymentChannel.E_COMMERCE
+    moto: bool = False
     correlation_id: str = Field(min_length=1, max_length=128)
     signature: str | None = Field(default=None, min_length=64, max_length=128)
 
@@ -93,6 +103,16 @@ class PaymentInitializeRequest(StrictPaymentModel):
 
         return f"{self.amount:.2f}"
 
+    @model_validator(mode="after")
+    def validate_payment_channel_metadata(self) -> PaymentInitializeRequest:
+        """Keep MoTo flag and payment channel consistent for scenario data."""
+
+        if self.moto and self.payment_channel is not PaymentChannel.MOTO:
+            raise ValueError("moto payments must use payment_channel=moto")
+        if not self.moto and self.payment_channel is PaymentChannel.MOTO:
+            raise ValueError("payment_channel=moto requires moto=true")
+        return self
+
     def signature_payload(self) -> dict[str, object]:
         """Return non-sensitive fields that participate in request signing."""
 
@@ -104,6 +124,9 @@ class PaymentInitializeRequest(StrictPaymentModel):
             "currency": self.currency,
             "callback_url": self.callback_url,
             "requires_3ds": self.requires_3ds,
+            "installment_count": self.installment_count,
+            "payment_channel": self.payment_channel,
+            "moto": self.moto,
             "correlation_id": self.correlation_id,
         }
 

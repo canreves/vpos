@@ -24,6 +24,9 @@ PAYMENT_INITIALIZE_SIGNATURE_FIELDS = (
     "currency",
     "callback_url",
     "requires_3ds",
+    "installment_count",
+    "payment_channel",
+    "moto",
     "correlation_id",
 )
 
@@ -111,6 +114,9 @@ class PaynkolayClient:
                 "card_holder": request.card.card_holder,
             },
             "requires_3ds": request.requires_3ds,
+            "installment_count": request.installment_count,
+            "payment_channel": request.payment_channel.value,
+            "moto": request.moto,
             "correlation_id": request.correlation_id,
             "signature": signature,
         }

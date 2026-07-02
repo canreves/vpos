@@ -4,7 +4,7 @@ import pytest
 from pydantic import SecretStr
 
 from paynkolay_pos.callbacks import verify_callback_signature
-from paynkolay_pos.models import Currency, PaymentStatus
+from paynkolay_pos.models import Currency, PaymentChannel, PaymentStatus
 from paynkolay_pos.testing import (
     callback_payload_model,
     payment_initialize_request,
@@ -21,6 +21,22 @@ def test_payment_initialize_request_factory_builds_valid_3ds_request() -> None:
     assert request.canonical_amount == "250.50"
     assert request.currency is Currency.TRY
     assert request.requires_3ds is True
+    assert request.installment_count == 1
+    assert request.payment_channel is PaymentChannel.E_COMMERCE
+    assert request.moto is False
+
+
+@pytest.mark.api
+def test_payment_initialize_request_factory_builds_moto_request() -> None:
+    request = payment_initialize_request(
+        requires_3ds=False,
+        payment_channel=PaymentChannel.MOTO,
+        moto=True,
+    )
+
+    assert request.requires_3ds is False
+    assert request.payment_channel is PaymentChannel.MOTO
+    assert request.moto is True
 
 
 @pytest.mark.api

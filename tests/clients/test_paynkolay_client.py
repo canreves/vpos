@@ -134,8 +134,8 @@ async def test_initialize_payment_signs_request_and_parses_response() -> None:
     assert response.provider_transaction_id == "txn-1001"
     assert captured_payload is not None
     assert captured_payload["signature"] == (
-        "0ae9a3e93ae2ff8239758efc4b920375f"
-        "6111337a30b67cb7b338712e9935e2e"
+        "e97f9342129169b35e8e760e243dcfc8"
+        "33d390f0cbb991c9d8c6d99ac7b88d3f"
     )
     assert captured_payload["card"] == {
         "brand": "visa",
@@ -145,6 +145,9 @@ async def test_initialize_payment_signs_request_and_parses_response() -> None:
         "cvv": "123",
         "card_holder": "PAYNKOLAY TEST",
     }
+    assert captured_payload["installment_count"] == 1
+    assert captured_payload["payment_channel"] == "e_commerce"
+    assert captured_payload["moto"] is False
 
 
 @pytest.mark.api

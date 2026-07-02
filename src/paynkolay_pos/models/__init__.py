@@ -4,6 +4,7 @@ from paynkolay_pos.models.callbacks import CallbackPayload
 from paynkolay_pos.models.payments import (
     Currency,
     PaymentCardInput,
+    PaymentChannel,
     PaymentInitializeRequest,
     PaymentInitializeResponse,
     PaymentStatus,
@@ -14,6 +15,7 @@ __all__ = [
     "CallbackPayload",
     "Currency",
     "PaymentCardInput",
+    "PaymentChannel",
     "PaymentInitializeRequest",
     "PaymentInitializeResponse",
     "PaymentStatus",

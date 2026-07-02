@@ -50,6 +50,9 @@ def payment_initialize_request_payload(
         "callback_url": "https://merchant-dev.example.test/callback",
         "card": dict(card) if card is not None else payment_card_payload(),
         "requires_3ds": True,
+        "installment_count": 1,
+        "payment_channel": "e_commerce",
+        "moto": False,
         "correlation_id": "corr-1001",
     }
     payload.update(overrides)

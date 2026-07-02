@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from paynkolay_pos.models import (
     Currency,
+    PaymentChannel,
     PaymentInitializeRequest,
     PaymentInitializeResponse,
     TransactionStatusResponse,
@@ -34,8 +35,43 @@ def test_payment_initialize_request_exposes_canonical_signature_payload() -> Non
         "currency": Currency.TRY,
         "callback_url": "https://merchant.example.test/callbacks/paynkolay",
         "requires_3ds": True,
+        "installment_count": 1,
+        "payment_channel": PaymentChannel.E_COMMERCE,
+        "moto": False,
         "correlation_id": "corr-1001",
     }
+
+
+@pytest.mark.api
+def test_payment_initialize_request_models_installment_and_moto_scenarios() -> None:
+    installment_request = PaymentInitializeRequest.model_validate(
+        payment_initialize_request_payload(installment_count=3)
+    )
+    moto_request = PaymentInitializeRequest.model_validate(
+        payment_initialize_request_payload(
+            requires_3ds=False,
+            payment_channel="moto",
+            moto=True,
+        )
+    )
+
+    assert installment_request.installment_count == 3
+    assert installment_request.payment_channel is PaymentChannel.E_COMMERCE
+    assert installment_request.moto is False
+    assert moto_request.requires_3ds is False
+    assert moto_request.payment_channel is PaymentChannel.MOTO
+    assert moto_request.moto is True
+
+
+@pytest.mark.negative
+def test_payment_initialize_request_requires_consistent_moto_metadata() -> None:
+    with pytest.raises(ValidationError, match="moto payments must use payment_channel=moto"):
+        PaymentInitializeRequest.model_validate(payment_initialize_request_payload(moto=True))
+
+    with pytest.raises(ValidationError, match="payment_channel=moto requires moto=true"):
+        PaymentInitializeRequest.model_validate(
+            payment_initialize_request_payload(payment_channel="moto")
+        )
 
 
 @pytest.mark.negative
