@@ -7,7 +7,8 @@ import pytest
 
 from paynkolay_pos.clients import PaynkolayClient
 from paynkolay_pos.config import RuntimeSettings
-from paynkolay_pos.models import PaymentInitializeRequest, PaymentStatus
+from paynkolay_pos.models import PaymentStatus
+from paynkolay_pos.testing import payment_initialize_request
 
 
 def valid_settings_payload() -> dict[str, object]:
@@ -121,25 +122,7 @@ async def test_initialize_payment_signs_request_and_parses_response() -> None:
             },
         )
 
-    payment_request = PaymentInitializeRequest.model_validate(
-        {
-            "merchant_id": "merchant-dev",
-            "terminal_id": "terminal-dev",
-            "order_id": "order-1001",
-            "amount": "100.00",
-            "currency": "TRY",
-            "callback_url": "https://merchant-dev.example.test/callback",
-            "card": {
-                "brand": "visa",
-                "pan": "4111111111111111",
-                "expiry_month": 12,
-                "expiry_year": 2030,
-                "cvv": "123",
-            },
-            "requires_3ds": True,
-            "correlation_id": "corr-1001",
-        }
-    )
+    payment_request = payment_initialize_request()
 
     async with PaynkolayClient(
         settings.current,

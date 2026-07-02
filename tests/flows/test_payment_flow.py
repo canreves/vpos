@@ -6,39 +6,19 @@ from pydantic import SecretStr
 from paynkolay_pos.callbacks import (
     CallbackSignatureVerificationError,
     CallbackStore,
-    canonicalize_callback_signature_payload,
 )
 from paynkolay_pos.flows import PaymentFlow, PaymentFlowCallbackMismatchError
 from paynkolay_pos.models import (
-    CallbackPayload,
     PaymentInitializeRequest,
     PaymentInitializeResponse,
     PaymentStatus,
     TransactionStatusResponse,
 )
-from paynkolay_pos.security import generate_hmac_signature
-
-
-def valid_payment_request() -> PaymentInitializeRequest:
-    return PaymentInitializeRequest.model_validate(
-        {
-            "merchant_id": "merchant-dev",
-            "terminal_id": "terminal-dev",
-            "order_id": "order-1001",
-            "amount": "100.00",
-            "currency": "TRY",
-            "callback_url": "https://merchant-dev.example.test/callback",
-            "card": {
-                "brand": "visa",
-                "pan": "4111111111111111",
-                "expiry_month": 12,
-                "expiry_year": 2030,
-                "cvv": "123",
-            },
-            "requires_3ds": True,
-            "correlation_id": "corr-1001",
-        }
-    )
+from paynkolay_pos.testing import (
+    payment_initialize_request,
+    signed_callback_payload_model,
+    transaction_status_response,
+)
 
 
 class FakePaymentClient:
@@ -91,7 +71,7 @@ async def test_payment_flow_initializes_payment_through_client() -> None:
         }
     )
     client = FakePaymentClient(provider_response)
-    request = valid_payment_request()
+    request = payment_initialize_request()
 
     response = await PaymentFlow(client).initialize(request)
 
@@ -99,53 +79,6 @@ async def test_payment_flow_initializes_payment_through_client() -> None:
     assert response.status is PaymentStatus.PENDING_3DS
     assert response.redirect_url == "https://acs.example.test/challenge/order-1001"
     assert client.seen_request is request
-
-
-def status_response(status: PaymentStatus) -> TransactionStatusResponse:
-    payload: dict[str, object] = {
-        "order_id": "order-1001",
-        "provider_transaction_id": "txn-1001",
-        "status": status,
-        "amount": "100.00",
-        "currency": "TRY",
-        "updated_at": "2026-07-02T12:00:00+03:00",
-    }
-    if status in {PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURED}:
-        payload["authorization_code"] = "auth-1001"
-    if status is PaymentStatus.FAILED:
-        payload["failure_code"] = "issuer_declined"
-    return TransactionStatusResponse.model_validate(payload)
-
-
-def signed_callback(
-    *,
-    secret_key: str = "callback-secret",
-    order_id: str = "order-1001",
-    provider_transaction_id: str = "txn-1001",
-    status: str = "captured",
-    amount: str = "100.00",
-    currency: str = "TRY",
-) -> CallbackPayload:
-    payload: dict[str, object] = {
-        "order_id": order_id,
-        "provider_transaction_id": provider_transaction_id,
-        "status": status,
-        "amount": amount,
-        "currency": currency,
-        "received_at": "2026-07-02T12:00:00+03:00",
-        "signature": "0" * 64,
-    }
-    if status in {"authorized", "captured"}:
-        payload["authorization_code"] = "auth-1001"
-    if status == "failed":
-        payload["failure_code"] = "issuer_declined"
-
-    callback = CallbackPayload.model_validate(payload)
-    payload["signature"] = generate_hmac_signature(
-        secret_key=secret_key,
-        canonical_payload=canonicalize_callback_signature_payload(callback),
-    )
-    return CallbackPayload.model_validate(payload)
 
 
 @pytest.mark.api
@@ -162,9 +95,9 @@ async def test_payment_flow_waits_until_transaction_reaches_final_status() -> No
             }
         ),
         statuses=[
-            status_response(PaymentStatus.PENDING_3DS),
-            status_response(PaymentStatus.AUTHENTICATED),
-            status_response(PaymentStatus.CAPTURED),
+            transaction_status_response(PaymentStatus.PENDING_3DS),
+            transaction_status_response(PaymentStatus.AUTHENTICATED),
+            transaction_status_response(PaymentStatus.CAPTURED),
         ],
     )
 
@@ -183,9 +116,9 @@ async def test_payment_flow_waits_until_transaction_reaches_final_status() -> No
 @pytest.mark.callback
 @pytest.mark.asyncio
 async def test_payment_flow_waits_for_verified_matching_callback() -> None:
-    request = valid_payment_request()
-    final_status = status_response(PaymentStatus.CAPTURED)
-    callback = signed_callback()
+    request = payment_initialize_request()
+    final_status = transaction_status_response(PaymentStatus.CAPTURED)
+    callback = signed_callback_payload_model()
     callback_store = CallbackStore()
     callback_store.add(callback)
     client = FakePaymentClient(
@@ -213,9 +146,9 @@ async def test_payment_flow_waits_for_verified_matching_callback() -> None:
 @pytest.mark.negative
 @pytest.mark.asyncio
 async def test_payment_flow_rejects_callback_with_invalid_signature() -> None:
-    request = valid_payment_request()
-    final_status = status_response(PaymentStatus.CAPTURED)
-    callback = signed_callback(secret_key="different-secret")
+    request = payment_initialize_request()
+    final_status = transaction_status_response(PaymentStatus.CAPTURED)
+    callback = signed_callback_payload_model(secret_key="different-secret")
     callback_store = CallbackStore()
     callback_store.add(callback)
     client = FakePaymentClient(
@@ -242,9 +175,9 @@ async def test_payment_flow_rejects_callback_with_invalid_signature() -> None:
 @pytest.mark.negative
 @pytest.mark.asyncio
 async def test_payment_flow_rejects_verified_callback_that_disagrees_with_payment() -> None:
-    request = valid_payment_request()
-    final_status = status_response(PaymentStatus.CAPTURED)
-    callback = signed_callback(amount="99.00")
+    request = payment_initialize_request()
+    final_status = transaction_status_response(PaymentStatus.CAPTURED)
+    callback = signed_callback_payload_model(amount="99.00")
     callback_store = CallbackStore()
     callback_store.add(callback)
     client = FakePaymentClient(
@@ -284,9 +217,9 @@ async def test_payment_flow_times_out_when_transaction_never_reaches_final_statu
             }
         ),
         statuses=[
-            status_response(PaymentStatus.PENDING_3DS),
-            status_response(PaymentStatus.AUTHENTICATED),
-            status_response(PaymentStatus.AUTHENTICATED),
+            transaction_status_response(PaymentStatus.PENDING_3DS),
+            transaction_status_response(PaymentStatus.AUTHENTICATED),
+            transaction_status_response(PaymentStatus.AUTHENTICATED),
         ],
     )
 

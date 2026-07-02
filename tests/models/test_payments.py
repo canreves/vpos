@@ -12,31 +12,16 @@ from paynkolay_pos.models import (
     PaymentInitializeResponse,
     TransactionStatusResponse,
 )
-
-
-def valid_payment_request_payload() -> dict[str, object]:
-    return {
-        "merchant_id": "merchant-dev",
-        "terminal_id": "terminal-dev",
-        "order_id": "order-1001",
-        "amount": "100.00",
-        "currency": "TRY",
-        "callback_url": "https://merchant.example.test/callbacks/paynkolay",
-        "card": {
-            "brand": "visa",
-            "pan": "4111111111111111",
-            "expiry_month": 12,
-            "expiry_year": 2030,
-            "cvv": "123",
-        },
-        "requires_3ds": True,
-        "correlation_id": "corr-1001",
-    }
+from paynkolay_pos.testing import payment_initialize_request_payload
 
 
 @pytest.mark.api
 def test_payment_initialize_request_exposes_canonical_signature_payload() -> None:
-    request = PaymentInitializeRequest.model_validate(valid_payment_request_payload())
+    request = PaymentInitializeRequest.model_validate(
+        payment_initialize_request_payload(
+            callback_url="https://merchant.example.test/callbacks/paynkolay"
+        )
+    )
 
     assert request.amount == Decimal("100.00")
     assert request.currency is Currency.TRY
@@ -55,7 +40,7 @@ def test_payment_initialize_request_exposes_canonical_signature_payload() -> Non
 
 @pytest.mark.negative
 def test_payment_initialize_request_rejects_non_numeric_card_data() -> None:
-    payload = valid_payment_request_payload()
+    payload = payment_initialize_request_payload()
     card = payload["card"]
     assert isinstance(card, dict)
     card["cvv"] = "12x"

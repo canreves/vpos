@@ -10,26 +10,7 @@ from paynkolay_pos.callbacks import (
     verify_callback_signature,
 )
 from paynkolay_pos.models import CallbackPayload
-from paynkolay_pos.security import generate_hmac_signature
-
-
-def signed_callback_payload(*, secret_key: str = "callback-secret") -> dict[str, object]:
-    payload: dict[str, object] = {
-        "order_id": "order-1001",
-        "provider_transaction_id": "txn-1001",
-        "status": "captured",
-        "amount": "100.00",
-        "currency": "TRY",
-        "received_at": "2026-07-02T12:00:00+03:00",
-        "signature": "0" * 64,
-        "authorization_code": "auth-1001",
-    }
-    callback = CallbackPayload.model_validate(payload)
-    payload["signature"] = generate_hmac_signature(
-        secret_key=secret_key,
-        canonical_payload=canonicalize_callback_signature_payload(callback),
-    )
-    return payload
+from paynkolay_pos.testing import signed_callback_payload
 
 
 @pytest.mark.callback

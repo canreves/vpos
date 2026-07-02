@@ -3,29 +3,8 @@ from __future__ import annotations
 import pytest
 
 from paynkolay_pos.callbacks import CallbackStore
-from paynkolay_pos.models import CallbackPayload, PaymentStatus
-
-
-def callback_payload(
-    *,
-    order_id: str = "order-1001",
-    status: str = "captured",
-    signature: str = "a" * 64,
-) -> CallbackPayload:
-    payload: dict[str, object] = {
-        "order_id": order_id,
-        "provider_transaction_id": f"txn-{order_id}",
-        "status": status,
-        "amount": "100.00",
-        "currency": "TRY",
-        "received_at": "2026-07-02T12:00:00+03:00",
-        "signature": signature,
-    }
-    if status in {"authorized", "captured"}:
-        payload["authorization_code"] = f"auth-{order_id}"
-    if status == "failed":
-        payload["failure_code"] = "issuer_declined"
-    return CallbackPayload.model_validate(payload)
+from paynkolay_pos.models import PaymentStatus
+from paynkolay_pos.testing import callback_payload_model
 
 
 class FakeClock:
@@ -42,9 +21,9 @@ class FakeClock:
 @pytest.mark.callback
 def test_callback_store_keeps_callbacks_grouped_by_order_id() -> None:
     store = CallbackStore()
-    first_callback = callback_payload(order_id="order-1001", status="authorized")
-    second_callback = callback_payload(order_id="order-1001", status="captured")
-    other_callback = callback_payload(order_id="order-2002", status="failed")
+    first_callback = callback_payload_model(order_id="order-1001", status="authorized")
+    second_callback = callback_payload_model(order_id="order-1001", status="captured")
+    other_callback = callback_payload_model(order_id="order-2002", status="failed")
 
     store.add(first_callback)
     store.add(other_callback)
@@ -60,8 +39,8 @@ def test_callback_store_keeps_callbacks_grouped_by_order_id() -> None:
 @pytest.mark.asyncio
 async def test_callback_store_waits_for_matching_callback() -> None:
     clock = FakeClock()
-    pending_callback = callback_payload(status="authorized")
-    final_callback = callback_payload(status="captured", signature="b" * 64)
+    pending_callback = callback_payload_model(status="authorized")
+    final_callback = callback_payload_model(status="captured", signature="b" * 64)
 
     async def add_final_callback_after_first_poll(seconds: float) -> None:
         await clock.sleep(seconds)
@@ -87,7 +66,7 @@ async def test_callback_store_waits_for_matching_callback() -> None:
 async def test_callback_store_times_out_with_diagnostics() -> None:
     clock = FakeClock()
     store = CallbackStore(sleep=clock.sleep, clock=clock)
-    store.add(callback_payload(order_id="order-2002"))
+    store.add(callback_payload_model(order_id="order-2002"))
 
     with pytest.raises(
         TimeoutError,
