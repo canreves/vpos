@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from decimal import Decimal
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 from pydantic.functional_validators import field_validator, model_validator
@@ -130,3 +131,12 @@ class PaymentScenarioCatalog(StrictScenarioModel):
         """Return scenarios carrying a specific metadata tag."""
 
         return tuple(scenario for scenario in self.scenarios if tag in scenario.tags)
+
+
+def load_payment_scenario_catalog(path: str | Path) -> PaymentScenarioCatalog:
+    """Load and validate a payment scenario catalogue from a JSON file."""
+
+    catalog_path = Path(path).expanduser()
+    if not catalog_path.is_file():
+        raise FileNotFoundError(f"payment scenario catalog does not exist: {catalog_path}")
+    return PaymentScenarioCatalog.model_validate_json(catalog_path.read_text(encoding="utf-8"))

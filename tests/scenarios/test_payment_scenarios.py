@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
 from paynkolay_pos.models import PaymentChannel, PaymentStatus
-from paynkolay_pos.scenarios import PaymentScenario, PaymentScenarioCatalog
+from paynkolay_pos.scenarios import (
+    PaymentScenario,
+    PaymentScenarioCatalog,
+    load_payment_scenario_catalog,
+)
 from paynkolay_pos.testing import payment_card_payload
 
 
@@ -75,6 +81,23 @@ def test_payment_scenario_catalog_indexes_unique_scenarios() -> None:
     assert catalog.tagged("missing") == ()
 
 
+@pytest.mark.api
+def test_load_payment_scenario_catalog_from_json_file() -> None:
+    catalog_path = (
+        Path(__file__).parents[2] / "examples" / "scenarios" / "payment_scenarios.json"
+    )
+
+    catalog = load_payment_scenario_catalog(catalog_path)
+
+    assert catalog.ids() == (
+        "visa_3ds_capture",
+        "visa_installment_capture",
+        "visa_moto_authorized",
+    )
+    assert catalog.get("visa_installment_capture").installment_count == 3
+    assert catalog.tagged("moto")[0].payment_channel is PaymentChannel.MOTO
+
+
 @pytest.mark.negative
 def test_payment_scenario_catalog_rejects_duplicate_ids() -> None:
     with pytest.raises(ValidationError, match="scenario_id values must be unique"):
@@ -92,3 +115,11 @@ def test_payment_scenario_rejects_inconsistent_metadata() -> None:
             payment_channel=PaymentChannel.MOTO,
             moto=True,
         )
+
+
+@pytest.mark.negative
+def test_load_payment_scenario_catalog_rejects_missing_file(tmp_path: Path) -> None:
+    missing_path = tmp_path / "missing-scenarios.json"
+
+    with pytest.raises(FileNotFoundError, match="payment scenario catalog does not exist"):
+        load_payment_scenario_catalog(missing_path)

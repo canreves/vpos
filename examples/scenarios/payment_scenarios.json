@@ -1,0 +1,46 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "visa_3ds_capture",
+      "title": "Visa 3DS captured payment",
+      "card_alias": "visa_3ds_success",
+      "amount": "100.00",
+      "currency": "TRY",
+      "requires_3ds": true,
+      "expected_initialize_status": "pending_3ds",
+      "expected_final_status": "captured",
+      "installment_count": 1,
+      "payment_channel": "e_commerce",
+      "moto": false,
+      "tags": ["smoke", "three_ds"]
+    },
+    {
+      "scenario_id": "visa_installment_capture",
+      "title": "Visa 3 installment captured payment",
+      "card_alias": "visa_installment_success",
+      "amount": "300.00",
+      "currency": "TRY",
+      "requires_3ds": true,
+      "expected_initialize_status": "pending_3ds",
+      "expected_final_status": "captured",
+      "installment_count": 3,
+      "payment_channel": "e_commerce",
+      "moto": false,
+      "tags": ["installment", "three_ds"]
+    },
+    {
+      "scenario_id": "visa_moto_authorized",
+      "title": "Visa MoTo authorized payment",
+      "card_alias": "visa_moto_success",
+      "amount": "75.00",
+      "currency": "TRY",
+      "requires_3ds": false,
+      "expected_initialize_status": "authorized",
+      "expected_final_status": "authorized",
+      "installment_count": 1,
+      "payment_channel": "moto",
+      "moto": true,
+      "tags": ["moto"]
+    }
+  ]
+}

@@ -64,6 +64,15 @@ poetry run playwright install chromium
 Without browser binaries, that specific browser test skips locally. CI installs Chromium in
 the dedicated 3DS browser job.
 
+Load the example payment scenario catalogue:
+
+```python
+from paynkolay_pos.scenarios import load_payment_scenario_catalog
+
+catalog = load_payment_scenario_catalog("examples/scenarios/payment_scenarios.json")
+print(catalog.ids())
+```
+
 ## Project Layout
 
 ```text
@@ -88,6 +97,7 @@ Current tests use:
 - `httpx.MockTransport` for provider API responses.
 - Local/fake callback payloads with real HMAC verification.
 - Fake and local Playwright-style 3DS challenge pages.
+- Example scenario data in `examples/scenarios/payment_scenarios.json`.
 - Placeholder endpoint paths:
   - `POST /payments/initialize`
   - `GET /payments/{order_id}/status`
