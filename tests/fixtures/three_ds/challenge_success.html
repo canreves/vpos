@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Test ACS Challenge</title>
+  </head>
+  <body>
+    <form id="challenge-form">
+      <label for="otp">OTP</label>
+      <input id="otp" name="otp" autocomplete="one-time-code">
+      <button id="submit-authentication" type="submit">Submit</button>
+    </form>
+    <script>
+      document.getElementById("challenge-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const otp = document.getElementById("otp").value;
+        const status = otp === "123456" ? "authenticated" : "failed";
+        window.history.pushState({}, "", `/3ds/result?status=${status}`);
+      });
+    </script>
+  </body>
+</html>

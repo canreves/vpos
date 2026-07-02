@@ -35,7 +35,7 @@ class SupportsThreeDSPage(Protocol):
 class ThreeDSChallengeResult(BaseModel):
     """Sanitized evidence returned after completing a 3DS challenge."""
 
-    redirect_url: str = Field(pattern=r"^https://", min_length=12)
+    redirect_url: str = Field(pattern=r"^(https|file)://", min_length=7)
     final_url: str = Field(min_length=1)
     otp_selector: str = Field(min_length=1)
     submit_selector: str = Field(min_length=1)
@@ -51,8 +51,8 @@ async def complete_three_ds_challenge(
 ) -> ThreeDSChallengeResult:
     """Open a 3DS challenge page, enter the OTP, submit, and return safe evidence."""
 
-    if not redirect_url.startswith("https://"):
-        raise ValueError("redirect_url must use https")
+    if not redirect_url.startswith(("https://", "file://")):
+        raise ValueError("redirect_url must use https or file")
     if not otp_selector:
         raise ValueError("otp_selector must not be empty")
     if not submit_selector:

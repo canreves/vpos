@@ -98,7 +98,7 @@ async def test_complete_three_ds_challenge_supports_provider_specific_selectors(
 async def test_complete_three_ds_challenge_rejects_invalid_inputs() -> None:
     page = FakePage()
 
-    with pytest.raises(ValueError, match="redirect_url must use https"):
+    with pytest.raises(ValueError, match="redirect_url must use https or file"):
         await complete_three_ds_challenge(
             page,
             redirect_url="http://acs.example.test/challenge/order-1001",
