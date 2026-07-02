@@ -1,0 +1,7 @@
+{
+  "include": ["src", "tests"],
+  "extraPaths": ["src"],
+  "venvPath": "/Users/cansever/Library/Caches/pypoetry/virtualenvs",
+  "venv": "paynkolay-sanal-pos-automation-qDImGXNh-py3.11",
+  "pythonVersion": "3.11"
+}
