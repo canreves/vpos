@@ -204,6 +204,22 @@ def test_payment_list_row_maps_non_success_statuses(
 
 
 @pytest.mark.api
+def test_payment_list_row_uses_provider_status_as_failed_fallback_code() -> None:
+    row = PaynkolayPaymentListRow.model_validate(
+        payment_list_row_payload(
+            STATUS="ERROR",
+            AUTH_CODE="",
+            DESCRIPTION="",
+        )
+    )
+
+    status = row.to_transaction_status_response()
+
+    assert status.status is PaymentStatus.FAILED
+    assert status.failure_code == "ERROR"
+
+
+@pytest.mark.api
 def test_payment_list_response_filters_rows_by_client_reference_code() -> None:
     response = PaynkolayPaymentListResponse.model_validate(
         {

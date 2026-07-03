@@ -203,6 +203,9 @@ class PaynkolayPaymentListRow(StrictPaymentModel):
         """Convert a provider list row into the framework status model."""
 
         payment_status = self.payment_status
+        failure_code = None
+        if payment_status is PaymentStatus.FAILED:
+            failure_code = self.description or self.status.value
         return TransactionStatusResponse(
             order_id=self.client_reference_code,
             provider_transaction_id=self.reference_code,
@@ -211,7 +214,7 @@ class PaynkolayPaymentListRow(StrictPaymentModel):
             currency=currency,
             updated_at=self._parsed_trx_date(source_timezone),
             authorization_code=self.auth_code.strip() or None,
-            failure_code=self.description if payment_status is PaymentStatus.FAILED else None,
+            failure_code=failure_code,
         )
 
     def _parsed_trx_date(self, source_timezone: tzinfo) -> datetime:
