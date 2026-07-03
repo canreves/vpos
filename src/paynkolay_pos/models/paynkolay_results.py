@@ -73,6 +73,13 @@ class PaynkolayPaymentResult(StrictPaymentModel):
 
         return amount.quantize(Decimal("0.01"))
 
+    @field_validator("response_code", mode="before")
+    @classmethod
+    def normalize_response_code(cls, response_code: object) -> str:
+        """Accept provider response codes whether they arrive as text or numbers."""
+
+        return str(response_code)
+
     @property
     def successful(self) -> bool:
         """Apply Paynkolay's documented payment success rule."""
@@ -228,6 +235,13 @@ class PaynkolayPaymentListResult(StrictPaymentModel):
     response_code: str = Field(alias="RESPONSE_CODE", min_length=1)
     response_data: str | None = Field(default=None, alias="RESPONSE_DATA")
     rows: tuple[PaynkolayPaymentListRow, ...] = Field(default=(), alias="LIST")
+
+    @field_validator("response_code", mode="before")
+    @classmethod
+    def normalize_response_code(cls, response_code: object) -> str:
+        """Accept provider response codes whether they arrive as text or numbers."""
+
+        return str(response_code)
 
     @property
     def successful(self) -> bool:

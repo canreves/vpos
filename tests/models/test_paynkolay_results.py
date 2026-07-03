@@ -75,6 +75,17 @@ def test_payment_result_verifies_hash_and_maps_success_status() -> None:
 
 
 @pytest.mark.api
+def test_payment_result_accepts_numeric_response_code() -> None:
+    result = PaynkolayPaymentResult.model_validate(
+        successful_result_payload(RESPONSE_CODE=2)
+    )
+
+    assert result.response_code == "2"
+    assert result.successful is True
+    assert result.expected_hash(SecretStr("merchant-secret")) == PAYMENT_RESULT_HASH
+
+
+@pytest.mark.api
 def test_payment_result_converts_success_to_transaction_status_response() -> None:
     result = PaynkolayPaymentResult.model_validate(successful_result_payload())
 
@@ -241,6 +252,23 @@ def test_payment_list_response_filters_rows_by_client_reference_code() -> None:
     assert response.result.successful is True
     assert len(response.result.rows) == 2
     assert response.rows_for_client_ref("order-1001")[0].reference_code == "IKSIRPF102168"
+
+
+@pytest.mark.api
+def test_payment_list_response_accepts_numeric_response_code() -> None:
+    response = PaynkolayPaymentListResponse.model_validate(
+        {
+            "id": "",
+            "result": {
+                "RESPONSE_CODE": 2,
+                "RESPONSE_DATA": "Islem basarili",
+                "LIST": [],
+            },
+        }
+    )
+
+    assert response.result.response_code == "2"
+    assert response.result.successful is True
 
 
 @pytest.mark.api
