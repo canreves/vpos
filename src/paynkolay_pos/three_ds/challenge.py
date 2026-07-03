@@ -25,6 +25,9 @@ class SupportsThreeDSPage(Protocol):
     async def goto(self, url: str, *, wait_until: str = "domcontentloaded") -> object:
         """Navigate to a challenge page."""
 
+    async def set_content(self, html: str, *, wait_until: str = "domcontentloaded") -> None:
+        """Load an inline challenge HTML document."""
+
     def locator(self, selector: str) -> SupportsThreeDSLocator:
         """Find a challenge page element."""
 
@@ -35,7 +38,7 @@ class SupportsThreeDSPage(Protocol):
 class ThreeDSChallengeResult(BaseModel):
     """Sanitized evidence returned after completing a 3DS challenge."""
 
-    redirect_url: str = Field(pattern=r"^(https|file)://", min_length=7)
+    redirect_url: str = Field(pattern=r"^(https|file|inline)://", min_length=7)
     final_url: str = Field(min_length=1)
     otp_selector: str = Field(min_length=1)
     submit_selector: str = Field(min_length=1)
@@ -53,6 +56,68 @@ async def complete_three_ds_challenge(
 
     if not redirect_url.startswith(("https://", "file://")):
         raise ValueError("redirect_url must use https or file")
+    _validate_challenge_inputs(
+        otp=otp,
+        otp_selector=otp_selector,
+        submit_selector=submit_selector,
+    )
+
+    await page.goto(redirect_url, wait_until="domcontentloaded")
+    await _submit_three_ds_challenge(
+        page,
+        otp=otp,
+        otp_selector=otp_selector,
+        submit_selector=submit_selector,
+    )
+
+    return ThreeDSChallengeResult(
+        redirect_url=redirect_url,
+        final_url=page.url,
+        otp_selector=otp_selector,
+        submit_selector=submit_selector,
+    )
+
+
+async def complete_three_ds_html_challenge(
+    page: SupportsThreeDSPage,
+    *,
+    html: str,
+    otp: SecretStr | str,
+    otp_selector: str = 'input[name="otp"]',
+    submit_selector: str = 'button[type="submit"]',
+) -> ThreeDSChallengeResult:
+    """Load inline 3DS HTML, enter the OTP, submit, and return safe evidence."""
+
+    if not html.strip():
+        raise ValueError("html must not be empty")
+    _validate_challenge_inputs(
+        otp=otp,
+        otp_selector=otp_selector,
+        submit_selector=submit_selector,
+    )
+
+    await page.set_content(html, wait_until="domcontentloaded")
+    await _submit_three_ds_challenge(
+        page,
+        otp=otp,
+        otp_selector=otp_selector,
+        submit_selector=submit_selector,
+    )
+
+    return ThreeDSChallengeResult(
+        redirect_url="inline://paynkolay-bank-request-message",
+        final_url=page.url,
+        otp_selector=otp_selector,
+        submit_selector=submit_selector,
+    )
+
+
+def _validate_challenge_inputs(
+    *,
+    otp: SecretStr | str,
+    otp_selector: str,
+    submit_selector: str,
+) -> None:
     if not otp_selector:
         raise ValueError("otp_selector must not be empty")
     if not submit_selector:
@@ -62,14 +127,15 @@ async def complete_three_ds_challenge(
     if not otp_value:
         raise ValueError("otp must not be empty")
 
-    await page.goto(redirect_url, wait_until="domcontentloaded")
+
+async def _submit_three_ds_challenge(
+    page: SupportsThreeDSPage,
+    *,
+    otp: SecretStr | str,
+    otp_selector: str,
+    submit_selector: str,
+) -> None:
+    otp_value = otp.get_secret_value() if isinstance(otp, SecretStr) else otp
     await page.locator(otp_selector).fill(otp_value)
     await page.locator(submit_selector).click()
     await page.wait_for_load_state("networkidle")
-
-    return ThreeDSChallengeResult(
-        redirect_url=redirect_url,
-        final_url=page.url,
-        otp_selector=otp_selector,
-        submit_selector=submit_selector,
-    )
