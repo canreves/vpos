@@ -192,6 +192,17 @@ def test_payment_list_row_maps_success_to_transaction_status_response() -> None:
 
 
 @pytest.mark.api
+def test_payment_list_row_accepts_iso_transaction_date() -> None:
+    row = PaynkolayPaymentListRow.model_validate(
+        payment_list_row_payload(TRX_DATE="2026-07-03T09:45:00+03:00")
+    )
+
+    status = row.to_transaction_status_response()
+
+    assert status.updated_at == datetime(2026, 7, 3, 6, 45, tzinfo=UTC)
+
+
+@pytest.mark.api
 @pytest.mark.parametrize(
     ("provider_status", "payment_status"),
     [
