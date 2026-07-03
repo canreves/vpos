@@ -8,6 +8,8 @@ from pydantic import SecretStr, ValidationError
 from paynkolay_pos.models import (
     Currency,
     PaymentStatus,
+    PaynkolayCancelRefundResult,
+    PaynkolayCancelRefundType,
     PaynkolayPaymentListResponse,
     PaynkolayPaymentListRow,
     PaynkolayPaymentResult,
@@ -189,3 +191,44 @@ def test_payment_list_response_filters_rows_by_client_reference_code() -> None:
     assert response.result.successful is True
     assert len(response.result.rows) == 2
     assert response.rows_for_client_ref("order-1001")[0].reference_code == "IKSIRPF102168"
+
+
+@pytest.mark.api
+@pytest.mark.parametrize(
+    ("transaction_type", "expected_status"),
+    [
+        (PaynkolayCancelRefundType.CANCEL, PaymentStatus.CANCELLED),
+        (PaynkolayCancelRefundType.REFUND, PaymentStatus.REFUNDED),
+    ],
+)
+def test_cancel_refund_result_maps_success_to_operation_status(
+    transaction_type: PaynkolayCancelRefundType,
+    expected_status: PaymentStatus,
+) -> None:
+    result = PaynkolayCancelRefundResult.model_validate(
+        {
+            "responseCode": 2,
+            "responseData": "Islem basarili",
+            "type": transaction_type.value,
+        }
+    )
+
+    assert result.response_code == "2"
+    assert result.response_data == "Islem basarili"
+    assert result.transaction_type is transaction_type
+    assert result.successful is True
+    assert result.status is expected_status
+
+
+@pytest.mark.api
+def test_cancel_refund_result_maps_non_success_to_failed() -> None:
+    result = PaynkolayCancelRefundResult.model_validate(
+        {
+            "RESPONSE_CODE": "99",
+            "RESPONSE_DATA": "Islem basarisiz",
+            "type": "refund",
+        }
+    )
+
+    assert result.successful is False
+    assert result.status is PaymentStatus.FAILED

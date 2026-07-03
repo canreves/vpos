@@ -3,15 +3,17 @@
 Python test automation framework for Paynkolay Sanal POS payment flows.
 
 The framework currently provides a provider-ready foundation with mocked/local validation
-for API payment initialization, status polling, callback verification, 3D Secure challenge
-automation, data-driven scenarios, reporting evidence sanitization, and CI.
+for Paynkolay form payments, transaction verification, cancel/refund operations,
+callback verification, 3D Secure challenge automation, data-driven scenarios, reporting
+evidence sanitization, and CI.
 
 ## Current Capabilities
 
 - Strict runtime configuration for environments, merchants, and test cards.
 - Typed payment request, response, status, and callback models.
-- HMAC signature generation and verification.
-- Async HTTP client for payment initialization and transaction status queries.
+- HMAC signature generation plus Paynkolay SHA-512/Base64 hash helpers.
+- Async HTTP client for payment initialization, transaction status, and cancel/refund
+  form endpoints.
 - Business-level payment flow orchestration.
 - Callback signature verification and in-memory callback matching.
 - 3D Secure challenge helper with fake-page and local Playwright browser tests.
@@ -19,6 +21,12 @@ automation, data-driven scenarios, reporting evidence sanitization, and CI.
 - Scenario catalogue models for data-driven payment cases.
 - Sanitized reporting evidence helpers for Allure attachments.
 - GitHub Actions validation workflow, including a browser-backed 3DS job.
+
+Implemented Paynkolay form endpoints:
+
+- `POST /v1/Payment`
+- `POST /Payment/PaymentList`
+- `POST /v1/CancelRefundPayment`
 
 ## Tech Stack
 
@@ -84,7 +92,7 @@ src/paynkolay_pos/
   models/      Payment and callback Pydantic models
   reporting/   Sanitized evidence helpers for reports
   scenarios/   Data-driven payment scenario metadata
-  security/    Canonicalization and HMAC helpers
+  security/    Canonicalization, HMAC, and Paynkolay hash helpers
   testing/     Reusable test data factories
   three_ds/    3D Secure browser challenge helper
 ```
@@ -101,6 +109,8 @@ Current tests use:
 - Placeholder endpoint paths:
   - `POST /payments/initialize`
   - `GET /payments/{order_id}/status`
+- Paynkolay API v1 form endpoint calls are mocked locally until private sandbox
+  credentials are available.
 
 ## External Details Needed For Real Sandbox E2E
 
@@ -114,7 +124,7 @@ To switch from framework validation to real Paynkolay sandbox validation, collec
 - Callback payload format and callback signature rules.
 - Test card catalogue, expected statuses, and 3DS OTP values.
 - 3DS sandbox page selectors or documented challenge flow.
-- Installment, MoTo, currency, capture, cancel, and refund rules.
+- Installment, MoTo, currency, capture, and detailed sandbox business rules.
 
 ## Safety Rules
 

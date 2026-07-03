@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 
 import httpx
 import pytest
+from pydantic import SecretStr
 
 from paynkolay_pos.clients import PaynkolayClient
 from paynkolay_pos.config import RuntimeSettings
 from paynkolay_pos.models import PaymentStatus
-from paynkolay_pos.security import generate_payment_list_hash, generate_payment_request_hash
+from paynkolay_pos.security import (
+    generate_cancel_refund_hash,
+    generate_payment_list_hash,
+    generate_payment_request_hash,
+)
 from paynkolay_pos.testing import payment_initialize_request
 
 
@@ -401,6 +407,123 @@ async def test_get_transaction_status_from_payment_list_rejects_missing_provider
                 start_date="01.07.2026",
                 end_date="31.07.2026",
             )
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_cancel_refund_form_payload_builds_paynkolay_operation_fields() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+
+    async with PaynkolayClient(settings.current) as client:
+        payload = client.cancel_refund_form_payload(
+            reference_code=" IKSIRPF102168 ",
+            transaction_type="refund",
+            amount=Decimal("100"),
+            trx_date="2026.07.03",
+            sx=SecretStr("cancel-refund-sx"),
+        )
+
+    expected_hash = generate_cancel_refund_hash(
+        sx=SecretStr("cancel-refund-sx"),
+        reference_code="IKSIRPF102168",
+        transaction_type="refund",
+        amount=Decimal("100"),
+        trx_date="2026.07.03",
+        merchant_secret_key=settings.current.merchant.secret_key,
+    )
+    assert payload == {
+        "sx": "cancel-refund-sx",
+        "referenceCode": "IKSIRPF102168",
+        "type": "refund",
+        "amount": "100.00",
+        "trxDate": "2026.07.03",
+        "hashDatav2": expected_hash,
+    }
+
+
+@pytest.mark.negative
+@pytest.mark.asyncio
+async def test_cancel_refund_form_payload_rejects_invalid_required_fields() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+
+    async with PaynkolayClient(settings.current) as client:
+        with pytest.raises(ValueError, match="reference_code must not be empty"):
+            client.cancel_refund_form_payload(
+                reference_code=" ",
+                transaction_type="cancel",
+                amount="100.00",
+                trx_date="2026.07.03",
+            )
+
+        with pytest.raises(ValueError, match="'void' is not a valid"):
+            client.cancel_refund_form_payload(
+                reference_code="IKSIRPF102168",
+                transaction_type="void",
+                amount="100.00",
+                trx_date="2026.07.03",
+            )
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_cancel_payment_posts_paynkolay_cancel_request_and_maps_response() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+    captured_request: httpx.Request | None = None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_request
+        captured_request = request
+        return httpx.Response(
+            status_code=200,
+            json={"responseCode": 2, "responseData": "Islem basarili"},
+        )
+
+    async with PaynkolayClient(
+        settings.current,
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        response = await client.cancel_payment(
+            reference_code="IKSIRPF102168",
+            amount="100.00",
+            trx_date="2026.07.03",
+            sx=SecretStr("cancel-refund-sx"),
+        )
+
+    assert response.status is PaymentStatus.CANCELLED
+    assert response.successful is True
+    assert captured_request is not None
+    assert captured_request.url.path == "/v1/CancelRefundPayment"
+    assert captured_request.headers["content-type"].startswith("multipart/form-data")
+    assert b'name="referenceCode"' in captured_request.content
+    assert b"IKSIRPF102168" in captured_request.content
+    assert b'name="type"' in captured_request.content
+    assert b"cancel" in captured_request.content
+    assert b'name="hashDatav2"' in captured_request.content
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_refund_payment_maps_failed_provider_response() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code=200,
+            json={"RESPONSE_CODE": "99", "RESPONSE_DATA": "Islem basarisiz"},
+        )
+
+    async with PaynkolayClient(
+        settings.current,
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        response = await client.refund_payment(
+            reference_code="IKSIRPF102168",
+            amount="100.00",
+            trx_date="2026.07.03",
+        )
+
+    assert response.status is PaymentStatus.FAILED
+    assert response.successful is False
 
 
 @pytest.mark.api

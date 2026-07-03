@@ -11,6 +11,8 @@ from paynkolay_pos.models.payments import (
     TransactionStatusResponse,
 )
 from paynkolay_pos.models.paynkolay_results import (
+    PaynkolayCancelRefundResult,
+    PaynkolayCancelRefundType,
     PaynkolayPaymentListResponse,
     PaynkolayPaymentListResult,
     PaynkolayPaymentListRow,
@@ -28,6 +30,8 @@ __all__ = [
     "PaymentInitializeRequest",
     "PaymentInitializeResponse",
     "PaymentStatus",
+    "PaynkolayCancelRefundResult",
+    "PaynkolayCancelRefundType",
     "PaynkolayPaymentListResponse",
     "PaynkolayPaymentListResult",
     "PaynkolayPaymentListRow",

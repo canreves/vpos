@@ -6,7 +6,7 @@ from datetime import UTC, datetime, tzinfo
 from decimal import Decimal
 from enum import StrEnum
 
-from pydantic import Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic.functional_validators import field_validator
 
 from paynkolay_pos.models.payments import (
@@ -24,6 +24,13 @@ class PaynkolayProviderStatus(StrEnum):
     SUCCESS = "SUCCESS"
     ERROR = "ERROR"
     NEW = "NEW"
+
+
+class PaynkolayCancelRefundType(StrEnum):
+    """Operation types accepted by Paynkolay's cancel/refund service."""
+
+    CANCEL = "cancel"
+    REFUND = "refund"
 
 
 class PaynkolayThreeDSInitializeResult(StrictPaymentModel):
@@ -208,3 +215,40 @@ class PaynkolayPaymentListResponse(StrictPaymentModel):
         return tuple(
             row for row in self.result.rows if row.client_reference_code == client_ref_code
         )
+
+
+class PaynkolayCancelRefundResult(StrictPaymentModel):
+    """Typed response returned by Paynkolay's cancel/refund service."""
+
+    response_code: str = Field(
+        validation_alias=AliasChoices("responseCode", "RESPONSE_CODE"),
+        min_length=1,
+    )
+    response_data: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("responseData", "RESPONSE_DATA"),
+    )
+    transaction_type: PaynkolayCancelRefundType = Field(alias="type")
+
+    @field_validator("response_code", mode="before")
+    @classmethod
+    def normalize_response_code(cls, response_code: object) -> str:
+        """Accept provider response codes whether they arrive as text or numbers."""
+
+        return str(response_code)
+
+    @property
+    def successful(self) -> bool:
+        """Return whether the cancel/refund service reports success."""
+
+        return self.response_code == "2"
+
+    @property
+    def status(self) -> PaymentStatus:
+        """Map a successful operation to the internal final payment state."""
+
+        if not self.successful:
+            return PaymentStatus.FAILED
+        if self.transaction_type is PaynkolayCancelRefundType.CANCEL:
+            return PaymentStatus.CANCELLED
+        return PaymentStatus.REFUNDED

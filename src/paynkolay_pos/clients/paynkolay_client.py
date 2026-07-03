@@ -16,11 +16,14 @@ from paynkolay_pos.models import (
     Currency,
     PaymentInitializeRequest,
     PaymentInitializeResponse,
+    PaynkolayCancelRefundResult,
+    PaynkolayCancelRefundType,
     PaynkolayPaymentListResponse,
     TransactionStatusResponse,
 )
 from paynkolay_pos.security import (
     canonicalize_fields,
+    generate_cancel_refund_hash,
     generate_hmac_signature,
     generate_payment_list_hash,
     generate_payment_request_hash,
@@ -28,6 +31,7 @@ from paynkolay_pos.security import (
 
 PAYNKOLAY_PAYMENT_PATH = "/v1/Payment"
 PAYNKOLAY_PAYMENT_LIST_PATH = "/Payment/PaymentList"
+PAYNKOLAY_CANCEL_REFUND_PATH = "/v1/CancelRefundPayment"
 
 PAYNKOLAY_CURRENCY_NUMBERS = {
     Currency.TRY: "949",
@@ -279,6 +283,103 @@ class PaynkolayClient:
             "hashDatav2": hash_data_v2,
         }
 
+    def cancel_refund_form_payload(
+        self,
+        *,
+        reference_code: str,
+        transaction_type: PaynkolayCancelRefundType | str,
+        amount: Decimal | str,
+        trx_date: str,
+        sx: SecretStr | str | None = None,
+    ) -> dict[str, str]:
+        """Build Paynkolay cancel/refund multipart form fields."""
+
+        normalized_reference_code = reference_code.strip()
+        if not normalized_reference_code:
+            raise ValueError("reference_code must not be empty")
+        if not trx_date.strip():
+            raise ValueError("trx_date must not be empty")
+
+        normalized_type = PaynkolayCancelRefundType(transaction_type)
+        effective_sx = sx if sx is not None else self._environment.merchant.api_key
+        merchant_secret_key = self._environment.merchant.secret_key
+        hash_data_v2 = generate_cancel_refund_hash(
+            sx=effective_sx,
+            reference_code=normalized_reference_code,
+            transaction_type=normalized_type,
+            amount=amount,
+            trx_date=trx_date,
+            merchant_secret_key=merchant_secret_key,
+        )
+        return {
+            "sx": _secret_value(effective_sx),
+            "referenceCode": normalized_reference_code,
+            "type": normalized_type.value,
+            "amount": _form_value(amount),
+            "trxDate": trx_date,
+            "hashDatav2": hash_data_v2,
+        }
+
+    async def cancel_refund_payment(
+        self,
+        *,
+        reference_code: str,
+        transaction_type: PaynkolayCancelRefundType | str,
+        amount: Decimal | str,
+        trx_date: str,
+        sx: SecretStr | str | None = None,
+    ) -> PaynkolayCancelRefundResult:
+        """Send a Paynkolay cancel/refund request and parse the provider result."""
+
+        normalized_type = PaynkolayCancelRefundType(transaction_type)
+        payload = self.cancel_refund_form_payload(
+            reference_code=reference_code,
+            transaction_type=normalized_type,
+            amount=amount,
+            trx_date=trx_date,
+            sx=sx,
+        )
+        response_payload = await self.post_form(PAYNKOLAY_CANCEL_REFUND_PATH, payload)
+        return PaynkolayCancelRefundResult.model_validate(
+            {**response_payload, "type": normalized_type.value}
+        )
+
+    async def cancel_payment(
+        self,
+        *,
+        reference_code: str,
+        amount: Decimal | str,
+        trx_date: str,
+        sx: SecretStr | str | None = None,
+    ) -> PaynkolayCancelRefundResult:
+        """Cancel a same-day Paynkolay payment by provider reference code."""
+
+        return await self.cancel_refund_payment(
+            reference_code=reference_code,
+            transaction_type=PaynkolayCancelRefundType.CANCEL,
+            amount=amount,
+            trx_date=trx_date,
+            sx=sx,
+        )
+
+    async def refund_payment(
+        self,
+        *,
+        reference_code: str,
+        amount: Decimal | str,
+        trx_date: str,
+        sx: SecretStr | str | None = None,
+    ) -> PaynkolayCancelRefundResult:
+        """Refund a Paynkolay payment by provider reference code."""
+
+        return await self.cancel_refund_payment(
+            reference_code=reference_code,
+            transaction_type=PaynkolayCancelRefundType.REFUND,
+            amount=amount,
+            trx_date=trx_date,
+            sx=sx,
+        )
+
     async def get_transaction_status_from_payment_list(
         self,
         order_id: str,
@@ -349,3 +450,9 @@ def _form_value(value: object) -> str:
     if isinstance(value, bool):
         return _bool_value(value)
     return str(value)
+
+
+def _secret_value(value: SecretStr | str) -> str:
+    if isinstance(value, SecretStr):
+        return value.get_secret_value()
+    return value
