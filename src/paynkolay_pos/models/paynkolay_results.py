@@ -225,7 +225,12 @@ class PaynkolayPaymentListRow(StrictPaymentModel):
         )
 
     def _parsed_trx_date(self, source_timezone: tzinfo) -> datetime:
-        parsed = datetime.strptime(self.trx_date, "%d.%m.%Y %H:%M:%S")
+        try:
+            parsed = datetime.strptime(self.trx_date, "%d.%m.%Y %H:%M:%S")
+        except ValueError:
+            parsed = datetime.fromisoformat(self.trx_date)
+        if parsed.tzinfo is not None:
+            return parsed
         return parsed.replace(tzinfo=source_timezone)
 
 
