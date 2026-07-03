@@ -1,0 +1,116 @@
+"""Paynkolay provider result models and verification helpers."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+from enum import StrEnum
+
+from pydantic import Field, SecretStr
+from pydantic.functional_validators import field_validator
+
+from paynkolay_pos.models.payments import Currency, PaymentStatus, StrictPaymentModel
+from paynkolay_pos.security import generate_payment_response_hash
+
+
+class PaynkolayProviderStatus(StrEnum):
+    """Transaction status values returned by Paynkolay verification responses."""
+
+    SUCCESS = "SUCCESS"
+    ERROR = "ERROR"
+    NEW = "NEW"
+
+
+class PaynkolayThreeDSInitializeResult(StrictPaymentModel):
+    """Provider response containing an HTML form for a 3DS challenge."""
+
+    bank_request_message: str = Field(alias="BANK_REQUEST_MESSAGE", min_length=1)
+
+    @property
+    def status(self) -> PaymentStatus:
+        """3DS HTML means the payment is waiting for browser authentication."""
+
+        return PaymentStatus.PENDING_3DS
+
+
+class PaynkolayPaymentResult(StrictPaymentModel):
+    """Success/fail URL payment result payload sent by Paynkolay."""
+
+    response_code: str = Field(alias="RESPONSE_CODE", min_length=1)
+    response_data: str | None = Field(default=None, alias="RESPONSE_DATA")
+    use_3d: str = Field(alias="USE_3D", min_length=1)
+    rnd: str = Field(alias="RND", min_length=1)
+    merchant_no: str = Field(alias="MERCHANT_NO", min_length=1)
+    auth_code: str = Field(default="", alias="AUTH_CODE")
+    reference_code: str = Field(alias="REFERENCE_CODE", min_length=1)
+    client_reference_code: str = Field(alias="CLIENT_REFERENCE_CODE", min_length=1)
+    timestamp: str = Field(alias="TIMESTAMP", min_length=1)
+    transaction_amount: Decimal = Field(alias="TRANSACTION_AMOUNT", gt=Decimal("0"))
+    authorization_amount: Decimal = Field(alias="AUTHORIZATION_AMOUNT", gt=Decimal("0"))
+    commission: Decimal | None = Field(default=None, alias="COMMISION")
+    commission_rate: Decimal | None = Field(default=None, alias="COMMISION_RATE")
+    installment: int = Field(alias="INSTALLMENT", ge=1)
+    currency_code: Currency = Field(alias="CURRENCY_CODE")
+    hash_data: str | None = Field(default=None, alias="hashData")
+    hash_data_v2: str = Field(alias="hashDataV2", min_length=1)
+
+    @field_validator("transaction_amount", "authorization_amount")
+    @classmethod
+    def normalize_amount(cls, amount: Decimal) -> Decimal:
+        """Keep provider amount strings comparable with internal models."""
+
+        return amount.quantize(Decimal("0.01"))
+
+    @property
+    def successful(self) -> bool:
+        """Apply Paynkolay's documented payment success rule."""
+
+        normalized_auth_code = self.auth_code.strip()
+        return (
+            self.response_code == "2"
+            and normalized_auth_code not in {"", "0", "00"}
+        )
+
+    @property
+    def status(self) -> PaymentStatus:
+        """Map Paynkolay result fields to the internal payment status enum."""
+
+        if self.successful:
+            return PaymentStatus.CAPTURED
+        return PaymentStatus.FAILED
+
+    def expected_hash(self, merchant_secret_key: SecretStr | str) -> str:
+        """Recalculate the documented response ``hashDataV2`` value."""
+
+        return generate_payment_response_hash(
+            merchant_no=self.merchant_no,
+            reference_code=self.reference_code,
+            auth_code=self.auth_code,
+            response_code=self.response_code,
+            use_3d=self.use_3d,
+            rnd=self.rnd,
+            installment=self.installment,
+            authorization_amount=self.canonical_authorization_amount,
+            currency_code=self.currency_code.value,
+            merchant_secret_key=merchant_secret_key,
+        )
+
+    def verify_hash(self, merchant_secret_key: SecretStr | str) -> bool:
+        """Return whether the provider result hash matches the payload."""
+
+        return self.hash_data_v2 == self.expected_hash(merchant_secret_key)
+
+    @property
+    def canonical_authorization_amount(self) -> str:
+        """Return the exact authorization amount string used in response hash checks."""
+
+        return f"{self.authorization_amount:.2f}"
+
+
+def parse_paynkolay_payment_result(
+    payload: dict[str, object],
+) -> PaynkolayThreeDSInitializeResult | PaynkolayPaymentResult:
+    """Parse a Paynkolay payment response/result into a typed provider model."""
+
+    if "BANK_REQUEST_MESSAGE" in payload:
+        return PaynkolayThreeDSInitializeResult.model_validate(payload)
+    return PaynkolayPaymentResult.model_validate(payload)
