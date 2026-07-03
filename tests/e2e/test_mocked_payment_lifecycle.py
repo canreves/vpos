@@ -292,6 +292,7 @@ async def test_mocked_paynkolay_form_lifecycle_confirms_result_and_payment_list_
         payment_result = parse_paynkolay_payment_result(result_payload)
         if not isinstance(payment_result, PaynkolayPaymentResult):
             raise TypeError("expected Paynkolay payment result payload")
+        result_status = payment_result.to_transaction_status_response()
 
         final_status = await client.get_transaction_status_from_payment_list(
             request.order_id,
@@ -311,8 +312,14 @@ async def test_mocked_paynkolay_form_lifecycle_confirms_result_and_payment_list_
     assert payment_result.verify_hash(settings.current.merchant.secret_key)
     assert payment_result.successful is True
     assert payment_result.status is scenario.expected_final_status
+    assert result_status.status is scenario.expected_final_status
+    assert result_status.order_id == request.order_id
+    assert result_status.provider_transaction_id == payment_result.reference_code
     assert final_status.status is scenario.expected_final_status
     assert final_status.provider_transaction_id == payment_result.reference_code
+    assert final_status.provider_transaction_id == result_status.provider_transaction_id
+    assert final_status.amount == result_status.amount
+    assert final_status.currency is result_status.currency
     assert isinstance(refund_result, PaynkolayCancelRefundResult)
     assert refund_result.status is PaymentStatus.REFUNDED
     assert refund_result.successful is True
