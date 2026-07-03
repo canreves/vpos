@@ -441,6 +441,39 @@ async def test_cancel_refund_form_payload_builds_paynkolay_operation_fields() ->
     }
 
 
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_cancel_refund_form_payload_uses_configured_operation_sx() -> None:
+    payload = valid_settings_payload()
+    environments = payload["environments"]
+    assert isinstance(environments, dict)
+    dev = environments["dev"]
+    assert isinstance(dev, dict)
+    merchant = dev["merchant"]
+    assert isinstance(merchant, dict)
+    merchant["cancel_refund_api_key"] = "configured-cancel-refund-sx"
+    settings = RuntimeSettings.model_validate(payload)
+
+    async with PaynkolayClient(settings.current) as client:
+        form_payload = client.cancel_refund_form_payload(
+            reference_code="IKSIRPF102168",
+            transaction_type="cancel",
+            amount="100.00",
+            trx_date="2026.07.03",
+        )
+
+    expected_hash = generate_cancel_refund_hash(
+        sx=SecretStr("configured-cancel-refund-sx"),
+        reference_code="IKSIRPF102168",
+        transaction_type="cancel",
+        amount="100.00",
+        trx_date="2026.07.03",
+        merchant_secret_key=settings.current.merchant.secret_key,
+    )
+    assert form_payload["sx"] == "configured-cancel-refund-sx"
+    assert form_payload["hashDatav2"] == expected_hash
+
+
 @pytest.mark.negative
 @pytest.mark.asyncio
 async def test_cancel_refund_form_payload_rejects_invalid_required_fields() -> None:

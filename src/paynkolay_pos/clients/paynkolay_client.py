@@ -301,7 +301,14 @@ class PaynkolayClient:
             raise ValueError("trx_date must not be empty")
 
         normalized_type = PaynkolayCancelRefundType(transaction_type)
-        effective_sx = sx if sx is not None else self._environment.merchant.api_key
+        effective_sx = (
+            sx
+            if sx is not None
+            else (
+                self._environment.merchant.cancel_refund_api_key
+                or self._environment.merchant.api_key
+            )
+        )
         merchant_secret_key = self._environment.merchant.secret_key
         hash_data_v2 = generate_cancel_refund_hash(
             sx=effective_sx,

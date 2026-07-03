@@ -117,7 +117,7 @@ Current tests use:
 To switch from framework validation to real Paynkolay sandbox validation, collect:
 
 - Sandbox base URL.
-- Merchant ID, terminal ID, API key, and secret/hash key.
+- Merchant ID, terminal ID, API key, optional cancel/refund API key, and secret/hash key.
 - Exact initialize/status endpoint paths.
 - Exact request and response field names.
 - Exact signature algorithm, field order, separator, and encoding rules.

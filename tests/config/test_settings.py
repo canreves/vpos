@@ -21,6 +21,7 @@ def valid_settings_payload() -> dict[str, object]:
                     "merchant_id": "merchant-dev",
                     "terminal_id": "terminal-dev",
                     "api_key": "api-key-dev",
+                    "cancel_refund_api_key": "cancel-refund-api-key-dev",
                     "secret_key": "secret-dev",
                 },
                 "cards": [
@@ -69,6 +70,11 @@ def test_runtime_settings_selects_active_environment() -> None:
     assert settings.active_environment is EnvironmentName.DEV
     assert settings.current.name is EnvironmentName.DEV
     assert settings.current.merchant.merchant_id == "merchant-dev"
+    assert settings.current.merchant.cancel_refund_api_key is not None
+    assert (
+        settings.current.merchant.cancel_refund_api_key.get_secret_value()
+        == "cancel-refund-api-key-dev"
+    )
     assert settings.current.cards[0].alias == "visa_3ds_success"
 
 

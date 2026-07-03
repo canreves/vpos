@@ -15,6 +15,7 @@ _SENSITIVE_KEYS = frozenset(
     {
         "api_key",
         "authorization",
+        "cancel_refund_api_key",
         "cvc",
         "cvv",
         "otp",
