@@ -25,5 +25,5 @@ async def test_complete_three_ds_challenge_with_real_playwright_page(browser_pag
     )
 
     assert result.redirect_url == redirect_url
-    assert result.final_url.endswith("/3ds/result?status=authenticated")
+    assert result.final_url.endswith("#/3ds/result?status=authenticated")
     assert "123456" not in result.model_dump_json()

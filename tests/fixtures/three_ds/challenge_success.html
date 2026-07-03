@@ -15,7 +15,7 @@
         event.preventDefault();
         const otp = document.getElementById("otp").value;
         const status = otp === "123456" ? "authenticated" : "failed";
-        window.history.pushState({}, "", `/3ds/result?status=${status}`);
+        window.location.hash = `/3ds/result?status=${status}`;
       });
     </script>
   </body>
