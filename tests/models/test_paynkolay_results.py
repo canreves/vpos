@@ -8,7 +8,10 @@ from pydantic import SecretStr, ValidationError
 from paynkolay_pos.models import (
     Currency,
     PaymentStatus,
+    PaynkolayPaymentListResponse,
+    PaynkolayPaymentListRow,
     PaynkolayPaymentResult,
+    PaynkolayProviderStatus,
     PaynkolayThreeDSInitializeResult,
     parse_paynkolay_payment_result,
 )
@@ -104,3 +107,85 @@ def test_parse_paynkolay_payment_result_uses_result_payload_when_no_3ds_html() -
 
     assert isinstance(result, PaynkolayPaymentResult)
     assert result.reference_code == "IKSIRPF102168"
+
+
+def payment_list_row_payload(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "REFERENCE_CODE": "IKSIRPF102168",
+        "AUTH_CODE": "S00586",
+        "AUTHORIZATION_AMOUNT": "1.00",
+        "TRANSACTION_AMOUNT": "1.00",
+        "CLIENT_REFERENCE_CODE": "order-1001",
+        "STATUS": "SUCCESS",
+        "TRANSACTION_TYPE": "SALES",
+        "TRX_DATE": "03.07.2026 09:45:00",
+        "CARD_HOLDER_NAME": "PAYNKOLAY TEST",
+        "IS_3D": True,
+        "INSTALLMENT_COUNT": "1",
+        "DESCRIPTION": "",
+    }
+    payload.update(overrides)
+    return payload
+
+
+@pytest.mark.api
+def test_payment_list_row_maps_success_to_transaction_status_response() -> None:
+    row = PaynkolayPaymentListRow.model_validate(payment_list_row_payload())
+
+    status = row.to_transaction_status_response()
+
+    assert row.status is PaynkolayProviderStatus.SUCCESS
+    assert row.payment_status is PaymentStatus.CAPTURED
+    assert status.order_id == "order-1001"
+    assert status.provider_transaction_id == "IKSIRPF102168"
+    assert status.status is PaymentStatus.CAPTURED
+    assert status.amount == Decimal("1.00")
+    assert status.currency is Currency.TRY
+    assert status.authorization_code == "S00586"
+
+
+@pytest.mark.api
+@pytest.mark.parametrize(
+    ("provider_status", "payment_status"),
+    [
+        ("ERROR", PaymentStatus.FAILED),
+        ("NEW", PaymentStatus.CREATED),
+    ],
+)
+def test_payment_list_row_maps_non_success_statuses(
+    provider_status: str,
+    payment_status: PaymentStatus,
+) -> None:
+    row = PaynkolayPaymentListRow.model_validate(
+        payment_list_row_payload(
+            STATUS=provider_status,
+            AUTH_CODE="",
+            DESCRIPTION="Provider status detail",
+        )
+    )
+
+    assert row.payment_status is payment_status
+
+
+@pytest.mark.api
+def test_payment_list_response_filters_rows_by_client_reference_code() -> None:
+    response = PaynkolayPaymentListResponse.model_validate(
+        {
+            "id": "",
+            "result": {
+                "RESPONSE_CODE": "2",
+                "RESPONSE_DATA": "Islem basarili",
+                "LIST": [
+                    payment_list_row_payload(CLIENT_REFERENCE_CODE="order-1001"),
+                    payment_list_row_payload(
+                        REFERENCE_CODE="IKSIRPF102169",
+                        CLIENT_REFERENCE_CODE="order-2002",
+                    ),
+                ],
+            },
+        }
+    )
+
+    assert response.result.successful is True
+    assert len(response.result.rows) == 2
+    assert response.rows_for_client_ref("order-1001")[0].reference_code == "IKSIRPF102168"

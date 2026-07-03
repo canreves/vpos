@@ -16,11 +16,13 @@ from paynkolay_pos.models import (
     Currency,
     PaymentInitializeRequest,
     PaymentInitializeResponse,
+    PaynkolayPaymentListResponse,
     TransactionStatusResponse,
 )
 from paynkolay_pos.security import (
     canonicalize_fields,
     generate_hmac_signature,
+    generate_payment_list_hash,
     generate_payment_request_hash,
 )
 
@@ -245,6 +247,66 @@ class PaynkolayClient:
             merchant_customer_no=merchant_customer_no,
         )
         return await self.post_form(PAYNKOLAY_PAYMENT_PATH, payload)
+
+    def payment_list_form_payload(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        client_ref_code: str,
+    ) -> dict[str, str]:
+        """Build Paynkolay PaymentList multipart form fields."""
+
+        if not start_date.strip():
+            raise ValueError("start_date must not be empty")
+        if not end_date.strip():
+            raise ValueError("end_date must not be empty")
+
+        sx = self._environment.merchant.api_key
+        merchant_secret_key = self._environment.merchant.secret_key
+        hash_data_v2 = generate_payment_list_hash(
+            sx=sx,
+            start_date=start_date,
+            end_date=end_date,
+            client_ref_code=client_ref_code,
+            merchant_secret_key=merchant_secret_key,
+        )
+        return {
+            "sx": sx.get_secret_value(),
+            "startDate": start_date,
+            "endDate": end_date,
+            "clientRefCode": client_ref_code,
+            "hashDatav2": hash_data_v2,
+        }
+
+    async def get_transaction_status_from_payment_list(
+        self,
+        order_id: str,
+        *,
+        start_date: str,
+        end_date: str,
+        currency: Currency = Currency.TRY,
+    ) -> TransactionStatusResponse:
+        """Fetch transaction status through Paynkolay's PaymentList service."""
+
+        normalized_order_id = order_id.strip()
+        if not normalized_order_id:
+            raise ValueError("order_id must not be empty")
+
+        payload = self.payment_list_form_payload(
+            start_date=start_date,
+            end_date=end_date,
+            client_ref_code=normalized_order_id,
+        )
+        response_payload = await self.post_form(PAYNKOLAY_PAYMENT_LIST_PATH, payload)
+        payment_list = PaynkolayPaymentListResponse.model_validate(response_payload)
+        matching_rows = payment_list.rows_for_client_ref(normalized_order_id)
+        if not matching_rows:
+            raise LookupError(
+                "Paynkolay PaymentList response did not include "
+                f"clientRefCode={normalized_order_id!r}"
+            )
+        return matching_rows[-1].to_transaction_status_response(currency=currency)
 
     async def get_transaction_status(self, order_id: str) -> TransactionStatusResponse:
         """Fetch and validate the provider status for one merchant order."""

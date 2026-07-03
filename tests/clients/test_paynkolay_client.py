@@ -8,7 +8,7 @@ import pytest
 from paynkolay_pos.clients import PaynkolayClient
 from paynkolay_pos.config import RuntimeSettings
 from paynkolay_pos.models import PaymentStatus
-from paynkolay_pos.security import generate_payment_request_hash
+from paynkolay_pos.security import generate_payment_list_hash, generate_payment_request_hash
 from paynkolay_pos.testing import payment_initialize_request
 
 
@@ -283,6 +283,124 @@ async def test_initialize_payment_form_posts_paynkolay_payment_request() -> None
     assert captured_request.headers["content-type"].startswith("multipart/form-data")
     assert b'name="hashDatav2"' in captured_request.content
     assert b'name="cardNumber"' in captured_request.content
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_payment_list_form_payload_builds_paynkolay_status_query_fields() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+
+    async with PaynkolayClient(settings.current) as client:
+        payload = client.payment_list_form_payload(
+            start_date="01.07.2026",
+            end_date="31.07.2026",
+            client_ref_code="order-1001",
+        )
+
+    expected_hash = generate_payment_list_hash(
+        sx=settings.current.merchant.api_key,
+        start_date="01.07.2026",
+        end_date="31.07.2026",
+        client_ref_code="order-1001",
+        merchant_secret_key=settings.current.merchant.secret_key,
+    )
+    assert payload == {
+        "sx": "api-key-dev",
+        "startDate": "01.07.2026",
+        "endDate": "31.07.2026",
+        "clientRefCode": "order-1001",
+        "hashDatav2": expected_hash,
+    }
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_get_transaction_status_from_payment_list_posts_query_and_maps_row() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+    captured_request: httpx.Request | None = None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_request
+        captured_request = request
+        return httpx.Response(
+            status_code=200,
+            json={
+                "id": "",
+                "result": {
+                    "RESPONSE_CODE": "2",
+                    "RESPONSE_DATA": "Islem basarili",
+                    "LIST": [
+                        {
+                            "REFERENCE_CODE": "IKSIRPF102168",
+                            "AUTH_CODE": "S00586",
+                            "AUTHORIZATION_AMOUNT": "1.00",
+                            "TRANSACTION_AMOUNT": "1.00",
+                            "CLIENT_REFERENCE_CODE": "order-1001",
+                            "STATUS": "SUCCESS",
+                            "TRANSACTION_TYPE": "SALES",
+                            "TRX_DATE": "03.07.2026 09:45:00",
+                            "CARD_HOLDER_NAME": "PAYNKOLAY TEST",
+                            "IS_3D": True,
+                            "INSTALLMENT_COUNT": "1",
+                            "DESCRIPTION": "",
+                        }
+                    ],
+                },
+            },
+        )
+
+    async with PaynkolayClient(
+        settings.current,
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        response = await client.get_transaction_status_from_payment_list(
+            " order-1001 ",
+            start_date="01.07.2026",
+            end_date="31.07.2026",
+        )
+
+    assert response.status is PaymentStatus.CAPTURED
+    assert response.order_id == "order-1001"
+    assert response.provider_transaction_id == "IKSIRPF102168"
+    assert response.authorization_code == "S00586"
+    assert captured_request is not None
+    assert captured_request.url.path == "/Payment/PaymentList"
+    assert captured_request.headers["content-type"].startswith("multipart/form-data")
+    assert b'name="clientRefCode"' in captured_request.content
+    assert b"order-1001" in captured_request.content
+    assert b'name="hashDatav2"' in captured_request.content
+
+
+@pytest.mark.negative
+@pytest.mark.asyncio
+async def test_get_transaction_status_from_payment_list_rejects_missing_provider_row() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code=200,
+            json={
+                "id": "",
+                "result": {
+                    "RESPONSE_CODE": "2",
+                    "LIST": [],
+                },
+            },
+        )
+
+    async with PaynkolayClient(
+        settings.current,
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        with pytest.raises(
+            LookupError,
+            match="clientRefCode='order-1001'",
+        ):
+            await client.get_transaction_status_from_payment_list(
+                "order-1001",
+                start_date="01.07.2026",
+                end_date="31.07.2026",
+            )
 
 
 @pytest.mark.api

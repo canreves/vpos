@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, tzinfo
 from decimal import Decimal
 from enum import StrEnum
 
 from pydantic import Field, SecretStr
 from pydantic.functional_validators import field_validator
 
-from paynkolay_pos.models.payments import Currency, PaymentStatus, StrictPaymentModel
+from paynkolay_pos.models.payments import (
+    Currency,
+    PaymentStatus,
+    StrictPaymentModel,
+    TransactionStatusResponse,
+)
 from paynkolay_pos.security import generate_payment_response_hash
 
 
@@ -114,3 +120,91 @@ def parse_paynkolay_payment_result(
     if "BANK_REQUEST_MESSAGE" in payload:
         return PaynkolayThreeDSInitializeResult.model_validate(payload)
     return PaynkolayPaymentResult.model_validate(payload)
+
+
+class PaynkolayPaymentListRow(StrictPaymentModel):
+    """One transaction row returned by Paynkolay's PaymentList service."""
+
+    reference_code: str = Field(alias="REFERENCE_CODE", min_length=1)
+    auth_code: str = Field(default="", alias="AUTH_CODE")
+    authorization_amount: Decimal = Field(alias="AUTHORIZATION_AMOUNT", gt=Decimal("0"))
+    transaction_amount: Decimal | None = Field(default=None, alias="TRANSACTION_AMOUNT")
+    client_reference_code: str = Field(alias="CLIENT_REFERENCE_CODE", min_length=1)
+    status: PaynkolayProviderStatus = Field(alias="STATUS")
+    transaction_type: str | None = Field(default=None, alias="TRANSACTION_TYPE")
+    trx_date: str = Field(alias="TRX_DATE", min_length=1)
+    card_holder_name: str | None = Field(default=None, alias="CARD_HOLDER_NAME")
+    is_3d: bool | None = Field(default=None, alias="IS_3D")
+    installment_count: int | None = Field(default=None, alias="INSTALLMENT_COUNT")
+    description: str | None = Field(default=None, alias="DESCRIPTION")
+
+    @field_validator("authorization_amount", "transaction_amount")
+    @classmethod
+    def normalize_optional_amount(cls, amount: Decimal | None) -> Decimal | None:
+        """Keep provider amount strings comparable with internal models."""
+
+        if amount is None:
+            return None
+        return amount.quantize(Decimal("0.01"))
+
+    @property
+    def payment_status(self) -> PaymentStatus:
+        """Map Paynkolay list status values to internal payment states."""
+
+        if self.status is PaynkolayProviderStatus.SUCCESS:
+            return PaymentStatus.CAPTURED
+        if self.status is PaynkolayProviderStatus.ERROR:
+            return PaymentStatus.FAILED
+        return PaymentStatus.CREATED
+
+    def to_transaction_status_response(
+        self,
+        *,
+        currency: Currency = Currency.TRY,
+        source_timezone: tzinfo = UTC,
+    ) -> TransactionStatusResponse:
+        """Convert a provider list row into the framework status model."""
+
+        payment_status = self.payment_status
+        return TransactionStatusResponse(
+            order_id=self.client_reference_code,
+            provider_transaction_id=self.reference_code,
+            status=payment_status,
+            amount=self.authorization_amount,
+            currency=currency,
+            updated_at=self._parsed_trx_date(source_timezone),
+            authorization_code=self.auth_code.strip() or None,
+            failure_code=self.description if payment_status is PaymentStatus.FAILED else None,
+        )
+
+    def _parsed_trx_date(self, source_timezone: tzinfo) -> datetime:
+        parsed = datetime.strptime(self.trx_date, "%d.%m.%Y %H:%M:%S")
+        return parsed.replace(tzinfo=source_timezone)
+
+
+class PaynkolayPaymentListResult(StrictPaymentModel):
+    """Inner ``result`` object returned by Paynkolay's PaymentList service."""
+
+    response_code: str = Field(alias="RESPONSE_CODE", min_length=1)
+    response_data: str | None = Field(default=None, alias="RESPONSE_DATA")
+    rows: tuple[PaynkolayPaymentListRow, ...] = Field(default=(), alias="LIST")
+
+    @property
+    def successful(self) -> bool:
+        """Return whether the list service itself succeeded."""
+
+        return self.response_code == "2"
+
+
+class PaynkolayPaymentListResponse(StrictPaymentModel):
+    """Typed response returned by Paynkolay's PaymentList verification service."""
+
+    id: str | None = None
+    result: PaynkolayPaymentListResult
+
+    def rows_for_client_ref(self, client_ref_code: str) -> tuple[PaynkolayPaymentListRow, ...]:
+        """Return all transaction rows matching a merchant client reference code."""
+
+        return tuple(
+            row for row in self.result.rows if row.client_reference_code == client_ref_code
+        )
