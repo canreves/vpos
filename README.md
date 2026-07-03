@@ -89,7 +89,8 @@ export PAYNKOLAY_CONFIG_FILE=/path/outside/git/paynkolay-settings.json
 ```
 
 The example config is schema-valid but uses non-routable placeholder credentials and
-card values. Replace them only in a private file outside Git.
+card values. Replace them only in a private file outside Git. Local config copies under
+`examples/config/*.json` are ignored except `*.example.json` templates.
 
 ## Project Layout
 
