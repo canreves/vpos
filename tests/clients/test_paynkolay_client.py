@@ -8,6 +8,7 @@ import pytest
 from paynkolay_pos.clients import PaynkolayClient
 from paynkolay_pos.config import RuntimeSettings
 from paynkolay_pos.models import PaymentStatus
+from paynkolay_pos.security import generate_payment_request_hash
 from paynkolay_pos.testing import payment_initialize_request
 
 
@@ -103,6 +104,31 @@ async def test_client_raises_for_provider_http_errors() -> None:
 
 @pytest.mark.api
 @pytest.mark.asyncio
+async def test_client_posts_multipart_form_data() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+    captured_request: httpx.Request | None = None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_request
+        captured_request = request
+        return httpx.Response(status_code=200, json={"status": "ok"})
+
+    async with PaynkolayClient(
+        settings.current,
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        response = await client.post_form("/v1/Payment", {"clientRefCode": "order-1001"})
+
+    assert response == {"status": "ok"}
+    assert captured_request is not None
+    assert str(captured_request.url) == "https://dev-pos.example.test/v1/Payment"
+    assert captured_request.headers["content-type"].startswith("multipart/form-data")
+    assert b'name="clientRefCode"' in captured_request.content
+    assert b"order-1001" in captured_request.content
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
 async def test_initialize_payment_signs_request_and_parses_response() -> None:
     settings = RuntimeSettings.model_validate(valid_settings_payload())
     captured_payload: dict[str, object] | None = None
@@ -148,6 +174,115 @@ async def test_initialize_payment_signs_request_and_parses_response() -> None:
     assert captured_payload["installment_count"] == 1
     assert captured_payload["payment_channel"] == "e_commerce"
     assert captured_payload["moto"] is False
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_payment_form_payload_maps_internal_request_to_paynkolay_fields() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+    payment_request = payment_initialize_request()
+
+    async with PaynkolayClient(settings.current) as client:
+        payload = client.payment_form_payload(
+            payment_request,
+            success_url="https://merchant.example.test/success",
+            fail_url="https://merchant.example.test/fail",
+            card_holder_ip=" 185.125.190.58 ",
+            rnd="03-07-2026 09:45:00",
+        )
+
+    expected_hash = generate_payment_request_hash(
+        sx=settings.current.merchant.api_key,
+        client_ref_code="order-1001",
+        amount="100.00",
+        success_url="https://merchant.example.test/success",
+        fail_url="https://merchant.example.test/fail",
+        rnd="03-07-2026 09:45:00",
+        merchant_secret_key=settings.current.merchant.secret_key,
+    )
+    assert payload == {
+        "sx": "api-key-dev",
+        "clientRefCode": "order-1001",
+        "successUrl": "https://merchant.example.test/success",
+        "failUrl": "https://merchant.example.test/fail",
+        "amount": "100.00",
+        "installmentNo": "1",
+        "cardHolderName": "PAYNKOLAY TEST",
+        "month": "12",
+        "year": "2030",
+        "cvv": "123",
+        "cardNumber": "4111111111111111",
+        "use3D": "true",
+        "transactionType": "SALES",
+        "cardHolderIP": "185.125.190.58",
+        "rnd": "03-07-2026 09:45:00",
+        "hashDatav2": expected_hash,
+        "environment": "API",
+        "currencyNumber": "949",
+        "MerchantCustomerNo": "",
+    }
+
+
+@pytest.mark.negative
+@pytest.mark.asyncio
+async def test_payment_form_payload_rejects_invalid_provider_required_fields() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+    payment_request = payment_initialize_request()
+
+    async with PaynkolayClient(settings.current) as client:
+        with pytest.raises(ValueError, match="success_url must use https"):
+            client.payment_form_payload(
+                payment_request,
+                success_url="http://merchant.example.test/success",
+                fail_url="https://merchant.example.test/fail",
+                card_holder_ip="185.125.190.58",
+                rnd="03-07-2026 09:45:00",
+            )
+
+        with pytest.raises(ValueError, match="card_holder_ip must not be empty"):
+            client.payment_form_payload(
+                payment_request,
+                success_url="https://merchant.example.test/success",
+                fail_url="https://merchant.example.test/fail",
+                card_holder_ip=" ",
+                rnd="03-07-2026 09:45:00",
+            )
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_initialize_payment_form_posts_paynkolay_payment_request() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+    captured_request: httpx.Request | None = None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_request
+        captured_request = request
+        return httpx.Response(
+            status_code=200,
+            json={"BANK_REQUEST_MESSAGE": "<form>3DS challenge</form>"},
+        )
+
+    payment_request = payment_initialize_request()
+    async with PaynkolayClient(
+        settings.current,
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        response = await client.initialize_payment_form(
+            payment_request,
+            success_url="https://merchant.example.test/success",
+            fail_url="https://merchant.example.test/fail",
+            card_holder_ip="185.125.190.58",
+            rnd="03-07-2026 09:45:00",
+        )
+
+    assert response == {"BANK_REQUEST_MESSAGE": "<form>3DS challenge</form>"}
+    assert captured_request is not None
+    assert captured_request.method == "POST"
+    assert captured_request.url.path == "/v1/Payment"
+    assert captured_request.headers["content-type"].startswith("multipart/form-data")
+    assert b'name="hashDatav2"' in captured_request.content
+    assert b'name="cardNumber"' in captured_request.content
 
 
 @pytest.mark.api
