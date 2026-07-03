@@ -11,8 +11,15 @@ from paynkolay_pos.callbacks import CallbackStore
 from paynkolay_pos.clients import PaynkolayClient
 from paynkolay_pos.config import RuntimeSettings
 from paynkolay_pos.flows import PaymentFlow
-from paynkolay_pos.models import PaymentInitializeRequest, PaymentStatus
+from paynkolay_pos.models import (
+    PaymentInitializeRequest,
+    PaymentStatus,
+    PaynkolayPaymentResult,
+    PaynkolayThreeDSInitializeResult,
+    parse_paynkolay_payment_result,
+)
 from paynkolay_pos.scenarios import PaymentScenario
+from paynkolay_pos.security import generate_payment_response_hash
 from paynkolay_pos.testing import payment_card_payload, signed_callback_payload_model
 
 
@@ -103,6 +110,86 @@ class MockProvider:
         return httpx.Response(status_code=404, json={"error": "not_found"})
 
 
+class MockPaynkolayFormProvider:
+    def __init__(self) -> None:
+        self.payment_request: httpx.Request | None = None
+        self.payment_list_request: httpx.Request | None = None
+
+    async def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/Payment":
+            self.payment_request = request
+            return httpx.Response(
+                status_code=200,
+                json={"BANK_REQUEST_MESSAGE": "<form>3DS challenge</form>"},
+            )
+
+        if request.method == "POST" and request.url.path == "/Payment/PaymentList":
+            self.payment_list_request = request
+            return httpx.Response(
+                status_code=200,
+                json={
+                    "id": "",
+                    "result": {
+                        "RESPONSE_CODE": "2",
+                        "RESPONSE_DATA": "Islem basarili",
+                        "LIST": [
+                            {
+                                "REFERENCE_CODE": "IKSIRPF102168",
+                                "AUTH_CODE": "S00586",
+                                "AUTHORIZATION_AMOUNT": "100.00",
+                                "TRANSACTION_AMOUNT": "100.00",
+                                "CLIENT_REFERENCE_CODE": "order-1001",
+                                "STATUS": "SUCCESS",
+                                "TRANSACTION_TYPE": "SALES",
+                                "TRX_DATE": "03.07.2026 09:45:00",
+                                "CARD_HOLDER_NAME": "PAYNKOLAY TEST",
+                                "IS_3D": True,
+                                "INSTALLMENT_COUNT": "1",
+                                "DESCRIPTION": "",
+                            }
+                        ],
+                    },
+                },
+            )
+
+        return httpx.Response(status_code=404, json={"error": "not_found"})
+
+
+def paynkolay_success_result_payload() -> dict[str, object]:
+    payload: dict[str, object] = {
+        "RESPONSE_CODE": "2",
+        "RESPONSE_DATA": "Islem Basarili",
+        "USE_3D": "true",
+        "RND": "1630051651137",
+        "MERCHANT_NO": "400000001",
+        "AUTH_CODE": "S00586",
+        "REFERENCE_CODE": "IKSIRPF102168",
+        "CLIENT_REFERENCE_CODE": "order-1001",
+        "TIMESTAMP": "2026-07-03 09:45:00.000",
+        "TRANSACTION_AMOUNT": "100.00",
+        "AUTHORIZATION_AMOUNT": "100.00",
+        "COMMISION": "0.00",
+        "COMMISION_RATE": "0.0000",
+        "INSTALLMENT": "1",
+        "CURRENCY_CODE": "TRY",
+        "hashData": "legacy-hash",
+        "hashDataV2": "",
+    }
+    payload["hashDataV2"] = generate_payment_response_hash(
+        merchant_no="400000001",
+        reference_code="IKSIRPF102168",
+        auth_code="S00586",
+        response_code="2",
+        use_3d="true",
+        rnd="1630051651137",
+        installment="1",
+        authorization_amount="100.00",
+        currency_code="TRY",
+        merchant_secret_key="secret-dev",
+    )
+    return payload
+
+
 @pytest.mark.api
 @pytest.mark.callback
 @pytest.mark.asyncio
@@ -159,3 +246,59 @@ async def test_mocked_payment_lifecycle_confirms_final_status_and_callback() -> 
     assert provider.initialize_payload is not None
     assert provider.initialize_payload["order_id"] == "order-1001"
     assert provider.initialize_payload["signature"] != "<redacted>"
+
+
+@pytest.mark.api
+@pytest.mark.three_ds
+@pytest.mark.asyncio
+async def test_mocked_paynkolay_form_lifecycle_confirms_result_and_payment_list_status() -> None:
+    settings = runtime_settings()
+    scenario = captured_payment_scenario()
+    request = PaymentInitializeRequest.model_validate(
+        scenario.payment_request_payload(
+            merchant_id=settings.current.merchant.merchant_id,
+            terminal_id=settings.current.merchant.terminal_id,
+            callback_url=f"{settings.current.callback_base_url}/callback",
+            card=payment_card_payload(),
+            order_id="order-1001",
+            correlation_id="corr-1001",
+        )
+    )
+    provider = MockPaynkolayFormProvider()
+
+    async with PaynkolayClient(
+        settings.current,
+        transport=httpx.MockTransport(provider),
+    ) as client:
+        initialize_payload = await client.initialize_payment_form(
+            request,
+            success_url=f"{settings.current.callback_base_url}/success",
+            fail_url=f"{settings.current.callback_base_url}/fail",
+            card_holder_ip="185.125.190.58",
+            rnd="03-07-2026 09:45:00",
+        )
+        initialize_result = parse_paynkolay_payment_result(initialize_payload)
+
+        result_payload = paynkolay_success_result_payload()
+        payment_result = parse_paynkolay_payment_result(result_payload)
+
+        final_status = await client.get_transaction_status_from_payment_list(
+            request.order_id,
+            start_date="01.07.2026",
+            end_date="31.07.2026",
+        )
+
+    assert isinstance(initialize_result, PaynkolayThreeDSInitializeResult)
+    assert initialize_result.status is PaymentStatus.PENDING_3DS
+    assert isinstance(payment_result, PaynkolayPaymentResult)
+    assert payment_result.verify_hash(settings.current.merchant.secret_key)
+    assert payment_result.successful is True
+    assert payment_result.status is scenario.expected_final_status
+    assert final_status.status is scenario.expected_final_status
+    assert final_status.provider_transaction_id == payment_result.reference_code
+    assert provider.payment_request is not None
+    assert provider.payment_request.url.path == "/v1/Payment"
+    assert b'name="hashDatav2"' in provider.payment_request.content
+    assert provider.payment_list_request is not None
+    assert provider.payment_list_request.url.path == "/Payment/PaymentList"
+    assert b'name="clientRefCode"' in provider.payment_list_request.content
