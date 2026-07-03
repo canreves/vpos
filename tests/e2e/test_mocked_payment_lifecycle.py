@@ -112,7 +112,20 @@ class MockProvider:
 
 
 class MockPaynkolayFormProvider:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        client_reference_code: str = "order-1001",
+        reference_code: str = "IKSIRPF102168",
+        provider_status: str = "SUCCESS",
+        auth_code: str = "S00586",
+        description: str = "",
+    ) -> None:
+        self.client_reference_code = client_reference_code
+        self.reference_code = reference_code
+        self.provider_status = provider_status
+        self.auth_code = auth_code
+        self.description = description
         self.payment_request: httpx.Request | None = None
         self.payment_list_request: httpx.Request | None = None
         self.cancel_refund_request: httpx.Request | None = None
@@ -136,18 +149,18 @@ class MockPaynkolayFormProvider:
                         "RESPONSE_DATA": "Islem basarili",
                         "LIST": [
                             {
-                                "REFERENCE_CODE": "IKSIRPF102168",
-                                "AUTH_CODE": "S00586",
+                                "REFERENCE_CODE": self.reference_code,
+                                "AUTH_CODE": self.auth_code,
                                 "AUTHORIZATION_AMOUNT": "100.00",
                                 "TRANSACTION_AMOUNT": "100.00",
-                                "CLIENT_REFERENCE_CODE": "order-1001",
-                                "STATUS": "SUCCESS",
+                                "CLIENT_REFERENCE_CODE": self.client_reference_code,
+                                "STATUS": self.provider_status,
                                 "TRANSACTION_TYPE": "SALES",
                                 "TRX_DATE": "03.07.2026 09:45:00",
                                 "CARD_HOLDER_NAME": "PAYNKOLAY TEST",
                                 "IS_3D": True,
                                 "INSTALLMENT_COUNT": "1",
-                                "DESCRIPTION": "",
+                                "DESCRIPTION": self.description,
                             }
                         ],
                     },
@@ -189,6 +202,33 @@ def paynkolay_success_result_payload() -> dict[str, object]:
         reference_code="IKSIRPF102168",
         auth_code="S00586",
         response_code="2",
+        use_3d="true",
+        rnd="1630051651137",
+        installment="1",
+        authorization_amount="100.00",
+        currency_code="TRY",
+        merchant_secret_key="secret-dev",
+    )
+    return payload
+
+
+def paynkolay_declined_result_payload() -> dict[str, object]:
+    payload = paynkolay_success_result_payload()
+    payload.update(
+        {
+            "RESPONSE_CODE": "99",
+            "RESPONSE_DATA": "Issuer declined",
+            "AUTH_CODE": "",
+            "REFERENCE_CODE": "IKSIRPF102169",
+            "CLIENT_REFERENCE_CODE": "order-2002",
+            "hashDataV2": "",
+        }
+    )
+    payload["hashDataV2"] = generate_payment_response_hash(
+        merchant_no="400000001",
+        reference_code="IKSIRPF102169",
+        auth_code="",
+        response_code="99",
         use_3d="true",
         rnd="1630051651137",
         installment="1",
@@ -336,3 +376,73 @@ async def test_mocked_paynkolay_form_lifecycle_confirms_result_and_payment_list_
     assert b'name="type"' in provider.cancel_refund_request.content
     assert b"refund" in provider.cancel_refund_request.content
     assert b"cancel-refund-sx" in provider.cancel_refund_request.content
+
+
+@pytest.mark.api
+@pytest.mark.three_ds
+@pytest.mark.negative
+@pytest.mark.asyncio
+async def test_mocked_paynkolay_form_lifecycle_confirms_declined_result_status() -> None:
+    settings = runtime_settings()
+    scenario = captured_payment_scenario()
+    request = PaymentInitializeRequest.model_validate(
+        scenario.payment_request_payload(
+            merchant_id=settings.current.merchant.merchant_id,
+            terminal_id=settings.current.merchant.terminal_id,
+            callback_url=f"{settings.current.callback_base_url}/callback",
+            card=payment_card_payload(),
+            order_id="order-2002",
+            correlation_id="corr-2002",
+        )
+    )
+    provider = MockPaynkolayFormProvider(
+        client_reference_code="order-2002",
+        reference_code="IKSIRPF102169",
+        provider_status="ERROR",
+        auth_code="",
+        description="Issuer declined",
+    )
+
+    async with PaynkolayClient(
+        settings.current,
+        transport=httpx.MockTransport(provider),
+    ) as client:
+        initialize_payload = await client.initialize_payment_form(
+            request,
+            success_url=f"{settings.current.callback_base_url}/success",
+            fail_url=f"{settings.current.callback_base_url}/fail",
+            card_holder_ip="185.125.190.58",
+            rnd="03-07-2026 09:45:00",
+        )
+        initialize_result = parse_paynkolay_payment_result(initialize_payload)
+
+        result_payload = paynkolay_declined_result_payload()
+        payment_result = parse_paynkolay_payment_result(result_payload)
+        if not isinstance(payment_result, PaynkolayPaymentResult):
+            raise TypeError("expected Paynkolay payment result payload")
+        result_status = payment_result.to_transaction_status_response()
+
+        final_status = await client.get_transaction_status_from_payment_list(
+            request.order_id,
+            start_date="01.07.2026",
+            end_date="31.07.2026",
+        )
+
+    assert isinstance(initialize_result, PaynkolayThreeDSInitializeResult)
+    assert initialize_result.status is PaymentStatus.PENDING_3DS
+    assert payment_result.verify_hash(settings.current.merchant.secret_key)
+    assert payment_result.successful is False
+    assert result_status.status is PaymentStatus.FAILED
+    assert final_status.status is PaymentStatus.FAILED
+    assert result_status.order_id == request.order_id
+    assert final_status.order_id == request.order_id
+    assert result_status.provider_transaction_id == final_status.provider_transaction_id
+    assert result_status.amount == final_status.amount
+    assert result_status.currency is final_status.currency
+    assert result_status.failure_code == "99"
+    assert final_status.failure_code == "Issuer declined"
+    assert provider.payment_request is not None
+    assert provider.payment_request.url.path == "/v1/Payment"
+    assert provider.payment_list_request is not None
+    assert provider.payment_list_request.url.path == "/Payment/PaymentList"
+    assert provider.cancel_refund_request is None
