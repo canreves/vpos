@@ -14,6 +14,7 @@ from paynkolay_pos.flows import PaymentFlow
 from paynkolay_pos.models import (
     PaymentInitializeRequest,
     PaymentStatus,
+    PaynkolayCancelRefundResult,
     PaynkolayPaymentResult,
     PaynkolayThreeDSInitializeResult,
     parse_paynkolay_payment_result,
@@ -114,6 +115,7 @@ class MockPaynkolayFormProvider:
     def __init__(self) -> None:
         self.payment_request: httpx.Request | None = None
         self.payment_list_request: httpx.Request | None = None
+        self.cancel_refund_request: httpx.Request | None = None
 
     async def __call__(self, request: httpx.Request) -> httpx.Response:
         if request.method == "POST" and request.url.path == "/v1/Payment":
@@ -150,6 +152,13 @@ class MockPaynkolayFormProvider:
                         ],
                     },
                 },
+            )
+
+        if request.method == "POST" and request.url.path == "/v1/CancelRefundPayment":
+            self.cancel_refund_request = request
+            return httpx.Response(
+                status_code=200,
+                json={"responseCode": 2, "responseData": "Islem basarili"},
             )
 
         return httpx.Response(status_code=404, json={"error": "not_found"})
@@ -281,11 +290,19 @@ async def test_mocked_paynkolay_form_lifecycle_confirms_result_and_payment_list_
 
         result_payload = paynkolay_success_result_payload()
         payment_result = parse_paynkolay_payment_result(result_payload)
+        if not isinstance(payment_result, PaynkolayPaymentResult):
+            raise TypeError("expected Paynkolay payment result payload")
 
         final_status = await client.get_transaction_status_from_payment_list(
             request.order_id,
             start_date="01.07.2026",
             end_date="31.07.2026",
+        )
+        refund_result = await client.refund_payment(
+            reference_code=payment_result.reference_code,
+            amount=payment_result.canonical_authorization_amount,
+            trx_date="2026.07.03",
+            sx=SecretStr("cancel-refund-sx"),
         )
 
     assert isinstance(initialize_result, PaynkolayThreeDSInitializeResult)
@@ -296,9 +313,19 @@ async def test_mocked_paynkolay_form_lifecycle_confirms_result_and_payment_list_
     assert payment_result.status is scenario.expected_final_status
     assert final_status.status is scenario.expected_final_status
     assert final_status.provider_transaction_id == payment_result.reference_code
+    assert isinstance(refund_result, PaynkolayCancelRefundResult)
+    assert refund_result.status is PaymentStatus.REFUNDED
+    assert refund_result.successful is True
     assert provider.payment_request is not None
     assert provider.payment_request.url.path == "/v1/Payment"
     assert b'name="hashDatav2"' in provider.payment_request.content
     assert provider.payment_list_request is not None
     assert provider.payment_list_request.url.path == "/Payment/PaymentList"
     assert b'name="clientRefCode"' in provider.payment_list_request.content
+    assert provider.cancel_refund_request is not None
+    assert provider.cancel_refund_request.url.path == "/v1/CancelRefundPayment"
+    assert b'name="referenceCode"' in provider.cancel_refund_request.content
+    assert b"IKSIRPF102168" in provider.cancel_refund_request.content
+    assert b'name="type"' in provider.cancel_refund_request.content
+    assert b"refund" in provider.cancel_refund_request.content
+    assert b"cancel-refund-sx" in provider.cancel_refund_request.content
