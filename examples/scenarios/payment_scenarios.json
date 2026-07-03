@@ -29,6 +29,20 @@
       "tags": ["installment", "three_ds"]
     },
     {
+      "scenario_id": "visa_3ds_declined",
+      "title": "Visa 3DS declined payment",
+      "card_alias": "visa_3ds_declined",
+      "amount": "100.00",
+      "currency": "TRY",
+      "requires_3ds": true,
+      "expected_initialize_status": "pending_3ds",
+      "expected_final_status": "failed",
+      "installment_count": 1,
+      "payment_channel": "e_commerce",
+      "moto": false,
+      "tags": ["negative", "three_ds"]
+    },
+    {
       "scenario_id": "visa_moto_authorized",
       "title": "Visa MoTo authorized payment",
       "card_alias": "visa_moto_success",

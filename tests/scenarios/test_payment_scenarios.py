@@ -92,10 +92,13 @@ def test_load_payment_scenario_catalog_from_json_file() -> None:
     assert catalog.ids() == (
         "visa_3ds_capture",
         "visa_installment_capture",
+        "visa_3ds_declined",
         "visa_moto_authorized",
     )
     assert catalog.get("visa_installment_capture").installment_count == 3
+    assert catalog.get("visa_3ds_declined").expected_final_status is PaymentStatus.FAILED
     assert catalog.tagged("moto")[0].payment_channel is PaymentChannel.MOTO
+    assert catalog.tagged("negative")[0].scenario_id == "visa_3ds_declined"
 
 
 @pytest.mark.negative
