@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -71,6 +72,39 @@ def test_payment_result_verifies_hash_and_maps_success_status() -> None:
     assert result.expected_hash(SecretStr("merchant-secret")) == PAYMENT_RESULT_HASH
     assert result.verify_hash(SecretStr("merchant-secret"))
     assert not result.verify_hash(SecretStr("wrong-secret"))
+
+
+@pytest.mark.api
+def test_payment_result_converts_success_to_transaction_status_response() -> None:
+    result = PaynkolayPaymentResult.model_validate(successful_result_payload())
+
+    status = result.to_transaction_status_response()
+
+    assert status.order_id == "order-1001"
+    assert status.provider_transaction_id == "IKSIRPF102168"
+    assert status.status is PaymentStatus.CAPTURED
+    assert status.amount == Decimal("1.00")
+    assert status.currency is Currency.TRY
+    assert status.updated_at == datetime(2026, 7, 3, 9, 45, tzinfo=UTC)
+    assert status.authorization_code == "S00586"
+    assert status.failure_code is None
+
+
+@pytest.mark.api
+def test_payment_result_converts_failure_to_transaction_status_response() -> None:
+    result = PaynkolayPaymentResult.model_validate(
+        successful_result_payload(
+            RESPONSE_CODE="99",
+            RESPONSE_DATA="Bank declined",
+            AUTH_CODE="",
+        )
+    )
+
+    status = result.to_transaction_status_response()
+
+    assert status.status is PaymentStatus.FAILED
+    assert status.authorization_code is None
+    assert status.failure_code == "99"
 
 
 @pytest.mark.api

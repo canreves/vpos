@@ -118,6 +118,36 @@ class PaynkolayPaymentResult(StrictPaymentModel):
 
         return f"{self.authorization_amount:.2f}"
 
+    def to_transaction_status_response(
+        self,
+        *,
+        source_timezone: tzinfo = UTC,
+    ) -> TransactionStatusResponse:
+        """Convert a success/fail URL result into the framework status model."""
+
+        payment_status = self.status
+        authorization_code = self.auth_code.strip() or None
+        return TransactionStatusResponse(
+            order_id=self.client_reference_code,
+            provider_transaction_id=self.reference_code,
+            status=payment_status,
+            amount=self.authorization_amount,
+            currency=self.currency_code,
+            updated_at=self._parsed_timestamp(source_timezone),
+            authorization_code=(
+                authorization_code
+                if payment_status in {PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURED}
+                else None
+            ),
+            failure_code=self.response_code if payment_status is PaymentStatus.FAILED else None,
+        )
+
+    def _parsed_timestamp(self, source_timezone: tzinfo) -> datetime:
+        parsed = datetime.fromisoformat(self.timestamp)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=source_timezone)
+        return parsed
+
 
 def parse_paynkolay_payment_result(
     payload: dict[str, object],
