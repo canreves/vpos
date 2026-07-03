@@ -409,6 +409,42 @@ async def test_get_transaction_status_from_payment_list_rejects_missing_provider
             )
 
 
+@pytest.mark.negative
+@pytest.mark.asyncio
+async def test_get_transaction_status_from_payment_list_rejects_service_failure() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code=200,
+            json={
+                "id": "",
+                "result": {
+                    "RESPONSE_CODE": "99",
+                    "RESPONSE_DATA": "Service unavailable",
+                    "LIST": [],
+                },
+            },
+        )
+
+    async with PaynkolayClient(
+        settings.current,
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        with pytest.raises(
+            RuntimeError,
+            match=(
+                "Paynkolay PaymentList service failed: "
+                "response_code='99', response_data='Service unavailable'"
+            ),
+        ):
+            await client.get_transaction_status_from_payment_list(
+                "order-1001",
+                start_date="01.07.2026",
+                end_date="31.07.2026",
+            )
+
+
 @pytest.mark.api
 @pytest.mark.asyncio
 async def test_cancel_refund_form_payload_builds_paynkolay_operation_fields() -> None:

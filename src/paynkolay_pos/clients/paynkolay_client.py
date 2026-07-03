@@ -408,6 +408,12 @@ class PaynkolayClient:
         )
         response_payload = await self.post_form(PAYNKOLAY_PAYMENT_LIST_PATH, payload)
         payment_list = PaynkolayPaymentListResponse.model_validate(response_payload)
+        if not payment_list.result.successful:
+            raise RuntimeError(
+                "Paynkolay PaymentList service failed: "
+                f"response_code={payment_list.result.response_code!r}, "
+                f"response_data={payment_list.result.response_data!r}"
+            )
         matching_rows = payment_list.rows_for_client_ref(normalized_order_id)
         if not matching_rows:
             raise LookupError(
