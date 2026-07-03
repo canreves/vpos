@@ -1,0 +1,29 @@
+{
+  "active_environment": "dev",
+  "environments": {
+    "dev": {
+      "name": "dev",
+      "base_url": "https://paynkolaytest.nkolayislem.com.tr/Vpos",
+      "callback_base_url": "https://merchant-dev.example.test",
+      "merchant": {
+        "merchant_id": "replace-with-merchant-id",
+        "terminal_id": "replace-with-terminal-id",
+        "api_key": "replace-with-payment-sx",
+        "cancel_refund_api_key": "replace-with-cancel-refund-sx-if-different",
+        "secret_key": "replace-with-merchant-secret-key"
+      },
+      "cards": [
+        {
+          "alias": "synthetic_3ds_success",
+          "brand": "visa",
+          "pan": "0000000000000000",
+          "expiry_month": 12,
+          "expiry_year": 2030,
+          "cvv": "000",
+          "requires_3ds": true,
+          "expected_otp": "000000"
+        }
+      ]
+    }
+  }
+}

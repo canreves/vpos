@@ -81,6 +81,16 @@ catalog = load_payment_scenario_catalog("examples/scenarios/payment_scenarios.js
 print(catalog.ids())
 ```
 
+Create a private runtime config from the synthetic template:
+
+```bash
+cp examples/config/paynkolay-settings.example.json /path/outside/git/paynkolay-settings.json
+export PAYNKOLAY_CONFIG_FILE=/path/outside/git/paynkolay-settings.json
+```
+
+The example config is schema-valid but uses non-routable placeholder credentials and
+card values. Replace them only in a private file outside Git.
+
 ## Project Layout
 
 ```text

@@ -110,3 +110,16 @@ def test_load_runtime_settings_uses_environment_override(
 
     assert settings.current.name is EnvironmentName.UAT
     assert settings.current.merchant.merchant_id == "merchant-uat"
+
+
+@pytest.mark.config
+def test_example_runtime_settings_template_matches_schema() -> None:
+    template_path = (
+        Path(__file__).parents[2] / "examples" / "config" / "paynkolay-settings.example.json"
+    )
+
+    settings = RuntimeSettings.model_validate_json(template_path.read_text(encoding="utf-8"))
+
+    assert settings.current.name is EnvironmentName.DEV
+    assert settings.current.merchant.cancel_refund_api_key is not None
+    assert settings.current.cards[0].alias == "synthetic_3ds_success"
