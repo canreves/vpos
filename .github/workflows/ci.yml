@@ -42,7 +42,15 @@ jobs:
         run: poetry run mypy src tests
 
       - name: Run pytest
-        run: poetry run pytest
+        run: poetry run pytest --alluredir=allure-results
+
+      - name: Upload Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-python-checks
+          path: allure-results
+          if-no-files-found: ignore
 
   three-ds-browser:
     name: 3DS browser checks
@@ -67,4 +75,12 @@ jobs:
         run: poetry run playwright install --with-deps chromium
 
       - name: Run 3DS browser tests
-        run: poetry run pytest -m three_ds
+        run: poetry run pytest -m three_ds --alluredir=allure-results-three-ds
+
+      - name: Upload 3DS Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-three-ds
+          path: allure-results-three-ds
+          if-no-files-found: ignore

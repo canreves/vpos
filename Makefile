@@ -1,8 +1,10 @@
-.PHONY: help install check lint type test smoke api three-ds callback negative parallel allure-results clean
+.PHONY: help install check lint type test smoke api three-ds callback negative parallel allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
 MYPY ?= poetry run mypy src tests
+ALLURE_RESULTS ?= allure-results
+ALLURE_REPORT ?= allure-report
 
 help:
 	@echo "Paynkolay Sanal POS automation commands"
@@ -26,6 +28,7 @@ help:
 	@echo ""
 	@echo "Reporting:"
 	@echo "  make allure-results  Run tests and write Allure result files"
+	@echo "  make report          Generate an Allure HTML report"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean           Remove generated local artifacts"
@@ -67,7 +70,12 @@ negative:
 	$(PYTEST) -m negative
 
 allure-results:
-	$(PYTEST) --alluredir=allure-results
+	rm -rf $(ALLURE_RESULTS)
+	$(PYTEST) --alluredir=$(ALLURE_RESULTS)
+
+report: allure-results
+	@command -v allure >/dev/null 2>&1 || { echo "Allure CLI is required. Install it with: brew install allure"; exit 1; }
+	allure generate $(ALLURE_RESULTS) -o $(ALLURE_REPORT) --clean
 
 clean:
 	find . -type d \( -name "__pycache__" -o -name ".pytest_cache" -o -name ".mypy_cache" -o -name ".ruff_cache" -o -name "allure-results" -o -name "allure-report" -o -name "reports" \) -prune -exec rm -rf {} +

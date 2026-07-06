@@ -104,6 +104,21 @@ Generate Allure result files:
 make allure-results
 ```
 
+Generate an Allure HTML report:
+
+```bash
+make report
+```
+
+`make report` requires the Allure command-line tool. On macOS, install it with:
+
+```bash
+brew install allure
+```
+
+The generated HTML report is written to `allure-report/`. The raw pytest Allure files
+are written to `allure-results/`.
+
 Remove generated local artifacts:
 
 ```bash
