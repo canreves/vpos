@@ -135,14 +135,11 @@ poetry run playwright install chromium
 Without browser binaries, that specific browser test skips locally. CI installs Chromium in
 the dedicated 3DS browser job.
 
-Load the example payment scenario catalogue:
+## Config And Data Strategy
 
-```python
-from paynkolay_pos.scenarios import load_payment_scenario_catalog
-
-catalog = load_payment_scenario_catalog("examples/scenarios/payment_scenarios.json")
-print(catalog.ids())
-```
+Runtime settings and test data are intentionally kept outside test code. The framework
+loads merchant, endpoint, callback, and card data from JSON, then uses scenario metadata
+to decide which card and flow should run.
 
 Create a private runtime config from the synthetic template:
 
@@ -151,9 +148,58 @@ cp examples/config/paynkolay-settings.example.json /path/outside/git/paynkolay-s
 export PAYNKOLAY_CONFIG_FILE=/path/outside/git/paynkolay-settings.json
 ```
 
-The example config is schema-valid but uses non-routable placeholder credentials and
-card values. Replace them only in a private file outside Git. Local config copies under
-`examples/config/*.json` are ignored except `*.example.json` templates.
+Select an environment without editing the JSON file:
+
+```bash
+export PAYNKOLAY_ENV=uat
+```
+
+If `PAYNKOLAY_ENV` is not set, the file's `active_environment` value is used. Supported
+environment names are `dev`, `uat`, and `test`.
+
+The example config is schema-valid but synthetic. It demonstrates:
+
+- separate `dev`, `uat`, and `test` environment blocks
+- environment-specific merchant credentials
+- environment-specific provider and callback URLs
+- reusable test card aliases
+- 3DS cards with `expected_otp`
+- MoTo/non-3DS cards without OTP values
+
+Each scenario in `examples/scenarios/payment_scenarios.json` references a card by
+`card_alias`. That alias must exist in the selected environment's `cards` list. For
+example:
+
+```json
+{
+  "scenario_id": "visa_3ds_capture",
+  "card_alias": "visa_3ds_success"
+}
+```
+
+The selected runtime config must include a matching card:
+
+```json
+{
+  "alias": "visa_3ds_success",
+  "requires_3ds": true,
+  "expected_otp": "000000"
+}
+```
+
+For a real 100+ card catalogue, extend the private config file's `cards` array. Do not
+commit real PAN, CVV, OTP, merchant tokens, API keys, secret keys, or callback URLs.
+Local config copies under `examples/config/*.json` are ignored except checked-in
+`*.example.json` templates.
+
+Load the example payment scenario catalogue:
+
+```python
+from paynkolay_pos.scenarios import load_payment_scenario_catalog
+
+catalog = load_payment_scenario_catalog("examples/scenarios/payment_scenarios.json")
+print(catalog.ids())
+```
 
 ## Project Layout
 
