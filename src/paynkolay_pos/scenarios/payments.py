@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from decimal import Decimal
 from pathlib import Path
@@ -10,6 +11,11 @@ from pydantic import BaseModel, Field
 from pydantic.functional_validators import field_validator, model_validator
 
 from paynkolay_pos.models import Currency, PaymentChannel, PaymentStatus
+
+DEFAULT_PAYMENT_SCENARIO_CATALOG_PATH = (
+    Path(__file__).parents[3] / "examples" / "scenarios" / "payment_scenarios.json"
+)
+PAYMENT_SCENARIO_CATALOG_ENV = "PAYNKOLAY_SCENARIO_CATALOG"
 
 
 class StrictScenarioModel(BaseModel):
@@ -140,3 +146,26 @@ def load_payment_scenario_catalog(path: str | Path) -> PaymentScenarioCatalog:
     if not catalog_path.is_file():
         raise FileNotFoundError(f"payment scenario catalog does not exist: {catalog_path}")
     return PaymentScenarioCatalog.model_validate_json(catalog_path.read_text(encoding="utf-8"))
+
+
+def scenario_catalog_path_from_env(
+    *,
+    catalog_file_env: str = PAYMENT_SCENARIO_CATALOG_ENV,
+) -> Path:
+    """Return the configured scenario catalogue path or the checked-in default."""
+
+    configured_path = os.getenv(catalog_file_env)
+    if configured_path:
+        return Path(configured_path).expanduser()
+    return DEFAULT_PAYMENT_SCENARIO_CATALOG_PATH
+
+
+def load_payment_scenario_catalog_from_env(
+    *,
+    catalog_file_env: str = PAYMENT_SCENARIO_CATALOG_ENV,
+) -> PaymentScenarioCatalog:
+    """Load scenario catalogue from env override or the checked-in default file."""
+
+    return load_payment_scenario_catalog(
+        scenario_catalog_path_from_env(catalog_file_env=catalog_file_env)
+    )

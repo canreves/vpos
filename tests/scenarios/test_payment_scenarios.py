@@ -7,9 +7,12 @@ from pydantic import ValidationError
 
 from paynkolay_pos.models import PaymentChannel, PaymentStatus
 from paynkolay_pos.scenarios import (
+    DEFAULT_PAYMENT_SCENARIO_CATALOG_PATH,
     PaymentScenario,
     PaymentScenarioCatalog,
     load_payment_scenario_catalog,
+    load_payment_scenario_catalog_from_env,
+    scenario_catalog_path_from_env,
 )
 from paynkolay_pos.testing import payment_card_payload
 
@@ -99,6 +102,32 @@ def test_load_payment_scenario_catalog_from_json_file() -> None:
     assert catalog.get("visa_3ds_declined").expected_final_status is PaymentStatus.FAILED
     assert catalog.tagged("moto")[0].payment_channel is PaymentChannel.MOTO
     assert catalog.tagged("negative")[0].scenario_id == "visa_3ds_declined"
+
+
+@pytest.mark.api
+def test_scenario_catalog_path_from_env_defaults_to_checked_in_catalog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PAYNKOLAY_SCENARIO_CATALOG", raising=False)
+
+    assert scenario_catalog_path_from_env() == DEFAULT_PAYMENT_SCENARIO_CATALOG_PATH
+
+
+@pytest.mark.api
+def test_load_payment_scenario_catalog_from_env_uses_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog_path = tmp_path / "payment-scenarios.json"
+    catalog_path.write_text(
+        PaymentScenarioCatalog(scenarios=(payment_scenario(),)).model_dump_json(),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PAYNKOLAY_SCENARIO_CATALOG", str(catalog_path))
+
+    catalog = load_payment_scenario_catalog_from_env()
+
+    assert catalog.ids() == ("visa_3ds_capture",)
 
 
 @pytest.mark.negative
