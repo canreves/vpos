@@ -1,4 +1,4 @@
-.PHONY: help install check lint type test smoke api three-ds callback negative parallel allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios negative parallel allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
@@ -24,6 +24,7 @@ help:
 	@echo "  make api             Run API-marked tests"
 	@echo "  make three-ds        Run 3D Secure-marked tests"
 	@echo "  make callback        Run callback-marked tests"
+	@echo "  make scenarios       Run data-driven scenario catalogue tests"
 	@echo "  make negative        Run negative-marked tests"
 	@echo ""
 	@echo "Reporting:"
@@ -65,6 +66,9 @@ three-ds:
 
 callback:
 	$(PYTEST) -m callback
+
+scenarios:
+	$(PYTEST) -m scenario
 
 negative:
 	$(PYTEST) -m negative

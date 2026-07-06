@@ -95,6 +95,7 @@ Run focused test groups:
 make smoke
 make api
 make callback
+make scenarios
 make negative
 ```
 

@@ -30,6 +30,7 @@ markers = [
     "api: Sanal POS API tests",
     "three_ds: 3D Secure browser automation tests",
     "callback: callback and webhook verification tests",
+    "scenario: data-driven payment scenario catalogue tests",
     "negative: invalid payment and security scenarios",
 ]
 
