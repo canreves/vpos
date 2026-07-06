@@ -45,22 +45,69 @@ Implemented Paynkolay form endpoints:
 Install dependencies:
 
 ```bash
+make install
+```
+
+The direct Poetry equivalent is:
+
+```bash
 poetry install --no-interaction
+```
+
+## One-Click Commands
+
+The project exposes common setup, validation, execution, reporting, and cleanup commands
+through `make`.
+
+Show the available commands:
+
+```bash
+make help
 ```
 
 Run the standard validation set:
 
 ```bash
-poetry check
-poetry run ruff check .
-poetry run mypy src tests
-poetry run pytest
+make check
+```
+
+Run the full test suite only:
+
+```bash
+make test
+```
+
+Run tests in parallel with `pytest-xdist`:
+
+```bash
+make parallel
 ```
 
 Run only 3D Secure tests:
 
 ```bash
-poetry run pytest -m three_ds
+make three-ds
+```
+
+Run focused test groups:
+
+```bash
+make smoke
+make api
+make callback
+make negative
+```
+
+Generate Allure result files:
+
+```bash
+make allure-results
+```
+
+Remove generated local artifacts:
+
+```bash
+make clean
 ```
 
 The browser-backed 3DS test requires Chromium binaries:
