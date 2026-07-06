@@ -1,10 +1,12 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios negative parallel allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios negative parallel synthetic-cards allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
 MYPY ?= poetry run mypy src tests
 ALLURE_RESULTS ?= allure-results
 ALLURE_REPORT ?= allure-report
+COUNT ?= 100
+OUT ?= /tmp/paynkolay-synthetic-cards.json
 
 help:
 	@echo "Paynkolay Sanal POS automation commands"
@@ -26,6 +28,7 @@ help:
 	@echo "  make callback        Run callback-marked tests"
 	@echo "  make scenarios       Run data-driven scenario catalogue tests"
 	@echo "  make negative        Run negative-marked tests"
+	@echo "  make synthetic-cards Generate a synthetic cards JSON array"
 	@echo ""
 	@echo "Reporting:"
 	@echo "  make allure-results  Run tests and write Allure result files"
@@ -72,6 +75,9 @@ scenarios:
 
 negative:
 	$(PYTEST) -m negative
+
+synthetic-cards:
+	poetry run python tools/generate_synthetic_cards.py --count $(COUNT) --output $(OUT)
 
 allure-results:
 	rm -rf $(ALLURE_RESULTS)

@@ -99,6 +99,12 @@ make scenarios
 make negative
 ```
 
+Generate a synthetic 100-card JSON array for a private config:
+
+```bash
+make synthetic-cards
+```
+
 Generate Allure result files:
 
 ```bash
@@ -191,6 +197,21 @@ For a real 100+ card catalogue, extend the private config file's `cards` array. 
 commit real PAN, CVV, OTP, merchant tokens, API keys, secret keys, or callback URLs.
 Local config copies under `examples/config/*.json` are ignored except checked-in
 `*.example.json` templates.
+
+Generate a synthetic private card dataset:
+
+```bash
+make synthetic-cards COUNT=100 OUT=/tmp/paynkolay-synthetic-cards.json
+```
+
+The output is a JSON array that can be copied into the selected environment's `cards`
+field in a private `PAYNKOLAY_CONFIG_FILE`. The generator supports these profiles:
+
+```bash
+poetry run python tools/generate_synthetic_cards.py --count 100 --profile mixed --output /tmp/cards.json
+poetry run python tools/generate_synthetic_cards.py --count 100 --profile three_ds --output /tmp/three-ds-cards.json
+poetry run python tools/generate_synthetic_cards.py --count 100 --profile moto --output /tmp/moto-cards.json
+```
 
 Load the example payment scenario catalogue:
 
