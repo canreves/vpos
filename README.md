@@ -112,6 +112,13 @@ Generate a synthetic 1000-scenario catalogue:
 make synthetic-scenarios
 ```
 
+Generate and run a 100-card / 1000-scenario scale demo:
+
+```bash
+make scale-demo
+make scale-demo-parallel
+```
+
 Generate Allure result files:
 
 ```bash
@@ -256,6 +263,31 @@ file, run the equivalent command directly with `pytest-xdist`:
 
 ```bash
 PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-synthetic-scenarios.json poetry run pytest -m scenario -n auto
+```
+
+Run the full generated-data demo with one command:
+
+```bash
+make scale-demo
+```
+
+This generates:
+
+- `/tmp/paynkolay-synthetic-cards.json`
+- `/tmp/paynkolay-synthetic-scenarios.json`
+
+Then it executes the generated scenario catalogue through the mocked scenario flow. For
+parallel execution, use:
+
+```bash
+make scale-demo-parallel
+```
+
+Both commands accept overrides:
+
+```bash
+make scale-demo COUNT=100 SCENARIO_COUNT=1000
+make scale-demo-parallel COUNT=100 SCENARIO_COUNT=1000
 ```
 
 Load the example payment scenario catalogue:

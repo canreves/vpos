@@ -1,4 +1,4 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative parallel synthetic-cards synthetic-scenarios allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative parallel synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
@@ -34,6 +34,8 @@ help:
 	@echo "  make negative        Run negative-marked tests"
 	@echo "  make synthetic-cards Generate a synthetic cards JSON array"
 	@echo "  make synthetic-scenarios Generate a synthetic scenario catalogue"
+	@echo "  make scale-demo      Generate 100 cards, 1000 scenarios, then run scenarios"
+	@echo "  make scale-demo-parallel Run generated scenarios with pytest-xdist"
 	@echo ""
 	@echo "Reporting:"
 	@echo "  make allure-results  Run tests and write Allure result files"
@@ -90,6 +92,16 @@ synthetic-cards:
 
 synthetic-scenarios:
 	poetry run python tools/generate_synthetic_scenarios.py --count $(SCENARIO_COUNT) --output $(SCENARIO_OUT)
+
+scale-demo:
+	$(MAKE) synthetic-cards COUNT=$(COUNT) OUT=$(OUT)
+	poetry run python tools/generate_synthetic_scenarios.py --count $(SCENARIO_COUNT) --card-count $(COUNT) --output $(SCENARIO_OUT)
+	$(MAKE) scenarios-file SCENARIO_FILE=$(SCENARIO_OUT)
+
+scale-demo-parallel:
+	$(MAKE) synthetic-cards COUNT=$(COUNT) OUT=$(OUT)
+	poetry run python tools/generate_synthetic_scenarios.py --count $(SCENARIO_COUNT) --card-count $(COUNT) --output $(SCENARIO_OUT)
+	PAYNKOLAY_SCENARIO_CATALOG=$(SCENARIO_OUT) $(PYTEST) -m scenario -n auto
 
 allure-results:
 	rm -rf $(ALLURE_RESULTS)
