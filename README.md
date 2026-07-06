@@ -96,6 +96,7 @@ make smoke
 make api
 make callback
 make scenarios
+make scenarios-file SCENARIO_FILE=/tmp/paynkolay-synthetic-scenarios.json
 make negative
 ```
 
@@ -241,6 +242,20 @@ poetry run python tools/generate_synthetic_scenarios.py --count 1000 --profile m
 poetry run python tools/generate_synthetic_scenarios.py --count 1000 --profile three_ds --output /tmp/three-ds-scenarios.json
 poetry run python tools/generate_synthetic_scenarios.py --count 1000 --profile moto --output /tmp/moto-scenarios.json
 poetry run python tools/generate_synthetic_scenarios.py --count 1000 --profile negative --output /tmp/negative-scenarios.json
+```
+
+Run a generated or private scenario catalogue:
+
+```bash
+make scenarios-file SCENARIO_FILE=/tmp/paynkolay-synthetic-scenarios.json
+```
+
+This sets `PAYNKOLAY_SCENARIO_CATALOG` for the pytest process and runs the `scenario`
+test group. Use `make parallel` for the default checked-in suite; for a private scenario
+file, run the equivalent command directly with `pytest-xdist`:
+
+```bash
+PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-synthetic-scenarios.json poetry run pytest -m scenario -n auto
 ```
 
 Load the example payment scenario catalogue:

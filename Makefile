@@ -1,4 +1,4 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios negative parallel synthetic-cards synthetic-scenarios allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative parallel synthetic-cards synthetic-scenarios allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
@@ -9,6 +9,7 @@ COUNT ?= 100
 OUT ?= /tmp/paynkolay-synthetic-cards.json
 SCENARIO_COUNT ?= 1000
 SCENARIO_OUT ?= /tmp/paynkolay-synthetic-scenarios.json
+SCENARIO_FILE ?=
 
 help:
 	@echo "Paynkolay Sanal POS automation commands"
@@ -29,6 +30,7 @@ help:
 	@echo "  make three-ds        Run 3D Secure-marked tests"
 	@echo "  make callback        Run callback-marked tests"
 	@echo "  make scenarios       Run data-driven scenario catalogue tests"
+	@echo "  make scenarios-file  Run scenario tests from SCENARIO_FILE"
 	@echo "  make negative        Run negative-marked tests"
 	@echo "  make synthetic-cards Generate a synthetic cards JSON array"
 	@echo "  make synthetic-scenarios Generate a synthetic scenario catalogue"
@@ -75,6 +77,10 @@ callback:
 
 scenarios:
 	$(PYTEST) -m scenario
+
+scenarios-file:
+	@test -n "$(SCENARIO_FILE)" || { echo "SCENARIO_FILE is required. Example: make scenarios-file SCENARIO_FILE=/tmp/scenarios.json"; exit 1; }
+	PAYNKOLAY_SCENARIO_CATALOG=$(SCENARIO_FILE) $(PYTEST) -m scenario
 
 negative:
 	$(PYTEST) -m negative
