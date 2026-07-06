@@ -6,15 +6,15 @@
       "base_url": "https://paynkolaytest.nkolayislem.com.tr/Vpos",
       "callback_base_url": "https://merchant-dev.example.test",
       "merchant": {
-        "merchant_id": "replace-with-merchant-id",
-        "terminal_id": "replace-with-terminal-id",
-        "api_key": "replace-with-payment-sx",
-        "cancel_refund_api_key": "replace-with-cancel-refund-sx-if-different",
-        "secret_key": "replace-with-merchant-secret-key"
+        "merchant_id": "replace-with-dev-merchant-id",
+        "terminal_id": "replace-with-dev-terminal-id",
+        "api_key": "replace-with-dev-payment-sx",
+        "cancel_refund_api_key": "replace-with-dev-cancel-refund-sx-if-different",
+        "secret_key": "replace-with-dev-merchant-secret-key"
       },
       "cards": [
         {
-          "alias": "synthetic_3ds_success",
+          "alias": "visa_3ds_success",
           "brand": "visa",
           "pan": "0000000000000000",
           "expiry_month": 12,
@@ -22,6 +22,101 @@
           "cvv": "000",
           "requires_3ds": true,
           "expected_otp": "000000"
+        },
+        {
+          "alias": "visa_installment_success",
+          "brand": "visa",
+          "pan": "0000000000000001",
+          "expiry_month": 12,
+          "expiry_year": 2030,
+          "cvv": "001",
+          "requires_3ds": true,
+          "expected_otp": "000001"
+        },
+        {
+          "alias": "visa_3ds_declined",
+          "brand": "visa",
+          "pan": "0000000000000002",
+          "expiry_month": 12,
+          "expiry_year": 2030,
+          "cvv": "002",
+          "requires_3ds": true,
+          "expected_otp": "000002"
+        },
+        {
+          "alias": "visa_moto_success",
+          "brand": "visa",
+          "pan": "0000000000000003",
+          "expiry_month": 12,
+          "expiry_year": 2030,
+          "cvv": "003",
+          "requires_3ds": false
+        }
+      ]
+    },
+    "uat": {
+      "name": "uat",
+      "base_url": "https://paynkolaytest.nkolayislem.com.tr/Vpos",
+      "callback_base_url": "https://merchant-uat.example.test",
+      "merchant": {
+        "merchant_id": "replace-with-uat-merchant-id",
+        "terminal_id": "replace-with-uat-terminal-id",
+        "api_key": "replace-with-uat-payment-sx",
+        "cancel_refund_api_key": "replace-with-uat-cancel-refund-sx-if-different",
+        "secret_key": "replace-with-uat-merchant-secret-key"
+      },
+      "cards": [
+        {
+          "alias": "visa_3ds_success",
+          "brand": "visa",
+          "pan": "0000000000000100",
+          "expiry_month": 12,
+          "expiry_year": 2030,
+          "cvv": "100",
+          "requires_3ds": true,
+          "expected_otp": "000100"
+        },
+        {
+          "alias": "visa_moto_success",
+          "brand": "visa",
+          "pan": "0000000000000101",
+          "expiry_month": 12,
+          "expiry_year": 2030,
+          "cvv": "101",
+          "requires_3ds": false
+        }
+      ]
+    },
+    "test": {
+      "name": "test",
+      "base_url": "https://paynkolaytest.nkolayislem.com.tr/Vpos",
+      "callback_base_url": "https://merchant-test.example.test",
+      "merchant": {
+        "merchant_id": "replace-with-test-merchant-id",
+        "terminal_id": "replace-with-test-terminal-id",
+        "api_key": "replace-with-test-payment-sx",
+        "cancel_refund_api_key": "replace-with-test-cancel-refund-sx-if-different",
+        "secret_key": "replace-with-test-merchant-secret-key"
+      },
+      "cards": [
+        {
+          "alias": "visa_3ds_success",
+          "brand": "visa",
+          "pan": "0000000000000200",
+          "expiry_month": 12,
+          "expiry_year": 2030,
+          "cvv": "200",
+          "requires_3ds": true,
+          "expected_otp": "000200"
+        },
+        {
+          "alias": "visa_moto_success",
+          "brand": "visa",
+          "pan": "0000000000000201",
+          "expiry_month": 12,
+          "expiry_year": 2030,
+          "cvv": "201",
+          "requires_3ds": false
         }
       ]
     }

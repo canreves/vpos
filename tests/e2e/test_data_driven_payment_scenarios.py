@@ -9,7 +9,8 @@ import httpx
 import pytest
 
 from paynkolay_pos.clients import PaynkolayClient
-from paynkolay_pos.config import PaymentEnvironment, RuntimeSettings, TestCard as ConfigTestCard
+from paynkolay_pos.config import PaymentEnvironment, RuntimeSettings
+from paynkolay_pos.config import TestCard as ConfigTestCard
 from paynkolay_pos.flows import PaymentFlow
 from paynkolay_pos.models import PaymentInitializeRequest, PaymentStatus
 from paynkolay_pos.scenarios import PaymentScenario, load_payment_scenario_catalog

@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from paynkolay_pos.config import EnvironmentName, RuntimeSettings, load_runtime_settings
+from paynkolay_pos.scenarios import load_payment_scenario_catalog
 
 
 def valid_settings_payload() -> dict[str, object]:
@@ -122,4 +123,23 @@ def test_example_runtime_settings_template_matches_schema() -> None:
 
     assert settings.current.name is EnvironmentName.DEV
     assert settings.current.merchant.cancel_refund_api_key is not None
-    assert settings.current.cards[0].alias == "synthetic_3ds_success"
+    assert set(settings.environments) == {
+        EnvironmentName.DEV,
+        EnvironmentName.UAT,
+        EnvironmentName.TEST,
+    }
+    assert settings.current.cards[0].alias == "visa_3ds_success"
+
+
+@pytest.mark.config
+def test_example_runtime_settings_cover_scenario_card_aliases() -> None:
+    examples_path = Path(__file__).parents[2] / "examples"
+    settings_path = examples_path / "config" / "paynkolay-settings.example.json"
+    scenarios_path = examples_path / "scenarios" / "payment_scenarios.json"
+
+    settings = RuntimeSettings.model_validate_json(settings_path.read_text(encoding="utf-8"))
+    catalog = load_payment_scenario_catalog(scenarios_path)
+    configured_aliases = {card.alias for card in settings.current.cards}
+    scenario_aliases = {scenario.card_alias for scenario in catalog.scenarios}
+
+    assert scenario_aliases <= configured_aliases
