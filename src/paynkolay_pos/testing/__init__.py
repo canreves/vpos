@@ -17,13 +17,24 @@ from paynkolay_pos.testing.synthetic_cards import (
     generate_synthetic_cards_json,
     validate_synthetic_card_payloads,
 )
+from paynkolay_pos.testing.synthetic_scenarios import (
+    SyntheticScenarioProfile,
+    generate_synthetic_scenario_catalog_json,
+    generate_synthetic_scenario_catalog_payload,
+    generate_synthetic_scenario_payloads,
+    validate_synthetic_scenario_catalog,
+)
 
 __all__ = [
     "SyntheticCardProfile",
+    "SyntheticScenarioProfile",
     "callback_payload",
     "callback_payload_model",
     "generate_synthetic_card_payloads",
     "generate_synthetic_cards_json",
+    "generate_synthetic_scenario_catalog_json",
+    "generate_synthetic_scenario_catalog_payload",
+    "generate_synthetic_scenario_payloads",
     "payment_card_payload",
     "payment_initialize_request",
     "payment_initialize_request_payload",
@@ -32,4 +43,5 @@ __all__ = [
     "transaction_status_response",
     "transaction_status_response_payload",
     "validate_synthetic_card_payloads",
+    "validate_synthetic_scenario_catalog",
 ]

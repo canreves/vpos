@@ -105,6 +105,12 @@ Generate a synthetic 100-card JSON array for a private config:
 make synthetic-cards
 ```
 
+Generate a synthetic 1000-scenario catalogue:
+
+```bash
+make synthetic-scenarios
+```
+
 Generate Allure result files:
 
 ```bash
@@ -211,6 +217,30 @@ field in a private `PAYNKOLAY_CONFIG_FILE`. The generator supports these profile
 poetry run python tools/generate_synthetic_cards.py --count 100 --profile mixed --output /tmp/cards.json
 poetry run python tools/generate_synthetic_cards.py --count 100 --profile three_ds --output /tmp/three-ds-cards.json
 poetry run python tools/generate_synthetic_cards.py --count 100 --profile moto --output /tmp/moto-cards.json
+```
+
+Generate a matching large private scenario catalogue:
+
+```bash
+make synthetic-scenarios SCENARIO_COUNT=1000 SCENARIO_OUT=/tmp/paynkolay-synthetic-scenarios.json
+```
+
+The scenario generator writes a full catalogue object with a top-level `scenarios` array.
+Generated scenario `card_alias` values rotate across generated card aliases, so pair
+`SCENARIO_COUNT=1000` with `COUNT=100` by using `--card-count 100` when you want 100
+cards to back 1000 scenarios:
+
+```bash
+poetry run python tools/generate_synthetic_scenarios.py --count 1000 --card-count 100 --output /tmp/scenarios.json
+```
+
+Supported scenario profiles are:
+
+```bash
+poetry run python tools/generate_synthetic_scenarios.py --count 1000 --profile mixed --output /tmp/scenarios.json
+poetry run python tools/generate_synthetic_scenarios.py --count 1000 --profile three_ds --output /tmp/three-ds-scenarios.json
+poetry run python tools/generate_synthetic_scenarios.py --count 1000 --profile moto --output /tmp/moto-scenarios.json
+poetry run python tools/generate_synthetic_scenarios.py --count 1000 --profile negative --output /tmp/negative-scenarios.json
 ```
 
 Load the example payment scenario catalogue:
