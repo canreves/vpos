@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 
 from fastapi import HTTPException, Request, status
+from pydantic import SecretStr
 
 from paynkolay_pos.api.payment_initializer import (
     PaynkolayPaymentInitializer,
@@ -77,3 +78,15 @@ async def get_payment_initializer() -> AsyncIterator[SupportsPaymentInitializer]
             environment=environment,
             client=client,
         )
+
+
+def get_merchant_secret_key() -> SecretStr:
+    """Return the active merchant secret key for provider return verification."""
+
+    try:
+        return load_runtime_settings().current.merchant.secret_key
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"runtime payment configuration is unavailable: {exc}",
+        ) from exc

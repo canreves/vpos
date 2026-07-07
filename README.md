@@ -89,6 +89,11 @@ When Paynkolay returns a 3D Secure form, the web API stores the provider form tr
 and serves it at `/payments/{order_id}/three-ds`. The payload may be raw HTML or base64
 HTML; OTP entry remains on the bank/ACS form, not on the merchant UI.
 
+Paynkolay success/fail returns are handled by `/payments/result/success` and
+`/payments/result/fail`. These endpoints accept GET query parameters or POST form fields,
+verify `hashDataV2` with the active merchant secret key, update the payment session, and
+render a sanitized result page.
+
 Run the full test suite only:
 
 ```bash

@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from paynkolay_pos.api.dependencies import static_dir, templates_dir
-from paynkolay_pos.api.routes import config, health, payments, reports, three_ds
+from paynkolay_pos.api.routes import config, health, payments, reports, results, three_ds
 from paynkolay_pos.api.session_store import PaymentSessionStore
 from paynkolay_pos.api.three_ds_store import ThreeDSFormStore
 
@@ -55,5 +55,6 @@ def create_app() -> FastAPI:
     app.include_router(config.router)
     app.include_router(payments.router)
     app.include_router(three_ds.router)
+    app.include_router(results.router)
     app.include_router(reports.router)
     return app
