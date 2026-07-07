@@ -9,30 +9,43 @@ import pytest_asyncio
 from pydantic import SecretStr
 
 from paynkolay_pos.api.app import create_app
-from paynkolay_pos.api.dependencies import get_merchant_secret_key
+from paynkolay_pos.api.dependencies import get_external_payment_logger, get_merchant_secret_key
 from paynkolay_pos.api.session_models import PaymentSessionStatus
 from paynkolay_pos.api.session_store import PaymentSessionStore
 from paynkolay_pos.models import Currency
+from paynkolay_pos.reporting import PaymentLogEvent
 from paynkolay_pos.security import generate_payment_response_hash
 
 MERCHANT_SECRET = "merchant-secret"
 
 
 @pytest_asyncio.fixture
-async def app_client() -> AsyncIterator[tuple[httpx.AsyncClient, PaymentSessionStore]]:
+async def app_client() -> AsyncIterator[
+    tuple[httpx.AsyncClient, PaymentSessionStore, FakeExternalPaymentLogger]
+]:
     app = create_app()
+    fake_logger = FakeExternalPaymentLogger()
     app.dependency_overrides[get_merchant_secret_key] = lambda: SecretStr(MERCHANT_SECRET)
+    app.dependency_overrides[get_external_payment_logger] = lambda: fake_logger
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        yield client, app.state.payment_session_store
+        yield client, app.state.payment_session_store, fake_logger
+
+
+class FakeExternalPaymentLogger:
+    def __init__(self) -> None:
+        self.events: list[PaymentLogEvent] = []
+
+    async def log(self, event: PaymentLogEvent) -> None:
+        self.events.append(event)
 
 
 @pytest.mark.api
 @pytest.mark.asyncio
 async def test_success_result_route_verifies_hash_and_completes_session(
-    app_client: tuple[httpx.AsyncClient, PaymentSessionStore],
+    app_client: tuple[httpx.AsyncClient, PaymentSessionStore, FakeExternalPaymentLogger],
 ) -> None:
-    client, session_store = app_client
+    client, session_store, fake_logger = app_client
     await _seed_session(session_store, order_id="order-success")
     payload = _result_payload(client_ref_code="order-success")
 
@@ -45,14 +58,16 @@ async def test_success_result_route_verifies_hash_and_completes_session(
     assert session.status is PaymentSessionStatus.COMPLETED
     assert session.provider_transaction_id == "IKSIRPF102168"
     assert session.failure_reason is None
+    assert [event.event for event in fake_logger.events] == ["payment_success_returned"]
+    assert "4111111111111111" not in str([event.model_dump() for event in fake_logger.events])
 
 
 @pytest.mark.api
 @pytest.mark.asyncio
 async def test_fail_result_route_verifies_hash_and_fails_session(
-    app_client: tuple[httpx.AsyncClient, PaymentSessionStore],
+    app_client: tuple[httpx.AsyncClient, PaymentSessionStore, FakeExternalPaymentLogger],
 ) -> None:
-    client, session_store = app_client
+    client, session_store, fake_logger = app_client
     await _seed_session(session_store, order_id="order-fail")
     payload = _result_payload(
         client_ref_code="order-fail",
@@ -71,14 +86,15 @@ async def test_fail_result_route_verifies_hash_and_fails_session(
     assert session.status is PaymentSessionStatus.FAILED
     assert session.provider_transaction_id == "IKSIRPF102169"
     assert session.failure_reason == "Issuer declined"
+    assert [event.event for event in fake_logger.events] == ["payment_fail_returned"]
 
 
 @pytest.mark.api
 @pytest.mark.asyncio
 async def test_result_route_rejects_invalid_hash_and_marks_session_failed(
-    app_client: tuple[httpx.AsyncClient, PaymentSessionStore],
+    app_client: tuple[httpx.AsyncClient, PaymentSessionStore, FakeExternalPaymentLogger],
 ) -> None:
-    client, session_store = app_client
+    client, session_store, fake_logger = app_client
     await _seed_session(session_store, order_id="order-bad-hash")
     payload = _result_payload(client_ref_code="order-bad-hash")
     payload["hashDataV2"] = "bad-hash"
@@ -89,14 +105,15 @@ async def test_result_route_rejects_invalid_hash_and_marks_session_failed(
     session = await session_store.get("order-bad-hash")
     assert session.status is PaymentSessionStatus.FAILED
     assert session.failure_reason == "provider result hash verification failed"
+    assert fake_logger.events == []
 
 
 @pytest.mark.api
 @pytest.mark.asyncio
 async def test_result_route_returns_404_for_unknown_session(
-    app_client: tuple[httpx.AsyncClient, PaymentSessionStore],
+    app_client: tuple[httpx.AsyncClient, PaymentSessionStore, FakeExternalPaymentLogger],
 ) -> None:
-    client, _session_store = app_client
+    client, _session_store, _fake_logger = app_client
     payload = _result_payload(client_ref_code="missing-order")
 
     response = await client.get("/payments/result/success", params=payload)
@@ -177,4 +194,3 @@ def _result_payload(
         merchant_secret_key=MERCHANT_SECRET,
     )
     return payload
-

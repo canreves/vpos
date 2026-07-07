@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from paynkolay_pos.api.dependencies import (
+    get_external_payment_logger,
     get_payment_initializer,
     get_payment_session_store,
     get_three_ds_form_store,
@@ -21,7 +22,7 @@ from paynkolay_pos.api.schemas import (
     PaymentFormResponse,
     PaymentLookupResponse,
 )
-from paynkolay_pos.api.session_models import PaymentSessionStatus
+from paynkolay_pos.api.session_models import PaymentSession, PaymentSessionStatus
 from paynkolay_pos.api.session_store import (
     PaymentSessionAlreadyExistsError,
     PaymentSessionNotFoundError,
@@ -29,6 +30,11 @@ from paynkolay_pos.api.session_store import (
 )
 from paynkolay_pos.api.three_ds_store import ThreeDSFormStore
 from paynkolay_pos.models import PaynkolayPaymentResult, PaynkolayThreeDSInitializeResult
+from paynkolay_pos.reporting import (
+    PaymentLogEvent,
+    PaymentLogEventType,
+    SupportsExternalPaymentLogger,
+)
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 PaymentSessionStoreDependency = Annotated[
@@ -43,6 +49,10 @@ ThreeDSFormStoreDependency = Annotated[
     ThreeDSFormStore,
     Depends(get_three_ds_form_store),
 ]
+ExternalLoggerDependency = Annotated[
+    SupportsExternalPaymentLogger,
+    Depends(get_external_payment_logger),
+]
 
 
 @router.post("", response_model=PaymentFormResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -52,6 +62,7 @@ async def create_payment(
     session_store: PaymentSessionStoreDependency,
     three_ds_form_store: ThreeDSFormStoreDependency,
     initializer: PaymentInitializerDependency,
+    external_logger: ExternalLoggerDependency,
 ) -> PaymentFormResponse:
     """Accept and validate a browser payment form payload.
 
@@ -103,6 +114,18 @@ async def create_payment(
             order_id,
             PaymentSessionStatus.PENDING_3DS,
         )
+        await _log_payment_event(
+            external_logger,
+            PaymentLogEventType.PAYMENT_INITIALIZED,
+            session,
+            metadata={"provider_result": "three_ds"},
+        )
+        await _log_payment_event(
+            external_logger,
+            PaymentLogEventType.THREE_DS_REQUIRED,
+            session,
+            metadata={"render_url": f"/payments/{order_id}/three-ds"},
+        )
         three_ds = {"render_url": f"/payments/{order_id}/three-ds"}
         return PaymentFormResponse.from_session(
             session,
@@ -125,6 +148,12 @@ async def create_payment(
                 if session_status is PaymentSessionStatus.FAILED
                 else None
             ),
+        )
+        await _log_payment_event(
+            external_logger,
+            PaymentLogEventType.PAYMENT_INITIALIZED,
+            session,
+            metadata={"provider_result": "final"},
         )
         return PaymentFormResponse.from_session(
             session,
@@ -155,3 +184,21 @@ def _client_host(request: Request) -> str:
     if request.client is None or not request.client.host.strip():
         return "127.0.0.1"
     return request.client.host
+
+
+async def _log_payment_event(
+    external_logger: SupportsExternalPaymentLogger,
+    event_type: PaymentLogEventType,
+    session: PaymentSession,
+    *,
+    metadata: dict[str, object] | None = None,
+) -> None:
+    try:
+        event = PaymentLogEvent.from_session(
+            event=event_type,
+            session=session,
+            metadata=metadata,
+        )
+        await external_logger.log(event)
+    except Exception:
+        return

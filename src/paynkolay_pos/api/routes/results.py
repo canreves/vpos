@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import SecretStr, ValidationError
 
 from paynkolay_pos.api.dependencies import (
+    get_external_payment_logger,
     get_merchant_secret_key,
     get_payment_session_store,
 )
@@ -22,6 +23,11 @@ from paynkolay_pos.api.session_store import (
     PaymentSessionNotFoundError,
     PaymentSessionStore,
 )
+from paynkolay_pos.reporting import (
+    PaymentLogEvent,
+    PaymentLogEventType,
+    SupportsExternalPaymentLogger,
+)
 
 router = APIRouter(prefix="/payments/result", tags=["results"])
 PaymentSessionStoreDependency = Annotated[
@@ -32,6 +38,10 @@ MerchantSecretDependency = Annotated[
     SecretStr,
     Depends(get_merchant_secret_key),
 ]
+ExternalLoggerDependency = Annotated[
+    SupportsExternalPaymentLogger,
+    Depends(get_external_payment_logger),
+]
 
 
 @router.api_route("/success", methods=["GET", "POST"], response_class=HTMLResponse)
@@ -39,6 +49,7 @@ async def payment_success_return(
     request: Request,
     session_store: PaymentSessionStoreDependency,
     merchant_secret_key: MerchantSecretDependency,
+    external_logger: ExternalLoggerDependency,
 ) -> HTMLResponse:
     """Handle Paynkolay success URL returns."""
 
@@ -46,6 +57,7 @@ async def payment_success_return(
         request,
         session_store=session_store,
         merchant_secret_key=merchant_secret_key,
+        external_logger=external_logger,
     )
 
 
@@ -54,6 +66,7 @@ async def payment_fail_return(
     request: Request,
     session_store: PaymentSessionStoreDependency,
     merchant_secret_key: MerchantSecretDependency,
+    external_logger: ExternalLoggerDependency,
 ) -> HTMLResponse:
     """Handle Paynkolay fail URL returns."""
 
@@ -61,6 +74,7 @@ async def payment_fail_return(
         request,
         session_store=session_store,
         merchant_secret_key=merchant_secret_key,
+        external_logger=external_logger,
     )
 
 
@@ -69,6 +83,7 @@ async def _handle_payment_result_return(
     *,
     session_store: PaymentSessionStore,
     merchant_secret_key: SecretStr,
+    external_logger: SupportsExternalPaymentLogger,
 ) -> HTMLResponse:
     payload = await _request_payload(request)
     try:
@@ -94,6 +109,7 @@ async def _handle_payment_result_return(
         session_store,
         verified,
     )
+    await _log_result_event(external_logger, session, verified)
     return _result_html_response(session, verified)
 
 
@@ -214,6 +230,27 @@ def _result_html_response(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+async def _log_result_event(
+    external_logger: SupportsExternalPaymentLogger,
+    session: PaymentSession,
+    verified: VerifiedPaymentResult,
+) -> None:
+    event_type = (
+        PaymentLogEventType.PAYMENT_SUCCESS_RETURNED
+        if verified.result.successful
+        else PaymentLogEventType.PAYMENT_FAIL_RETURNED
+    )
+    try:
+        event = PaymentLogEvent.from_session(
+            event=event_type,
+            session=session,
+            metadata={"response_code": verified.result.response_code},
+        )
+        await external_logger.log(event)
+    except Exception:
+        return
 
 
 def _escape(value: object) -> str:

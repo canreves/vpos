@@ -8,15 +8,21 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 
 from paynkolay_pos.api.dependencies import (
+    get_external_payment_logger,
     get_payment_session_store,
     get_three_ds_form_store,
 )
-from paynkolay_pos.api.session_models import PaymentSessionStatus
+from paynkolay_pos.api.session_models import PaymentSession, PaymentSessionStatus
 from paynkolay_pos.api.session_store import (
     PaymentSessionNotFoundError,
     PaymentSessionStore,
 )
 from paynkolay_pos.api.three_ds_store import ThreeDSFormNotFoundError, ThreeDSFormStore
+from paynkolay_pos.reporting import (
+    PaymentLogEvent,
+    PaymentLogEventType,
+    SupportsExternalPaymentLogger,
+)
 from paynkolay_pos.three_ds import ThreeDSFormPayloadError, render_three_ds_form
 
 router = APIRouter(tags=["three_ds"])
@@ -28,6 +34,10 @@ ThreeDSFormStoreDependency = Annotated[
     ThreeDSFormStore,
     Depends(get_three_ds_form_store),
 ]
+ExternalLoggerDependency = Annotated[
+    SupportsExternalPaymentLogger,
+    Depends(get_external_payment_logger),
+]
 
 
 @router.get("/payments/{order_id}/three-ds", response_class=HTMLResponse)
@@ -35,6 +45,7 @@ async def render_three_ds_challenge(
     order_id: str,
     session_store: PaymentSessionStoreDependency,
     form_store: ThreeDSFormStoreDependency,
+    external_logger: ExternalLoggerDependency,
 ) -> HTMLResponse:
     """Render the provider 3DS form for a pending browser payment."""
 
@@ -69,10 +80,11 @@ async def render_three_ds_challenge(
             detail=str(exc),
         ) from exc
 
-    await session_store.update_status(
+    session = await session_store.update_status(
         order_id,
         PaymentSessionStatus.THREE_DS_RENDERED,
     )
+    await _log_payment_event(external_logger, session)
     return HTMLResponse(
         content=document.html,
         headers={
@@ -80,3 +92,17 @@ async def render_three_ds_challenge(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+async def _log_payment_event(
+    external_logger: SupportsExternalPaymentLogger,
+    session: PaymentSession,
+) -> None:
+    try:
+        event = PaymentLogEvent.from_session(
+            event=PaymentLogEventType.THREE_DS_RENDERED,
+            session=session,
+        )
+        await external_logger.log(event)
+    except Exception:
+        return

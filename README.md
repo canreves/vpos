@@ -94,6 +94,11 @@ Paynkolay success/fail returns are handled by `/payments/result/success` and
 verify `hashDataV2` with the active merchant secret key, update the payment session, and
 render a sanitized result page.
 
+External payment event logging is disabled by default. Set `PAYNKOLAY_EXTERNAL_LOG_URL`
+to send sanitized event payloads to an external HTTP endpoint. Optional
+`PAYNKOLAY_EXTERNAL_LOG_TIMEOUT_SECONDS` controls the request timeout. External logs never
+include full PAN, CVV, OTP, merchant secrets, API keys, hashes, or raw 3DS HTML.
+
 Run the full test suite only:
 
 ```bash

@@ -7,7 +7,10 @@ import pytest
 import pytest_asyncio
 
 from paynkolay_pos.api.app import create_app
-from paynkolay_pos.api.dependencies import get_payment_initializer
+from paynkolay_pos.api.dependencies import (
+    get_external_payment_logger,
+    get_payment_initializer,
+)
 from paynkolay_pos.api.payment_initializer import (
     PaymentInitializationOutcome,
     PaymentProviderInitializationError,
@@ -20,6 +23,7 @@ from paynkolay_pos.models import (
     PaynkolayPaymentResult,
     PaynkolayThreeDSInitializeResult,
 )
+from paynkolay_pos.reporting import PaymentLogEvent
 
 
 @pytest_asyncio.fixture
@@ -28,15 +32,32 @@ async def fake_initializer() -> AsyncIterator[FakePaymentInitializer]:
 
 
 @pytest_asyncio.fixture
-async def client(fake_initializer: FakePaymentInitializer) -> AsyncIterator[httpx.AsyncClient]:
+async def fake_logger() -> AsyncIterator[FakeExternalPaymentLogger]:
+    yield FakeExternalPaymentLogger()
+
+
+@pytest_asyncio.fixture
+async def client(
+    fake_initializer: FakePaymentInitializer,
+    fake_logger: FakeExternalPaymentLogger,
+) -> AsyncIterator[httpx.AsyncClient]:
     app = create_app()
     app.dependency_overrides[get_payment_initializer] = lambda: fake_initializer
+    app.dependency_overrides[get_external_payment_logger] = lambda: fake_logger
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://testserver",
     ) as test_client:
         yield test_client
+
+
+class FakeExternalPaymentLogger:
+    def __init__(self) -> None:
+        self.events: list[PaymentLogEvent] = []
+
+    async def log(self, event: PaymentLogEvent) -> None:
+        self.events.append(event)
 
 
 class FakePaymentInitializer:
@@ -143,6 +164,7 @@ async def test_config_route_exposes_safe_defaults_without_runtime_settings(
 async def test_payment_form_initializes_provider_and_returns_3ds_state(
     client: httpx.AsyncClient,
     fake_initializer: FakePaymentInitializer,
+    fake_logger: FakeExternalPaymentLogger,
 ) -> None:
     response = await client.post(
         "/api/payments",
@@ -168,6 +190,8 @@ async def test_payment_form_initializes_provider_and_returns_3ds_state(
     assert payload["masked_pan"] == "411111******1111"
     assert payload["three_ds"] == {"render_url": f"/payments/{payload['order_id']}/three-ds"}
     assert fake_initializer.calls == [(payload["order_id"], "127.0.0.1")]
+    assert "4111111111111111" not in str([event.model_dump() for event in fake_logger.events])
+    assert "123" not in str([event.model_dump() for event in fake_logger.events])
     assert "4111111111111111" not in response.text
     assert "123" not in response.text
 
@@ -175,6 +199,11 @@ async def test_payment_form_initializes_provider_and_returns_3ds_state(
 
     assert three_ds_response.status_code == 200
     assert "<form>3DS challenge</form>" in three_ds_response.text
+    assert [event.event for event in fake_logger.events] == [
+        "payment_initialized",
+        "three_ds_required",
+        "three_ds_rendered",
+    ]
 
 
 @pytest.mark.api

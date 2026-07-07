@@ -18,6 +18,10 @@ from paynkolay_pos.api.session_store import PaymentSessionStore
 from paynkolay_pos.api.three_ds_store import ThreeDSFormStore
 from paynkolay_pos.clients import PaynkolayClient
 from paynkolay_pos.config import load_runtime_settings
+from paynkolay_pos.reporting import (
+    SupportsExternalPaymentLogger,
+    external_logger_from_env,
+)
 
 
 def package_root() -> Path:
@@ -90,3 +94,9 @@ def get_merchant_secret_key() -> SecretStr:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"runtime payment configuration is unavailable: {exc}",
         ) from exc
+
+
+def get_external_payment_logger() -> SupportsExternalPaymentLogger:
+    """Return the configured external payment logger."""
+
+    return external_logger_from_env()
