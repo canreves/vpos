@@ -1,0 +1,74 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "sandbox_3ds_capture",
+      "title": "Sandbox 3DS captured payment",
+      "card_alias": "sandbox_3ds_success",
+      "amount": "100.00",
+      "currency": "TRY",
+      "requires_3ds": true,
+      "expected_initialize_status": "pending_3ds",
+      "expected_final_status": "captured",
+      "installment_count": 1,
+      "payment_channel": "e_commerce",
+      "moto": false,
+      "tags": ["sandbox", "three_ds", "smoke"]
+    },
+    {
+      "scenario_id": "sandbox_3ds_declined",
+      "title": "Sandbox 3DS declined payment",
+      "card_alias": "sandbox_3ds_declined",
+      "amount": "100.00",
+      "currency": "TRY",
+      "requires_3ds": true,
+      "expected_initialize_status": "pending_3ds",
+      "expected_final_status": "failed",
+      "installment_count": 1,
+      "payment_channel": "e_commerce",
+      "moto": false,
+      "tags": ["sandbox", "three_ds", "negative"]
+    },
+    {
+      "scenario_id": "sandbox_moto_authorized",
+      "title": "Sandbox MoTo authorized payment",
+      "card_alias": "sandbox_moto_success",
+      "amount": "75.00",
+      "currency": "TRY",
+      "requires_3ds": false,
+      "expected_initialize_status": "authorized",
+      "expected_final_status": "authorized",
+      "installment_count": 1,
+      "payment_channel": "moto",
+      "moto": true,
+      "tags": ["sandbox", "moto", "smoke"]
+    },
+    {
+      "scenario_id": "sandbox_installment_3_capture",
+      "title": "Sandbox 3 installment captured payment",
+      "card_alias": "sandbox_installment_success",
+      "amount": "300.00",
+      "currency": "TRY",
+      "requires_3ds": true,
+      "expected_initialize_status": "pending_3ds",
+      "expected_final_status": "captured",
+      "installment_count": 3,
+      "payment_channel": "e_commerce",
+      "moto": false,
+      "tags": ["sandbox", "three_ds", "installment"]
+    },
+    {
+      "scenario_id": "sandbox_payment_list_missing",
+      "title": "Sandbox PaymentList missing transaction",
+      "card_alias": "sandbox_3ds_success",
+      "amount": "10.00",
+      "currency": "TRY",
+      "requires_3ds": true,
+      "expected_initialize_status": "pending_3ds",
+      "expected_final_status": "failed",
+      "installment_count": 1,
+      "payment_channel": "e_commerce",
+      "moto": false,
+      "tags": ["sandbox", "negative", "payment_list"]
+    }
+  ]
+}

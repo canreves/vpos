@@ -32,6 +32,9 @@ markers = [
     "callback: callback and webhook verification tests",
     "scenario: data-driven payment scenario catalogue tests",
     "negative: invalid payment and security scenarios",
+    "moto: Mail Order/Telephone Order payment scenarios",
+    "sandbox: tests that require a private Paynkolay sandbox configuration",
+    "live_e2e: guarded tests that may call external Paynkolay sandbox services",
 ]
 
 [tool.ruff]

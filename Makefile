@@ -1,4 +1,4 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative parallel synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox sandbox-3ds sandbox-moto sandbox-report parallel synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
@@ -32,6 +32,9 @@ help:
 	@echo "  make scenarios       Run data-driven scenario catalogue tests"
 	@echo "  make scenarios-file  Run scenario tests from SCENARIO_FILE"
 	@echo "  make negative        Run negative-marked tests"
+	@echo "  make sandbox         Run private Paynkolay sandbox skeleton/live tests"
+	@echo "  make sandbox-3ds     Run private sandbox 3DS tests"
+	@echo "  make sandbox-moto    Run private sandbox MoTo tests"
 	@echo "  make synthetic-cards Generate a synthetic cards JSON array"
 	@echo "  make synthetic-scenarios Generate a synthetic scenario catalogue"
 	@echo "  make scale-demo      Generate 100 cards, 1000 scenarios, then run scenarios"
@@ -40,6 +43,7 @@ help:
 	@echo "Reporting:"
 	@echo "  make allure-results  Run tests and write Allure result files"
 	@echo "  make report          Generate an Allure HTML report"
+	@echo "  make sandbox-report  Generate Allure results for private sandbox tests"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean           Remove generated local artifacts"
@@ -86,6 +90,25 @@ scenarios-file:
 
 negative:
 	$(PYTEST) -m negative
+
+sandbox:
+	@test -n "$(PAYNKOLAY_CONFIG_FILE)" || { echo "PAYNKOLAY_CONFIG_FILE is required for sandbox runs"; exit 1; }
+	$(PYTEST) -m sandbox
+
+sandbox-3ds:
+	@test -n "$(PAYNKOLAY_CONFIG_FILE)" || { echo "PAYNKOLAY_CONFIG_FILE is required for sandbox runs"; exit 1; }
+	$(PYTEST) -m "sandbox and three_ds"
+
+sandbox-moto:
+	@test -n "$(PAYNKOLAY_CONFIG_FILE)" || { echo "PAYNKOLAY_CONFIG_FILE is required for sandbox runs"; exit 1; }
+	$(PYTEST) -m "sandbox and moto"
+
+sandbox-report:
+	@test -n "$(PAYNKOLAY_CONFIG_FILE)" || { echo "PAYNKOLAY_CONFIG_FILE is required for sandbox runs"; exit 1; }
+	rm -rf $(ALLURE_RESULTS)
+	$(PYTEST) -m sandbox --alluredir=$(ALLURE_RESULTS)
+	@command -v allure >/dev/null 2>&1 || { echo "Allure CLI is required. Install it with: brew install allure"; exit 1; }
+	allure generate $(ALLURE_RESULTS) -o $(ALLURE_REPORT) --clean
 
 synthetic-cards:
 	poetry run python tools/generate_synthetic_cards.py --count $(COUNT) --output $(OUT)

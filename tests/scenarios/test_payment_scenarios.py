@@ -105,6 +105,24 @@ def test_load_payment_scenario_catalog_from_json_file() -> None:
 
 
 @pytest.mark.api
+@pytest.mark.sandbox
+def test_load_sandbox_e2e_scenario_example_from_json_file() -> None:
+    catalog_path = (
+        Path(__file__).parents[2]
+        / "examples"
+        / "scenarios"
+        / "sandbox_e2e_scenarios.example.json"
+    )
+
+    catalog = load_payment_scenario_catalog(catalog_path)
+
+    assert "sandbox_3ds_capture" in catalog.ids()
+    assert catalog.get("sandbox_moto_authorized").payment_channel is PaymentChannel.MOTO
+    assert catalog.get("sandbox_installment_3_capture").installment_count == 3
+    assert catalog.tagged("sandbox")
+
+
+@pytest.mark.api
 def test_scenario_catalog_path_from_env_defaults_to_checked_in_catalog(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
