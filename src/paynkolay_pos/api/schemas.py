@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, SecretStr, field_validator
 
 from paynkolay_pos.api.session_models import PaymentSession, PaymentSessionStatus
+from paynkolay_pos.config import CardBrand
 from paynkolay_pos.models import Currency
 
 
@@ -37,6 +38,7 @@ class PaymentFormRequest(BaseModel):
     order_id: str | None = Field(default=None, min_length=1, max_length=64)
     amount: Decimal = Field(gt=Decimal("0"), max_digits=12, decimal_places=2)
     currency: Currency = Currency.TRY
+    card_brand: CardBrand = CardBrand.VISA
     card_number: SecretStr = Field(min_length=12, max_length=19)
     card_holder: str = Field(min_length=1, max_length=64)
     expiry_month: int = Field(ge=1, le=12)
@@ -79,13 +81,28 @@ class PaymentFormResponse(BaseModel):
     currency: Currency
     masked_pan: str
     requires_3ds: bool
+    provider_transaction_id: str | None = None
+    failure_reason: str | None = None
+    three_ds: dict[str, str] | None = None
     message: str
     links: dict[str, str]
 
     @classmethod
-    def from_session(cls, session: PaymentSession) -> PaymentFormResponse:
+    def from_session(
+        cls,
+        session: PaymentSession,
+        *,
+        message: str = "Payment session created; provider execution will be attached in phase 3.",
+        three_ds: dict[str, str] | None = None,
+    ) -> PaymentFormResponse:
         """Build a browser response from sanitized session state."""
 
+        links = {
+            "status": f"/api/payments/{session.order_id}",
+            "result": f"/result?order_id={session.order_id}",
+        }
+        if three_ds is not None:
+            links["three_ds"] = three_ds["render_url"]
         return cls(
             order_id=session.order_id,
             status=session.status,
@@ -93,11 +110,11 @@ class PaymentFormResponse(BaseModel):
             currency=session.currency,
             masked_pan=session.masked_pan,
             requires_3ds=session.requires_3ds,
-            message="Payment session created; provider execution will be attached in phase 3.",
-            links={
-                "status": f"/api/payments/{session.order_id}",
-                "result": f"/result?order_id={session.order_id}",
-            },
+            provider_transaction_id=session.provider_transaction_id,
+            failure_reason=session.failure_reason,
+            three_ds=three_ds,
+            message=message,
+            links=links,
         )
 
 
@@ -122,6 +139,14 @@ class PaymentLookupResponse(BaseModel):
     def from_session(cls, session: PaymentSession) -> PaymentLookupResponse:
         """Build a lookup response from sanitized session state."""
 
+        links = {
+            "result": f"/result?order_id={session.order_id}",
+        }
+        if session.status in {
+            PaymentSessionStatus.PENDING_3DS,
+            PaymentSessionStatus.THREE_DS_RENDERED,
+        }:
+            links["three_ds"] = f"/payments/{session.order_id}/three-ds"
         return cls(
             order_id=session.order_id,
             status=session.status,
@@ -135,9 +160,7 @@ class PaymentLookupResponse(BaseModel):
             failure_reason=session.failure_reason,
             created_at=session.created_at.isoformat(),
             updated_at=session.updated_at.isoformat(),
-            links={
-                "result": f"/result?order_id={session.order_id}",
-            },
+            links=links,
         )
 
 

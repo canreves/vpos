@@ -5,31 +5,46 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from paynkolay_pos.api.dependencies import get_payment_session_store
+from paynkolay_pos.api.dependencies import (
+    get_payment_initializer,
+    get_payment_session_store,
+)
+from paynkolay_pos.api.payment_initializer import (
+    PaymentProviderInitializationError,
+    SupportsPaymentInitializer,
+)
 from paynkolay_pos.api.schemas import (
     PaymentFormRequest,
     PaymentFormResponse,
     PaymentLookupResponse,
 )
+from paynkolay_pos.api.session_models import PaymentSessionStatus
 from paynkolay_pos.api.session_store import (
     PaymentSessionAlreadyExistsError,
     PaymentSessionNotFoundError,
     PaymentSessionStore,
 )
+from paynkolay_pos.models import PaynkolayPaymentResult, PaynkolayThreeDSInitializeResult
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 PaymentSessionStoreDependency = Annotated[
     PaymentSessionStore,
     Depends(get_payment_session_store),
 ]
+PaymentInitializerDependency = Annotated[
+    SupportsPaymentInitializer,
+    Depends(get_payment_initializer),
+]
 
 
 @router.post("", response_model=PaymentFormResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_payment(
     request: PaymentFormRequest,
+    http_request: Request,
     session_store: PaymentSessionStoreDependency,
+    initializer: PaymentInitializerDependency,
 ) -> PaymentFormResponse:
     """Accept and validate a browser payment form payload.
 
@@ -53,7 +68,59 @@ async def create_payment(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
-    return PaymentFormResponse.from_session(session)
+
+    try:
+        outcome = await initializer.initialize(
+            request,
+            order_id=order_id,
+            card_holder_ip=_client_host(http_request),
+        )
+    except PaymentProviderInitializationError as exc:
+        session = await session_store.update_status(
+            order_id,
+            PaymentSessionStatus.FAILED,
+            failure_reason="provider payment initialization failed",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=session.failure_reason,
+        ) from exc
+
+    provider_result = outcome.provider_result
+    if isinstance(provider_result, PaynkolayThreeDSInitializeResult):
+        session = await session_store.update_status(
+            order_id,
+            PaymentSessionStatus.PENDING_3DS,
+        )
+        three_ds = {"render_url": f"/payments/{order_id}/three-ds"}
+        return PaymentFormResponse.from_session(
+            session,
+            message="Payment initialized; 3D Secure authentication is required.",
+            three_ds=three_ds,
+        )
+
+    if isinstance(provider_result, PaynkolayPaymentResult):
+        session_status = (
+            PaymentSessionStatus.COMPLETED
+            if provider_result.successful
+            else PaymentSessionStatus.FAILED
+        )
+        session = await session_store.update_status(
+            order_id,
+            session_status,
+            provider_transaction_id=provider_result.reference_code,
+            failure_reason=(
+                provider_result.response_data
+                if session_status is PaymentSessionStatus.FAILED
+                else None
+            ),
+        )
+        return PaymentFormResponse.from_session(
+            session,
+            message="Payment provider returned a final payment result.",
+        )
+
+    raise TypeError(f"unsupported provider result type: {type(provider_result).__name__}")
 
 
 @router.get("/{order_id}", response_model=PaymentLookupResponse)
@@ -71,3 +138,9 @@ async def get_payment(
             detail=str(exc),
         ) from exc
     return PaymentLookupResponse.from_session(session)
+
+
+def _client_host(request: Request) -> str:
+    if request.client is None or not request.client.host.strip():
+        return "127.0.0.1"
+    return request.client.host

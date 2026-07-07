@@ -24,6 +24,7 @@
     return {
       amount: data.get("amount"),
       currency: data.get("currency"),
+      card_brand: data.get("card_brand"),
       card_number: String(data.get("card_number") || "").replace(/\s+/g, ""),
       card_holder: data.get("card_holder"),
       expiry_month: Number(data.get("expiry_month")),
@@ -37,11 +38,20 @@
   async function loadConfig() {
     const config = await window.PaynkolayApi.getConfig();
     const currencySelect = document.getElementById("currency");
+    const brandSelect = document.getElementById("card-brand");
     currencySelect.replaceChildren(
       ...config.supported_currencies.map((currency) => {
         const option = document.createElement("option");
         option.value = currency;
         option.textContent = currency;
+        return option;
+      }),
+    );
+    brandSelect.replaceChildren(
+      ...config.supported_card_brands.map((brand) => {
+        const option = document.createElement("option");
+        option.value = brand;
+        option.textContent = brand.toUpperCase();
         return option;
       }),
     );
@@ -84,4 +94,3 @@
     setMessage(error.message, "error");
   });
 })();
-

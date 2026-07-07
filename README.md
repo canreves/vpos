@@ -81,6 +81,10 @@ By default the UI is served at `http://127.0.0.1:8000`. Override the bind addres
 `WEB_HOST` and `WEB_PORT`; pass `WEB_RELOAD=--reload` during local development when file
 watching is available.
 
+The web UI can load without private runtime configuration, but payment submission requires
+`PAYNKOLAY_CONFIG_FILE` so the backend can build Paynkolay form requests with merchant,
+callback, success, and fail URL settings.
+
 Run the full test suite only:
 
 ```bash
