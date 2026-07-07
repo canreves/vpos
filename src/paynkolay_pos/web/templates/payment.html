@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Paynkolay POS</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script src="/static/js/api-client.js" defer></script>
+    <script src="/static/js/payment-form.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Paynkolay POS</h1>
+          <p id="environment-label">Environment pending</p>
+        </div>
+        <nav aria-label="Primary">
+          <a class="nav-link active" href="/">Payment</a>
+          <a class="nav-link" href="/reports">Reports</a>
+        </nav>
+      </header>
+
+      <main class="workspace">
+        <section class="panel payment-panel" aria-labelledby="payment-title">
+          <div class="panel-heading">
+            <h2 id="payment-title">Payment</h2>
+            <span class="status-pill" id="config-status">Config</span>
+          </div>
+
+          <form id="payment-form" class="payment-form" autocomplete="off">
+            <label class="field field-wide">
+              <span>Card number</span>
+              <input
+                id="card-number"
+                name="card_number"
+                inputmode="numeric"
+                minlength="12"
+                maxlength="19"
+                required
+              >
+            </label>
+
+            <label class="field">
+              <span>Card holder</span>
+              <input id="card-holder" name="card_holder" maxlength="64" required>
+            </label>
+
+            <label class="field">
+              <span>Amount</span>
+              <input id="amount" name="amount" type="number" min="0.01" step="0.01" required>
+            </label>
+
+            <label class="field">
+              <span>Month</span>
+              <input id="expiry-month" name="expiry_month" type="number" min="1" max="12" required>
+            </label>
+
+            <label class="field">
+              <span>Year</span>
+              <input id="expiry-year" name="expiry_year" type="number" min="2026" max="2100" required>
+            </label>
+
+            <label class="field">
+              <span>CVV</span>
+              <input id="cvv" name="cvv" inputmode="numeric" minlength="3" maxlength="4" required>
+            </label>
+
+            <label class="field">
+              <span>Currency</span>
+              <select id="currency" name="currency" required>
+                <option value="TRY">TRY</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Installment</span>
+              <input id="installment-count" name="installment_count" type="number" min="1" max="12" value="1" required>
+            </label>
+
+            <label class="check-field">
+              <input id="requires-3ds" name="requires_3ds" type="checkbox" checked>
+              <span>3D Secure</span>
+            </label>
+
+            <div class="actions">
+              <button id="submit-payment" type="submit">Create payment</button>
+            </div>
+          </form>
+        </section>
+
+        <aside class="panel result-panel" aria-labelledby="result-title">
+          <div class="panel-heading">
+            <h2 id="result-title">Result</h2>
+            <span class="status-pill neutral" id="payment-state">Idle</span>
+          </div>
+          <dl class="result-list">
+            <div>
+              <dt>Order ID</dt>
+              <dd id="result-order-id">-</dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd id="result-status">-</dd>
+            </div>
+            <div>
+              <dt>Amount</dt>
+              <dd id="result-amount">-</dd>
+            </div>
+            <div>
+              <dt>3DS</dt>
+              <dd id="result-3ds">-</dd>
+            </div>
+          </dl>
+          <p class="inline-message" id="form-message">Ready</p>
+        </aside>
+      </main>
+    </div>
+  </body>
+</html>
+

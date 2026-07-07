@@ -71,6 +71,16 @@ Run the standard validation set:
 make check
 ```
 
+Run the browser-based FastAPI web UI:
+
+```bash
+make web
+```
+
+By default the UI is served at `http://127.0.0.1:8000`. Override the bind address with
+`WEB_HOST` and `WEB_PORT`; pass `WEB_RELOAD=--reload` during local development when file
+watching is available.
+
 Run the full test suite only:
 
 ```bash

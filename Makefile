@@ -1,8 +1,9 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web web-test web-check allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
 MYPY ?= poetry run mypy src tests
+UVICORN ?= poetry run uvicorn
 ALLURE_RESULTS ?= allure-results
 ALLURE_REPORT ?= allure-report
 COUNT ?= 100
@@ -10,6 +11,9 @@ OUT ?= /tmp/paynkolay-synthetic-cards.json
 SCENARIO_COUNT ?= 1000
 SCENARIO_OUT ?= /tmp/paynkolay-synthetic-scenarios.json
 SCENARIO_FILE ?=
+WEB_HOST ?= 127.0.0.1
+WEB_PORT ?= 8000
+WEB_RELOAD ?=
 
 help:
 	@echo "Paynkolay Sanal POS automation commands"
@@ -40,6 +44,11 @@ help:
 	@echo "  make synthetic-scenarios Generate a synthetic scenario catalogue"
 	@echo "  make scale-demo      Generate 100 cards, 1000 scenarios, then run scenarios"
 	@echo "  make scale-demo-parallel Run generated scenarios with pytest-xdist"
+	@echo ""
+	@echo "Web UI:"
+	@echo "  make web             Run the FastAPI web UI"
+	@echo "  make web-test        Run web/API tests"
+	@echo "  make web-check       Run lint, type checks, and web/API tests"
 	@echo ""
 	@echo "Reporting:"
 	@echo "  make allure-results  Run tests and write Allure result files"
@@ -130,6 +139,17 @@ scale-demo-parallel:
 	$(MAKE) synthetic-cards COUNT=$(COUNT) OUT=$(OUT)
 	poetry run python tools/generate_synthetic_scenarios.py --count $(SCENARIO_COUNT) --card-count $(COUNT) --output $(SCENARIO_OUT)
 	PAYNKOLAY_SCENARIO_CATALOG=$(SCENARIO_OUT) $(PYTEST) -m scenario -n auto
+
+web:
+	$(UVICORN) paynkolay_pos.api.app:create_app --factory $(WEB_RELOAD) --host $(WEB_HOST) --port $(WEB_PORT)
+
+web-test:
+	$(PYTEST) tests/api
+
+web-check:
+	$(RUFF)
+	$(MYPY)
+	$(PYTEST) tests/api
 
 allure-results:
 	rm -rf $(ALLURE_RESULTS)

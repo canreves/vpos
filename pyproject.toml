@@ -7,10 +7,19 @@ requires-python = ">=3.11,<4.0"
 dependencies = [
     "pydantic (>=2.0)",
     "httpx>=0.28.0,<0.29.0",
+    "fastapi>=0.115.0,<1.0.0",
+    "uvicorn[standard]>=0.32.0,<1.0.0",
+    "jinja2>=3.1.0,<4.0.0",
+    "python-multipart>=0.0.12,<1.0.0",
 ]
 
 [tool.poetry]
 packages = [{ include = "paynkolay_pos", from = "src" }]
+include = [
+    { path = "src/paynkolay_pos/web/templates/*.html", format = ["sdist", "wheel"] },
+    { path = "src/paynkolay_pos/web/static/css/*.css", format = ["sdist", "wheel"] },
+    { path = "src/paynkolay_pos/web/static/js/*.js", format = ["sdist", "wheel"] },
+]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
