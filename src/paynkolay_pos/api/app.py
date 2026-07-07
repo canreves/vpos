@@ -8,8 +8,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from paynkolay_pos.api.dependencies import static_dir, templates_dir
-from paynkolay_pos.api.routes import config, health, payments, reports
+from paynkolay_pos.api.routes import config, health, payments, reports, three_ds
 from paynkolay_pos.api.session_store import PaymentSessionStore
+from paynkolay_pos.api.three_ds_store import ThreeDSFormStore
 
 
 def create_app() -> FastAPI:
@@ -21,6 +22,7 @@ def create_app() -> FastAPI:
         description="Browser UI and API surface for Paynkolay Sanal POS testing.",
     )
     app.state.payment_session_store = PaymentSessionStore()
+    app.state.three_ds_form_store = ThreeDSFormStore()
     app.mount("/static", StaticFiles(directory=static_dir()), name="static")
 
     templates = Jinja2Templates(directory=templates_dir())
@@ -52,5 +54,6 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(config.router)
     app.include_router(payments.router)
+    app.include_router(three_ds.router)
     app.include_router(reports.router)
     return app

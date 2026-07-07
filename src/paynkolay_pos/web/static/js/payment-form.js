@@ -12,6 +12,7 @@
     amount: document.getElementById("result-amount"),
     threeDs: document.getElementById("result-3ds"),
   };
+  const threeDsLink = document.getElementById("result-three-ds-link");
 
   function setMessage(text, kind) {
     message.textContent = text;
@@ -79,6 +80,12 @@
       resultFields.status.textContent = response.status;
       resultFields.amount.textContent = `${response.amount} ${response.currency}`;
       resultFields.threeDs.textContent = response.requires_3ds ? "Required" : "Not required";
+      if (response.three_ds && response.three_ds.render_url) {
+        threeDsLink.href = response.three_ds.render_url;
+        threeDsLink.classList.remove("hidden");
+      } else {
+        threeDsLink.classList.add("hidden");
+      }
       setMessage(response.message, "success");
     } catch (error) {
       setMessage(error.message, "error");

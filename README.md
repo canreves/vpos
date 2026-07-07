@@ -85,6 +85,10 @@ The web UI can load without private runtime configuration, but payment submissio
 `PAYNKOLAY_CONFIG_FILE` so the backend can build Paynkolay form requests with merchant,
 callback, success, and fail URL settings.
 
+When Paynkolay returns a 3D Secure form, the web API stores the provider form transiently
+and serves it at `/payments/{order_id}/three-ds`. The payload may be raw HTML or base64
+HTML; OTP entry remains on the bank/ACS form, not on the merchant UI.
+
 Run the full test suite only:
 
 ```bash

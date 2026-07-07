@@ -255,6 +255,27 @@ select {
   color: var(--muted);
 }
 
+.result-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 20px 0;
+}
+
+.secondary-action {
+  min-height: 40px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 9px 14px;
+  color: var(--accent-strong);
+  background: #ffffff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.hidden {
+  display: none;
+}
+
 @media (max-width: 860px) {
   .shell {
     width: min(100% - 24px, 720px);
@@ -296,4 +317,3 @@ select {
     text-align: center;
   }
 }
-

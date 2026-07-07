@@ -14,6 +14,7 @@ from paynkolay_pos.api.payment_initializer import (
     SupportsPaymentInitializer,
 )
 from paynkolay_pos.api.session_store import PaymentSessionStore
+from paynkolay_pos.api.three_ds_store import ThreeDSFormStore
 from paynkolay_pos.clients import PaynkolayClient
 from paynkolay_pos.config import load_runtime_settings
 
@@ -52,6 +53,12 @@ def get_payment_session_store(request: Request) -> PaymentSessionStore:
     """Return the app-scoped in-memory payment session store."""
 
     return cast(PaymentSessionStore, request.app.state.payment_session_store)
+
+
+def get_three_ds_form_store(request: Request) -> ThreeDSFormStore:
+    """Return the app-scoped transient 3DS form store."""
+
+    return cast(ThreeDSFormStore, request.app.state.three_ds_form_store)
 
 
 async def get_payment_initializer() -> AsyncIterator[SupportsPaymentInitializer]:

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from paynkolay_pos.api.dependencies import (
     get_payment_initializer,
     get_payment_session_store,
+    get_three_ds_form_store,
 )
 from paynkolay_pos.api.payment_initializer import (
     PaymentProviderInitializationError,
@@ -26,6 +27,7 @@ from paynkolay_pos.api.session_store import (
     PaymentSessionNotFoundError,
     PaymentSessionStore,
 )
+from paynkolay_pos.api.three_ds_store import ThreeDSFormStore
 from paynkolay_pos.models import PaynkolayPaymentResult, PaynkolayThreeDSInitializeResult
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
@@ -37,6 +39,10 @@ PaymentInitializerDependency = Annotated[
     SupportsPaymentInitializer,
     Depends(get_payment_initializer),
 ]
+ThreeDSFormStoreDependency = Annotated[
+    ThreeDSFormStore,
+    Depends(get_three_ds_form_store),
+]
 
 
 @router.post("", response_model=PaymentFormResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -44,6 +50,7 @@ async def create_payment(
     request: PaymentFormRequest,
     http_request: Request,
     session_store: PaymentSessionStoreDependency,
+    three_ds_form_store: ThreeDSFormStoreDependency,
     initializer: PaymentInitializerDependency,
 ) -> PaymentFormResponse:
     """Accept and validate a browser payment form payload.
@@ -88,6 +95,10 @@ async def create_payment(
 
     provider_result = outcome.provider_result
     if isinstance(provider_result, PaynkolayThreeDSInitializeResult):
+        await three_ds_form_store.put(
+            order_id,
+            provider_result.bank_request_message,
+        )
         session = await session_store.update_status(
             order_id,
             PaymentSessionStatus.PENDING_3DS,

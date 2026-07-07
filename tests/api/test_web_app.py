@@ -171,6 +171,11 @@ async def test_payment_form_initializes_provider_and_returns_3ds_state(
     assert "4111111111111111" not in response.text
     assert "123" not in response.text
 
+    three_ds_response = await client.get(payload["three_ds"]["render_url"])
+
+    assert three_ds_response.status_code == 200
+    assert "<form>3DS challenge</form>" in three_ds_response.text
+
 
 @pytest.mark.api
 @pytest.mark.asyncio
