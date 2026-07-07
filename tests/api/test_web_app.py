@@ -1,22 +1,28 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 
+import httpx
 import pytest
-from fastapi.testclient import TestClient
+import pytest_asyncio
 
 from paynkolay_pos.api.app import create_app
 
 
-@pytest.fixture
-def client() -> Iterator[TestClient]:
-    with TestClient(create_app()) as test_client:
+@pytest_asyncio.fixture
+async def client() -> AsyncIterator[httpx.AsyncClient]:
+    transport = httpx.ASGITransport(app=create_app())
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+    ) as test_client:
         yield test_client
 
 
 @pytest.mark.api
-def test_health_check_returns_ok(client: TestClient) -> None:
-    response = client.get("/health")
+@pytest.mark.asyncio
+async def test_health_check_returns_ok(client: httpx.AsyncClient) -> None:
+    response = await client.get("/health")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -27,8 +33,9 @@ def test_health_check_returns_ok(client: TestClient) -> None:
 
 
 @pytest.mark.api
-def test_root_renders_payment_screen(client: TestClient) -> None:
-    response = client.get("/")
+@pytest.mark.asyncio
+async def test_root_renders_payment_screen(client: httpx.AsyncClient) -> None:
+    response = await client.get("/")
 
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
@@ -36,13 +43,14 @@ def test_root_renders_payment_screen(client: TestClient) -> None:
 
 
 @pytest.mark.api
-def test_config_route_exposes_safe_defaults_without_runtime_settings(
-    client: TestClient,
+@pytest.mark.asyncio
+async def test_config_route_exposes_safe_defaults_without_runtime_settings(
+    client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("PAYNKOLAY_CONFIG_FILE", raising=False)
 
-    response = client.get("/api/config")
+    response = await client.get("/api/config")
 
     assert response.status_code == 200
     payload = response.json()
@@ -54,8 +62,9 @@ def test_config_route_exposes_safe_defaults_without_runtime_settings(
 
 
 @pytest.mark.api
-def test_payment_form_accepts_valid_browser_payload(client: TestClient) -> None:
-    response = client.post(
+@pytest.mark.asyncio
+async def test_payment_form_accepts_valid_browser_payload(client: httpx.AsyncClient) -> None:
+    response = await client.post(
         "/api/payments",
         json={
             "amount": "100.00",
@@ -81,8 +90,11 @@ def test_payment_form_accepts_valid_browser_payload(client: TestClient) -> None:
 
 
 @pytest.mark.api
-def test_payment_form_rejects_non_numeric_card_number(client: TestClient) -> None:
-    response = client.post(
+@pytest.mark.asyncio
+async def test_payment_form_rejects_non_numeric_card_number(
+    client: httpx.AsyncClient,
+) -> None:
+    response = await client.post(
         "/api/payments",
         json={
             "amount": "100.00",
@@ -98,4 +110,3 @@ def test_payment_form_rejects_non_numeric_card_number(client: TestClient) -> Non
     )
 
     assert response.status_code == 422
-
