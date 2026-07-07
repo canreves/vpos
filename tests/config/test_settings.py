@@ -114,6 +114,7 @@ def test_load_runtime_settings_uses_environment_override(
 
 
 @pytest.mark.config
+@pytest.mark.smoke
 def test_example_runtime_settings_template_matches_schema() -> None:
     template_path = (
         Path(__file__).parents[2] / "examples" / "config" / "paynkolay-settings.example.json"

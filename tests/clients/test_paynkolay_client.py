@@ -183,6 +183,7 @@ async def test_initialize_payment_signs_request_and_parses_response() -> None:
 
 
 @pytest.mark.api
+@pytest.mark.smoke
 @pytest.mark.asyncio
 async def test_payment_form_payload_maps_internal_request_to_paynkolay_fields() -> None:
     settings = RuntimeSettings.model_validate(valid_settings_payload())

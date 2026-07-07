@@ -299,6 +299,7 @@ async def test_mocked_payment_lifecycle_confirms_final_status_and_callback() -> 
 
 @pytest.mark.api
 @pytest.mark.three_ds
+@pytest.mark.smoke
 @pytest.mark.asyncio
 async def test_mocked_paynkolay_form_lifecycle_confirms_result_and_payment_list_status() -> None:
     settings = runtime_settings()

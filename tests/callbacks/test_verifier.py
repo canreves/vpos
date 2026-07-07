@@ -24,6 +24,7 @@ def test_canonicalize_callback_signature_payload_uses_provider_field_order() -> 
 
 
 @pytest.mark.callback
+@pytest.mark.smoke
 def test_verify_callback_signature_accepts_matching_hmac() -> None:
     callback = CallbackPayload.model_validate(signed_callback_payload())
 

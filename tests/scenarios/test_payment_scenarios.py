@@ -85,6 +85,7 @@ def test_payment_scenario_catalog_indexes_unique_scenarios() -> None:
 
 
 @pytest.mark.api
+@pytest.mark.smoke
 def test_load_payment_scenario_catalog_from_json_file() -> None:
     catalog_path = (
         Path(__file__).parents[2] / "examples" / "scenarios" / "payment_scenarios.json"

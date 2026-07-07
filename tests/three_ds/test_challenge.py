@@ -100,6 +100,7 @@ async def test_complete_three_ds_challenge_supports_provider_specific_selectors(
 
 
 @pytest.mark.three_ds
+@pytest.mark.smoke
 @pytest.mark.asyncio
 async def test_complete_three_ds_html_challenge_loads_inline_provider_html() -> None:
     page = FakePage()
