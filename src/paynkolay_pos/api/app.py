@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 
 from paynkolay_pos.api.dependencies import static_dir, templates_dir
 from paynkolay_pos.api.routes import config, health, payments, reports
+from paynkolay_pos.api.session_store import PaymentSessionStore
 
 
 def create_app() -> FastAPI:
@@ -19,6 +20,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description="Browser UI and API surface for Paynkolay Sanal POS testing.",
     )
+    app.state.payment_session_store = PaymentSessionStore()
     app.mount("/static", StaticFiles(directory=static_dir()), name="static")
 
     templates = Jinja2Templates(directory=templates_dir())

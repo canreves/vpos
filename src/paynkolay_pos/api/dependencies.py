@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import cast
+
+from fastapi import Request
+
+from paynkolay_pos.api.session_store import PaymentSessionStore
 
 
 def package_root() -> Path:
@@ -35,3 +40,8 @@ def allure_report_dir() -> Path:
 
     return Path(os.getenv("PAYNKOLAY_ALLURE_REPORT_DIR", "allure-report"))
 
+
+def get_payment_session_store(request: Request) -> PaymentSessionStore:
+    """Return the app-scoped in-memory payment session store."""
+
+    return cast(PaymentSessionStore, request.app.state.payment_session_store)

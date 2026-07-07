@@ -85,8 +85,75 @@ async def test_payment_form_accepts_valid_browser_payload(client: httpx.AsyncCli
     assert payload["status"] == "created"
     assert payload["amount"] == "100.00"
     assert payload["requires_3ds"] is True
+    assert payload["masked_pan"] == "411111******1111"
     assert "4111111111111111" not in response.text
     assert "123" not in response.text
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_payment_lookup_returns_stored_session(client: httpx.AsyncClient) -> None:
+    create_response = await client.post(
+        "/api/payments",
+        json={
+            "order_id": "order-web-1001",
+            "amount": "250.50",
+            "currency": "TRY",
+            "card_number": "4111111111111111",
+            "card_holder": "PAYNKOLAY TEST",
+            "expiry_month": 12,
+            "expiry_year": 2030,
+            "cvv": "123",
+            "requires_3ds": False,
+            "installment_count": 2,
+        },
+    )
+    assert create_response.status_code == 202
+
+    response = await client.get("/api/payments/order-web-1001")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["order_id"] == "order-web-1001"
+    assert payload["status"] == "created"
+    assert payload["amount"] == "250.50"
+    assert payload["masked_pan"] == "411111******1111"
+    assert payload["card_holder"] == "PAYNKOLAY TEST"
+    assert payload["requires_3ds"] is False
+    assert payload["installment_count"] == 2
+    assert "4111111111111111" not in response.text
+    assert "123" not in response.text
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_payment_form_rejects_duplicate_order_id(client: httpx.AsyncClient) -> None:
+    payload = {
+        "order_id": "order-web-duplicate",
+        "amount": "100.00",
+        "currency": "TRY",
+        "card_number": "4111111111111111",
+        "card_holder": "PAYNKOLAY TEST",
+        "expiry_month": 12,
+        "expiry_year": 2030,
+        "cvv": "123",
+        "requires_3ds": True,
+        "installment_count": 1,
+    }
+
+    first_response = await client.post("/api/payments", json=payload)
+    duplicate_response = await client.post("/api/payments", json=payload)
+
+    assert first_response.status_code == 202
+    assert duplicate_response.status_code == 409
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_payment_lookup_returns_404_for_unknown_order(client: httpx.AsyncClient) -> None:
+    response = await client.get("/api/payments/missing-order")
+
+    assert response.status_code == 404
 
 
 @pytest.mark.api

@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
 
+from paynkolay_pos.api.session_models import PaymentSession, PaymentSessionStatus
 from paynkolay_pos.models import Currency
 
 
@@ -70,23 +71,74 @@ class PaymentFormRequest(BaseModel):
 
 
 class PaymentFormResponse(BaseModel):
-    """Phase-1 payment response returned before provider execution is wired."""
+    """Payment creation response returned to the browser."""
 
     order_id: str
-    status: Literal["created"]
+    status: PaymentSessionStatus
     amount: str
     currency: Currency
+    masked_pan: str
     requires_3ds: bool
     message: str
     links: dict[str, str]
 
+    @classmethod
+    def from_session(cls, session: PaymentSession) -> PaymentFormResponse:
+        """Build a browser response from sanitized session state."""
+
+        return cls(
+            order_id=session.order_id,
+            status=session.status,
+            amount=session.canonical_amount,
+            currency=session.currency,
+            masked_pan=session.masked_pan,
+            requires_3ds=session.requires_3ds,
+            message="Payment session created; provider execution will be attached in phase 3.",
+            links={
+                "status": f"/api/payments/{session.order_id}",
+                "result": f"/result?order_id={session.order_id}",
+            },
+        )
+
 
 class PaymentLookupResponse(BaseModel):
-    """Placeholder lookup response until session storage is introduced."""
+    """Sanitized payment session state returned by lookup routes."""
 
     order_id: str
-    status: Literal["not_tracked"]
-    message: str
+    status: PaymentSessionStatus
+    amount: str
+    currency: Currency
+    masked_pan: str
+    card_holder: str
+    requires_3ds: bool
+    installment_count: int
+    provider_transaction_id: str | None = None
+    failure_reason: str | None = None
+    created_at: str
+    updated_at: str
+    links: dict[str, str]
+
+    @classmethod
+    def from_session(cls, session: PaymentSession) -> PaymentLookupResponse:
+        """Build a lookup response from sanitized session state."""
+
+        return cls(
+            order_id=session.order_id,
+            status=session.status,
+            amount=session.canonical_amount,
+            currency=session.currency,
+            masked_pan=session.masked_pan,
+            card_holder=session.card_holder,
+            requires_3ds=session.requires_3ds,
+            installment_count=session.installment_count,
+            provider_transaction_id=session.provider_transaction_id,
+            failure_reason=session.failure_reason,
+            created_at=session.created_at.isoformat(),
+            updated_at=session.updated_at.isoformat(),
+            links={
+                "result": f"/result?order_id={session.order_id}",
+            },
+        )
 
 
 class ReportStatusResponse(BaseModel):
@@ -96,4 +148,3 @@ class ReportStatusResponse(BaseModel):
     report_path: str
     entrypoint: str | None = None
     message: str
-
