@@ -1,0 +1,94 @@
+{
+  "cards": [
+    {
+      "alias": "sandbox_3ds_success",
+      "bank_name": "replace-with-bank-name",
+      "card_type": "credit",
+      "brand": "visa",
+      "pan": "replace-with-private-pan",
+      "expiry_month": 12,
+      "expiry_year": 2030,
+      "cvv": "replace-with-private-cvv",
+      "requires_3ds": true,
+      "expected_otp": "replace-with-private-otp",
+      "expected_result": "captured",
+      "notes": "Base successful 3DS card for smoke and cancel/refund scenarios."
+    },
+    {
+      "alias": "sandbox_3ds_declined",
+      "bank_name": "replace-with-bank-name",
+      "card_type": "credit",
+      "brand": "visa",
+      "pan": "replace-with-private-pan",
+      "expiry_month": 12,
+      "expiry_year": 2030,
+      "cvv": "replace-with-private-cvv",
+      "requires_3ds": true,
+      "expected_otp": "replace-with-private-otp",
+      "expected_result": "failed",
+      "notes": "Issuer declined or equivalent negative sandbox behavior."
+    },
+    {
+      "alias": "sandbox_moto_success",
+      "bank_name": "replace-with-bank-name",
+      "card_type": "credit",
+      "brand": "mastercard",
+      "pan": "replace-with-private-pan",
+      "expiry_month": 12,
+      "expiry_year": 2030,
+      "cvv": "replace-with-private-cvv",
+      "requires_3ds": false,
+      "expected_otp": null,
+      "expected_result": "authorized",
+      "notes": "MoTo card; must not require OTP."
+    },
+    {
+      "alias": "sandbox_installment_success",
+      "bank_name": "replace-with-bank-name",
+      "card_type": "credit",
+      "brand": "visa",
+      "pan": "replace-with-private-pan",
+      "expiry_month": 12,
+      "expiry_year": 2030,
+      "cvv": "replace-with-private-cvv",
+      "requires_3ds": true,
+      "expected_otp": "replace-with-private-otp",
+      "expected_result": "captured",
+      "notes": "Card approved for 2, 3, 6, 9, and 12 installment scenarios."
+    },
+    {
+      "alias": "sandbox_debit_3ds_success",
+      "bank_name": "replace-with-bank-name",
+      "card_type": "debit",
+      "brand": "troy",
+      "pan": "replace-with-private-pan",
+      "expiry_month": 12,
+      "expiry_year": 2030,
+      "cvv": "replace-with-private-cvv",
+      "requires_3ds": true,
+      "expected_otp": "replace-with-private-otp",
+      "expected_result": "captured",
+      "notes": "Debit card coverage."
+    },
+    {
+      "alias": "sandbox_credit_3ds_success",
+      "bank_name": "replace-with-bank-name",
+      "card_type": "credit",
+      "brand": "visa",
+      "pan": "replace-with-private-pan",
+      "expiry_month": 12,
+      "expiry_year": 2030,
+      "cvv": "replace-with-private-cvv",
+      "requires_3ds": true,
+      "expected_otp": "replace-with-private-otp",
+      "expected_result": "captured",
+      "notes": "Credit card coverage."
+    }
+  ],
+  "minimum_delivery_count": 100,
+  "instructions": [
+    "Copy this file outside Git before adding real PAN, CVV, OTP, or bank-specific data.",
+    "Convert selected entries into the runtime config cards array after removing metadata fields not accepted by RuntimeSettings.",
+    "Keep aliases aligned with examples/scenarios/sandbox_e2e_scenarios.example.json or the private scenario catalogue."
+  ]
+}

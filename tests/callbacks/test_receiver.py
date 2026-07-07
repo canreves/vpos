@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 from http import HTTPStatus
+from threading import Thread
+from typing import cast
 
+import httpx
 import pytest
 from pydantic import SecretStr
 
@@ -11,6 +14,7 @@ from paynkolay_pos.callbacks import (
     CallbackStore,
     accept_callback_payload,
     create_callback_handler,
+    create_callback_server,
     decode_callback_json,
 )
 from paynkolay_pos.testing import signed_callback_payload
@@ -90,3 +94,35 @@ def test_receiver_status_codes_document_http_contract() -> None:
     assert HTTPStatus.ACCEPTED.value == 202
     assert HTTPStatus.BAD_REQUEST.value == 400
     assert HTTPStatus.NOT_FOUND.value == 404
+
+
+@pytest.mark.callback
+def test_callback_receiver_accepts_signed_payload_over_http() -> None:
+    store = CallbackStore()
+    try:
+        server = create_callback_server(
+            host="127.0.0.1",
+            port=0,
+            store=store,
+            secret_key=SecretStr("callback-secret"),
+        )
+    except PermissionError as exc:
+        pytest.skip(f"local HTTP server sockets are not available: {exc}")
+    host, port = cast(tuple[str, int], server.server_address)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        response = httpx.post(
+            f"http://{host}:{port}/callbacks/paynkolay",
+            json=signed_callback_payload(secret_key=SecretStr("callback-secret")),
+            timeout=2.0,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2.0)
+
+    assert response.status_code == HTTPStatus.ACCEPTED
+    assert response.json()["accepted"] is True
+    assert store.latest_for("order-1001") is not None

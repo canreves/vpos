@@ -143,3 +143,32 @@ def test_example_runtime_settings_cover_scenario_card_aliases() -> None:
     scenario_aliases = {scenario.card_alias for scenario in catalog.scenarios}
 
     assert scenario_aliases <= configured_aliases
+
+
+@pytest.mark.config
+def test_card_catalog_example_documents_private_card_metadata_without_real_values() -> None:
+    catalog_path = (
+        Path(__file__).parents[2] / "examples" / "config" / "cards.catalog.example.json"
+    )
+
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    cards = catalog["cards"]
+
+    assert catalog["minimum_delivery_count"] == 100
+    assert cards
+    for card in cards:
+        assert {
+            "alias",
+            "bank_name",
+            "card_type",
+            "brand",
+            "pan",
+            "expiry_month",
+            "expiry_year",
+            "cvv",
+            "requires_3ds",
+            "expected_otp",
+            "expected_result",
+        } <= set(card)
+        assert "replace-with" in card["pan"]
+        assert "replace-with" in card["cvv"]

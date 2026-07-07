@@ -19,6 +19,15 @@ from paynkolay_pos.scenarios import PaymentScenario, load_payment_scenario_catal
 
 pytestmark = [pytest.mark.sandbox, pytest.mark.live_e2e]
 
+LIVE_SANDBOX_FLOW_STEPS = (
+    "build payment request from private scenario and card",
+    "send Paynkolay /v1/Payment form request",
+    "complete 3DS challenge when the scenario requires 3DS",
+    "verify transaction through /Payment/PaymentList",
+    "wait for and verify callback when callback delivery is enabled",
+    "attach sanitized request, response, status, and callback evidence",
+)
+
 
 def _sandbox_config_available() -> bool:
     return bool(os.getenv("PAYNKOLAY_CONFIG_FILE"))
@@ -93,8 +102,19 @@ async def test_live_sandbox_payment_flow_placeholder() -> None:
     """Guarded placeholder for the real provider call sequence."""
 
     pytest.skip(
-        "wire this test after sandbox endpoint contract, callback URL, "
-        "and real test cards are confirmed"
+        "wire this test after sandbox endpoint contract, callback URL, real test cards, "
+        f"and 3DS selectors are confirmed; planned steps: {LIVE_SANDBOX_FLOW_STEPS}"
+    )
+
+
+def test_live_sandbox_flow_steps_document_remaining_provider_work() -> None:
+    assert LIVE_SANDBOX_FLOW_STEPS == (
+        "build payment request from private scenario and card",
+        "send Paynkolay /v1/Payment form request",
+        "complete 3DS challenge when the scenario requires 3DS",
+        "verify transaction through /Payment/PaymentList",
+        "wait for and verify callback when callback delivery is enabled",
+        "attach sanitized request, response, status, and callback evidence",
     )
 
 

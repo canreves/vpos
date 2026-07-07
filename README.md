@@ -100,6 +100,14 @@ make scenarios-file SCENARIO_FILE=/tmp/paynkolay-synthetic-scenarios.json
 make negative
 ```
 
+Validate private sandbox readiness without running payments:
+
+```bash
+export PAYNKOLAY_CONFIG_FILE=/path/outside/git/paynkolay-settings.json
+export PAYNKOLAY_SCENARIO_CATALOG=/path/outside/git/sandbox-scenarios.json
+make sandbox-ready
+```
+
 Generate a synthetic 100-card JSON array for a private config:
 
 ```bash
@@ -154,6 +162,47 @@ poetry run playwright install chromium
 
 Without browser binaries, that specific browser test skips locally. CI installs Chromium in
 the dedicated 3DS browser job.
+
+## Mock Vs Sandbox Execution
+
+The default suite is safe for local development and CI. It uses mocked provider responses,
+fake callback payloads, and local 3DS pages:
+
+```bash
+make test
+make scale-demo
+make report
+```
+
+Sandbox commands are reserved for private Paynkolay inputs. They require
+`PAYNKOLAY_CONFIG_FILE`; most real provider calls also require `PAYNKOLAY_SCENARIO_CATALOG`
+and an externally reachable callback URL:
+
+```bash
+make sandbox-ready
+make sandbox
+make sandbox-report
+```
+
+`make sandbox-ready` performs only offline checks. It validates that the selected private
+config and scenario catalogue are internally consistent before any payment is attempted.
+The live provider gate remains closed unless explicitly enabled:
+
+```bash
+export PAYNKOLAY_ENABLE_LIVE_E2E=1
+make sandbox
+```
+
+Run the local callback receiver when the sandbox callback URL is tunneled or otherwise
+reachable from Paynkolay:
+
+```bash
+export PAYNKOLAY_CALLBACK_SECRET=/replace/with/private/secret
+python -m paynkolay_pos.callbacks.receiver --host 127.0.0.1 --port 8081 --path /callbacks/paynkolay
+```
+
+Do not commit private runtime configs, real PAN/CVV/OTP values, merchant credentials,
+callback URLs, or generated reports containing real transaction evidence.
 
 ## Config And Data Strategy
 
@@ -350,5 +399,5 @@ Do not expose full PAN, CVV, OTP, API keys, secret keys, signatures, or tokens i
 reports. Use `paynkolay_pos.reporting.sanitize_evidence()` or
 `attach_json_evidence()` before attaching payloads to Allure.
 
-The local `guide/` folder is intentionally ignored by Git and is not part of the public
-project documentation.
+Most local `guide/` notes remain ignored by Git. Checked-in guide files are intentional
+handoff documentation and must not contain private credentials or real card data.

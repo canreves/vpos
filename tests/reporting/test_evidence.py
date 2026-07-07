@@ -44,6 +44,31 @@ def test_sanitize_evidence_redacts_sensitive_payment_fields() -> None:
 
 
 @pytest.mark.api
+def test_sanitize_evidence_redacts_paynkolay_form_payload_fields() -> None:
+    payload: dict[str, object] = {
+        "sx": "payment-sx-private",
+        "clientRefCode": "order-1001",
+        "cardNumber": "4111111111111111",
+        "cvv": "123",
+        "hashData": "legacy-hash",
+        "hashDatav2": "sha512-base64-hash",
+        "amount": "100.00",
+    }
+
+    body = evidence_json(payload)
+    decoded = json.loads(body)
+
+    assert decoded["sx"] == "<redacted>"
+    assert decoded["cardNumber"] == "************1111"
+    assert decoded["cvv"] == "<redacted>"
+    assert decoded["hashData"] == "<redacted>"
+    assert decoded["hashDatav2"] == "<redacted>"
+    assert "payment-sx-private" not in body
+    assert "4111111111111111" not in body
+    assert "sha512-base64-hash" not in body
+
+
+@pytest.mark.api
 def test_evidence_json_serializes_models_and_callback_payloads_without_secrets() -> None:
     payment_request = payment_initialize_request()
     callback_payload = signed_callback_payload()

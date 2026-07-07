@@ -1,4 +1,4 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox sandbox-3ds sandbox-moto sandbox-report parallel synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
@@ -32,6 +32,7 @@ help:
 	@echo "  make scenarios       Run data-driven scenario catalogue tests"
 	@echo "  make scenarios-file  Run scenario tests from SCENARIO_FILE"
 	@echo "  make negative        Run negative-marked tests"
+	@echo "  make sandbox-ready   Validate private sandbox config without payments"
 	@echo "  make sandbox         Run private Paynkolay sandbox skeleton/live tests"
 	@echo "  make sandbox-3ds     Run private sandbox 3DS tests"
 	@echo "  make sandbox-moto    Run private sandbox MoTo tests"
@@ -90,6 +91,10 @@ scenarios-file:
 
 negative:
 	$(PYTEST) -m negative
+
+sandbox-ready:
+	@test -n "$(PAYNKOLAY_CONFIG_FILE)" || { echo "PAYNKOLAY_CONFIG_FILE is required for sandbox readiness checks"; exit 1; }
+	poetry run python tools/validate_sandbox_readiness.py
 
 sandbox:
 	@test -n "$(PAYNKOLAY_CONFIG_FILE)" || { echo "PAYNKOLAY_CONFIG_FILE is required for sandbox runs"; exit 1; }

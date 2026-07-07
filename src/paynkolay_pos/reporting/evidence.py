@@ -18,11 +18,14 @@ _SENSITIVE_KEYS = frozenset(
         "cancel_refund_api_key",
         "cvc",
         "cvv",
+        "hashdata",
+        "hashdatav2",
         "otp",
         "password",
         "secret",
         "secret_key",
         "signature",
+        "sx",
         "token",
     }
 )
