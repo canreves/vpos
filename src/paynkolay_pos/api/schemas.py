@@ -280,3 +280,15 @@ class ReportHistoryResponse(BaseModel):
     results_path: str
     latest: ReportRunSummary | None = None
     message: str
+
+
+class ReportCommandRunResponse(BaseModel):
+    """Status of a local tester-triggered report command."""
+
+    status: Literal["idle", "running", "passed", "failed"]
+    command: list[str]
+    started_at: str | None = None
+    finished_at: str | None = None
+    exit_code: int | None = None
+    output_tail: str | None = None
+    message: str

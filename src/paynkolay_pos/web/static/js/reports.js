@@ -12,6 +12,13 @@
   const historyFinished = document.getElementById("history-finished");
   const historyMessage = document.getElementById("history-message");
   const historyTests = document.getElementById("history-tests");
+  const credentialRunStatus = document.getElementById("credential-run-status");
+  const credentialRunButton = document.getElementById("credential-run-button");
+  const credentialRunStarted = document.getElementById("credential-run-started");
+  const credentialRunFinished = document.getElementById("credential-run-finished");
+  const credentialRunExit = document.getElementById("credential-run-exit");
+  const credentialRunOutput = document.getElementById("credential-run-output");
+  let credentialRunPoll = null;
 
   function setStatus(text, kind) {
     status.textContent = text;
@@ -21,6 +28,11 @@
   function setHistoryStatus(text, kind) {
     historyStatus.textContent = text;
     historyStatus.className = `status-pill ${kind}`;
+  }
+
+  function setCredentialRunStatus(text, kind) {
+    credentialRunStatus.textContent = text;
+    credentialRunStatus.className = `status-pill ${kind}`;
   }
 
   function formatDuration(value) {
@@ -86,6 +98,69 @@
     );
   }
 
+  function renderCredentialRun(run) {
+    credentialRunStarted.textContent = formatDate(run.started_at);
+    credentialRunFinished.textContent = formatDate(run.finished_at);
+    credentialRunExit.textContent = run.exit_code === null ? "-" : String(run.exit_code);
+    credentialRunOutput.textContent = run.output_tail || run.message;
+    credentialRunButton.disabled = run.status === "running";
+
+    if (run.status === "running") {
+      setCredentialRunStatus("Running", "neutral");
+      startCredentialRunPolling();
+      return;
+    }
+    if (run.status === "passed") {
+      setCredentialRunStatus("Passed", "success");
+      refreshHistory();
+      return;
+    }
+    if (run.status === "failed") {
+      setCredentialRunStatus("Failed", "error");
+      refreshHistory();
+      return;
+    }
+    setCredentialRunStatus("Local/mock", "neutral");
+  }
+
+  function refreshHistory() {
+    window.PaynkolayApi.getReportHistory().then(renderHistory).catch((error) => {
+      historyMessage.textContent = error.message;
+      setHistoryStatus("Error", "error");
+    });
+  }
+
+  function refreshCredentialRun() {
+    window.PaynkolayApi.getCredentialReportRun().then(renderCredentialRun).catch((error) => {
+      credentialRunOutput.textContent = error.message;
+      setCredentialRunStatus("Error", "error");
+    });
+  }
+
+  function startCredentialRunPolling() {
+    if (credentialRunPoll !== null) {
+      return;
+    }
+    credentialRunPoll = window.setInterval(() => {
+      window.PaynkolayApi.getCredentialReportRun()
+        .then((run) => {
+          renderCredentialRun(run);
+          if (run.status !== "running" && credentialRunPoll !== null) {
+            window.clearInterval(credentialRunPoll);
+            credentialRunPoll = null;
+          }
+        })
+        .catch((error) => {
+          credentialRunOutput.textContent = error.message;
+          setCredentialRunStatus("Error", "error");
+          if (credentialRunPoll !== null) {
+            window.clearInterval(credentialRunPoll);
+            credentialRunPoll = null;
+          }
+        });
+    }, 2000);
+  }
+
   function renderReport(report) {
     path.textContent = report.report_path;
     entrypoint.textContent = report.entrypoint || "-";
@@ -123,4 +198,18 @@
       historyTests.replaceChildren();
       setHistoryStatus("Error", "error");
     });
+
+  credentialRunButton.addEventListener("click", () => {
+    credentialRunButton.disabled = true;
+    setCredentialRunStatus("Starting", "neutral");
+    window.PaynkolayApi.startCredentialReportRun()
+      .then(renderCredentialRun)
+      .catch((error) => {
+        credentialRunButton.disabled = false;
+        credentialRunOutput.textContent = error.message;
+        setCredentialRunStatus("Error", "error");
+      });
+  });
+
+  refreshCredentialRun();
 })();

@@ -30,6 +30,14 @@
     getReportHistory() {
       return requestJson("/api/reports/history");
     },
+    getCredentialReportRun() {
+      return requestJson("/api/reports/credential-run");
+    },
+    startCredentialReportRun() {
+      return requestJson("/api/reports/credential-run", {
+        method: "POST",
+      });
+    },
     createPayment(payload) {
       return requestJson("/api/payments", {
         method: "POST",

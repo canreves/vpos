@@ -92,11 +92,34 @@
         <section class="panel report-command-panel">
           <div class="panel-heading">
             <h2>Credential Run</h2>
-            <span class="status-pill neutral">Local/mock</span>
+            <span class="status-pill neutral" id="credential-run-status">Local/mock</span>
           </div>
           <div class="command-block">
             <code>make credential-scenario-report</code>
           </div>
+          <div class="result-actions">
+            <button class="secondary-action" id="credential-run-button" type="button">
+              Run now
+            </button>
+          </div>
+          <dl class="result-list">
+            <div>
+              <dt>Started</dt>
+              <dd id="credential-run-started">-</dd>
+            </div>
+            <div>
+              <dt>Finished</dt>
+              <dd id="credential-run-finished">-</dd>
+            </div>
+            <div>
+              <dt>Exit code</dt>
+              <dd id="credential-run-exit">-</dd>
+            </div>
+            <div>
+              <dt>Output tail</dt>
+              <dd id="credential-run-output">-</dd>
+            </div>
+          </dl>
           <p class="inline-message">
             Runs credential CSV scenarios through the mocked payment flow and refreshes the Allure report.
           </p>

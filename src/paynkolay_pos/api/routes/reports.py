@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import json
+import subprocess
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from threading import Lock
+from typing import Any, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 
 from paynkolay_pos.api.dependencies import allure_report_dir, allure_results_dir
 from paynkolay_pos.api.schemas import (
+    ReportCommandRunResponse,
     ReportHistoryResponse,
     ReportRunSummary,
     ReportStatusResponse,
@@ -18,6 +22,54 @@ from paynkolay_pos.api.schemas import (
 )
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
+DEFAULT_CREDENTIAL_REPORT_COMMAND = ("make", "credential-scenario-report")
+OUTPUT_TAIL_LIMIT = 4000
+ReportCommandStatus = Literal["idle", "running", "passed", "failed"]
+
+
+@dataclass
+class ReportCommandRunState:
+    """In-memory state for one fixed local report command."""
+
+    command: tuple[str, ...] = DEFAULT_CREDENTIAL_REPORT_COMMAND
+    status: ReportCommandStatus = "idle"
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    exit_code: int | None = None
+    output_tail: str | None = None
+    _lock: Lock = field(default_factory=Lock, repr=False)
+
+    def start(self) -> ReportCommandRunResponse:
+        with self._lock:
+            if self.status == "running":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="credential report run is already running",
+                )
+            self.status = "running"
+            self.started_at = datetime.now(tz=UTC)
+            self.finished_at = None
+            self.exit_code = None
+            self.output_tail = None
+            return self.snapshot(message="Credential report run started.")
+
+    def finish(self, *, exit_code: int, output: str) -> None:
+        with self._lock:
+            self.status = "passed" if exit_code == 0 else "failed"
+            self.finished_at = datetime.now(tz=UTC)
+            self.exit_code = exit_code
+            self.output_tail = output[-OUTPUT_TAIL_LIMIT:] or None
+
+    def snapshot(self, *, message: str | None = None) -> ReportCommandRunResponse:
+        return ReportCommandRunResponse(
+            status=self.status,
+            command=list(self.command),
+            started_at=_format_datetime(self.started_at),
+            finished_at=_format_datetime(self.finished_at),
+            exit_code=self.exit_code,
+            output_tail=self.output_tail,
+            message=message or _command_message(self.status),
+        )
 
 
 @router.get("/latest", response_model=ReportStatusResponse)
@@ -38,6 +90,30 @@ async def latest_report() -> ReportStatusResponse:
         report_path=str(report_dir),
         message="Allure HTML report has not been generated yet.",
     )
+
+
+@router.get("/credential-run", response_model=ReportCommandRunResponse)
+async def credential_report_run_status(request: Request) -> ReportCommandRunResponse:
+    """Return the current local credential report command status."""
+
+    return _report_command_state(request).snapshot()
+
+
+@router.post(
+    "/credential-run",
+    response_model=ReportCommandRunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def start_credential_report_run(
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> ReportCommandRunResponse:
+    """Start the fixed local credential scenario report command."""
+
+    run_state = _report_command_state(request)
+    response = run_state.start()
+    background_tasks.add_task(_execute_credential_report_run, run_state)
+    return response
 
 
 @router.get("/history", response_model=ReportHistoryResponse)
@@ -66,6 +142,29 @@ async def report_history() -> ReportHistoryResponse:
         results_path=str(results_dir),
         latest=latest,
         message="Latest local test run summary is available.",
+    )
+
+
+def _report_command_state(request: Request) -> ReportCommandRunState:
+    state = request.app.state.credential_report_run
+    if not isinstance(state, ReportCommandRunState):
+        raise RuntimeError("credential report run state is not configured")
+    return state
+
+
+def _execute_credential_report_run(run_state: ReportCommandRunState) -> None:
+    result = _run_command(run_state.command)
+    output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+    run_state.finish(exit_code=result.returncode, output=output)
+
+
+def _run_command(command: tuple[str, ...]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -164,3 +263,19 @@ def _format_timestamp_ms(value: int | None) -> str | None:
     if value is None:
         return None
     return datetime.fromtimestamp(value / 1000, tz=UTC).isoformat()
+
+
+def _format_datetime(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.isoformat()
+
+
+def _command_message(run_status: ReportCommandStatus) -> str:
+    if run_status == "idle":
+        return "Credential report run has not been started from this web session."
+    if run_status == "running":
+        return "Credential report run is still running."
+    if run_status == "passed":
+        return "Credential report run completed successfully."
+    return "Credential report run failed. Review the output tail."

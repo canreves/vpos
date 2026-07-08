@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, cast
@@ -18,6 +19,7 @@ from paynkolay_pos.api.payment_initializer import (
     PaymentInitializationOutcome,
     PaymentProviderInitializationError,
 )
+from paynkolay_pos.api.routes import reports
 from paynkolay_pos.api.schemas import PaymentFormRequest
 from paynkolay_pos.config import build_private_runtime_config_payload
 from paynkolay_pos.models import (
@@ -154,6 +156,7 @@ async def test_reports_page_renders_dynamic_report_screen(client: httpx.AsyncCli
     assert "text/html" in response.headers["content-type"]
     assert 'id="report-status"' in response.text
     assert 'id="history-status"' in response.text
+    assert 'id="credential-run-button"' in response.text
     assert "make credential-scenario-report" in response.text
     assert "/static/js/reports.js" in response.text
 
@@ -298,6 +301,44 @@ async def test_report_history_summarizes_latest_allure_results(
     assert payload["latest"]["duration_ms"] == 200
     assert payload["latest"]["recent_tests"][0]["name"] == "test_invalid_cvv"
     assert payload["latest"]["recent_tests"][0]["duration_ms"] == 100
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_credential_report_run_status_starts_idle(client: httpx.AsyncClient) -> None:
+    response = await client.get("/api/reports/credential-run")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "idle"
+    assert payload["command"] == ["make", "credential-scenario-report"]
+    assert payload["exit_code"] is None
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_credential_report_run_executes_fixed_command(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run_command(command: tuple[str, ...]) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="77 passed", stderr="")
+
+    monkeypatch.setattr(reports, "_run_command", fake_run_command)
+
+    response = await client.post("/api/reports/credential-run")
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "running"
+    status_response = await client.get("/api/reports/credential-run")
+    payload = status_response.json()
+    assert calls == [("make", "credential-scenario-report")]
+    assert payload["status"] == "passed"
+    assert payload["exit_code"] == 0
+    assert payload["output_tail"] == "77 passed"
 
 
 @pytest.mark.api

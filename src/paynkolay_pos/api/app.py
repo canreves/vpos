@@ -23,6 +23,7 @@ def create_app() -> FastAPI:
     )
     app.state.payment_session_store = PaymentSessionStore()
     app.state.three_ds_form_store = ThreeDSFormStore()
+    app.state.credential_report_run = reports.ReportCommandRunState()
     app.mount("/static", StaticFiles(directory=static_dir()), name="static")
 
     templates = Jinja2Templates(directory=templates_dir())
