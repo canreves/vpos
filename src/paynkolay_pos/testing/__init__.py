@@ -1,5 +1,11 @@
 """Reusable test data builders for payment automation scenarios."""
 
+from paynkolay_pos.testing.credential_matrix import (
+    CredentialCardMatrixItem,
+    CredentialErrorMatrixItem,
+    build_credential_matrix_json,
+    build_credential_matrix_payload,
+)
 from paynkolay_pos.testing.factories import (
     callback_payload,
     callback_payload_model,
@@ -28,6 +34,10 @@ from paynkolay_pos.testing.synthetic_scenarios import (
 __all__ = [
     "SyntheticCardProfile",
     "SyntheticScenarioProfile",
+    "CredentialCardMatrixItem",
+    "CredentialErrorMatrixItem",
+    "build_credential_matrix_json",
+    "build_credential_matrix_payload",
     "callback_payload",
     "callback_payload_model",
     "generate_synthetic_card_payloads",

@@ -335,6 +335,16 @@ The generated private scenario catalogue keeps the checked-in payment plan, adds
 `sandbox` tag required by readiness checks, and creates filler smoke scenarios so every
 generated card alias is exercised.
 
+Build a local/mock matrix from ignored credential CSV files:
+
+```bash
+make credential-matrix MATRIX_OUT=/tmp/paynkolay-credential-matrix.json
+```
+
+This reads local files under `credentials/`, normalizes test cards and CVV-driven error
+codes, then writes a private JSON matrix for local/mock scenario planning. The generated
+matrix may include PAN/CVV/OTP values and must stay outside Git.
+
 Select an environment without editing the JSON file:
 
 ```bash
