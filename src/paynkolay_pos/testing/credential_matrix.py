@@ -303,10 +303,11 @@ def _error_scenario(
 ) -> dict[str, object]:
     alias = str(error_card["alias"])
     requires_3ds = bool(error_card["requires_3ds"])
+    error_code = str(error["expected_error_code"])
     scenario_id = str(error["scenario_id"]).replace("cvv_", "credential_cvv_")
     return _scenario_payload(
         scenario_id=f"{scenario_id}_{index:02d}",
-        title=f"Credential CVV error {error['expected_error_code']}",
+        title=f"Credential CVV error {error_code}",
         card_alias=alias,
         amount="100.00",
         requires_3ds=requires_3ds,
@@ -315,7 +316,14 @@ def _error_scenario(
         installment_count=1,
         payment_channel="e_commerce",
         moto=False,
-        tags=["credential", "local_mock", "negative", "invalid_cvv"],
+        tags=[
+            "credential",
+            "local_mock",
+            "negative",
+            "invalid_cvv",
+            "cvv_error",
+            f"error_code_{error_code}",
+        ],
     )
 
 

@@ -119,6 +119,8 @@ def test_build_credential_scenario_catalog_payload_validates(tmp_path: Path) -> 
     assert catalog.scenarios[2].moto is True
     assert catalog.scenarios[3].expected_final_status.value == "failed"
     assert "invalid_cvv" in catalog.scenarios[3].tags
+    assert "cvv_error" in catalog.scenarios[3].tags
+    assert "error_code_51" in catalog.scenarios[3].tags
 
 
 def test_build_credential_scenario_catalog_json_serializes_catalogue(tmp_path: Path) -> None:

@@ -110,8 +110,8 @@ class ScenarioMockProvider:
         if self._scenario.expected_initialize_status is PaymentStatus.PENDING_3DS:
             payload["redirect_url"] = f"https://acs.example.test/challenge/{self._order_id}"
         if self._scenario.expected_initialize_status is PaymentStatus.FAILED:
-            payload["failure_code"] = "issuer_declined"
-            payload["failure_reason"] = "Issuer declined"
+            payload["failure_code"] = failure_code_for(self._scenario)
+            payload["failure_reason"] = failure_reason_for(self._scenario)
         return payload
 
     def _status_response(self) -> dict[str, object]:
@@ -127,7 +127,7 @@ class ScenarioMockProvider:
         if final_status in {PaymentStatus.AUTHORIZED, PaymentStatus.CAPTURED}:
             payload["authorization_code"] = f"auth-{self._scenario.scenario_id}"
         if final_status is PaymentStatus.FAILED:
-            payload["failure_code"] = "issuer_declined"
+            payload["failure_code"] = failure_code_for(self._scenario)
         return payload
 
     @property
@@ -179,11 +179,29 @@ async def test_catalog_scenario_executes_against_mocked_provider(
     assert provider.initialize_payload["installment_count"] == scenario.installment_count
     assert provider.initialize_payload["requires_3ds"] is scenario.requires_3ds
     assert provider.initialize_payload["moto"] is scenario.moto
+    if scenario.expected_initialize_status is PaymentStatus.FAILED:
+        assert initialize_response.failure_code == failure_code_for(scenario)
+        assert initialize_response.failure_reason == failure_reason_for(scenario)
+    if scenario.expected_final_status is PaymentStatus.FAILED:
+        assert final_status.failure_code == failure_code_for(scenario)
 
 
 def order_id_for(scenario: PaymentScenario) -> str:
     digest = sha1(scenario.scenario_id.encode("utf-8")).hexdigest()[:12]
     return f"order-{digest}"
+
+
+def failure_code_for(scenario: PaymentScenario) -> str:
+    for tag in scenario.tags:
+        if tag.startswith("error_code_"):
+            return tag.removeprefix("error_code_")
+    return "issuer_declined"
+
+
+def failure_reason_for(scenario: PaymentScenario) -> str:
+    if "cvv_error" in scenario.tags:
+        return f"Credential CVV error {failure_code_for(scenario)}"
+    return "Issuer declined"
 
 
 def card_payload_for(environment: PaymentEnvironment, alias: str) -> dict[str, object]:
