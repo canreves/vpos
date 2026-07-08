@@ -16,3 +16,4 @@ guide
 paynkolay-settings.json
 examples/config/*.json
 !examples/config/*.example.json
+credentials
