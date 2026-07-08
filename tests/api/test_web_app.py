@@ -153,6 +153,7 @@ async def test_reports_page_renders_dynamic_report_screen(client: httpx.AsyncCli
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert 'id="report-status"' in response.text
+    assert "make credential-scenario-report" in response.text
     assert "/static/js/reports.js" in response.text
 
 
