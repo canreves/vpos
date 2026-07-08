@@ -50,7 +50,12 @@ def scenario(
     card_alias: str,
     requires_3ds: bool = True,
     moto: bool = False,
+    expected_initialize_status: str = "pending_3ds",
+    expected_final_status: str = "captured",
+    installment_count: int = 1,
+    tags: list[str] | None = None,
 ) -> PaymentScenario:
+    effective_tags = tags or (["sandbox", "moto"] if moto else ["sandbox", "three_ds"])
     return PaymentScenario.model_validate(
         {
             "scenario_id": scenario_id,
@@ -59,38 +64,143 @@ def scenario(
             "amount": "100.00",
             "currency": "TRY",
             "requires_3ds": requires_3ds,
-            "expected_initialize_status": "pending_3ds" if requires_3ds else "authorized",
-            "expected_final_status": "captured" if requires_3ds else "authorized",
+            "expected_initialize_status": expected_initialize_status,
+            "expected_final_status": expected_final_status,
+            "installment_count": installment_count,
             "payment_channel": "moto" if moto else "e_commerce",
             "moto": moto,
-            "tags": ["sandbox", "moto"] if moto else ["sandbox", "three_ds"],
+            "tags": effective_tags,
         }
     )
 
 
 @pytest.mark.sandbox
 def test_check_sandbox_readiness_accepts_ready_private_inputs() -> None:
+    scenarios = (
+        scenario(
+            "sandbox_3ds_capture",
+            card_alias="sandbox_3ds_success",
+            tags=["sandbox", "three_ds", "credit"],
+        ),
+        scenario(
+            "sandbox_3ds_declined",
+            card_alias="sandbox_3ds_declined",
+            expected_final_status="failed",
+            tags=["sandbox", "three_ds", "negative"],
+        ),
+        scenario(
+            "sandbox_3ds_wrong_otp",
+            card_alias="sandbox_3ds_wrong_otp",
+            expected_final_status="failed",
+            tags=["sandbox", "three_ds", "negative", "wrong_otp"],
+        ),
+        scenario(
+            "sandbox_invalid_cvv",
+            card_alias="sandbox_invalid_cvv",
+            expected_initialize_status="failed",
+            expected_final_status="failed",
+            tags=["sandbox", "negative", "invalid_cvv"],
+        ),
+        scenario(
+            "sandbox_expired_card",
+            card_alias="sandbox_expired_card",
+            expected_initialize_status="failed",
+            expected_final_status="failed",
+            tags=["sandbox", "negative", "expired_card"],
+        ),
+        scenario(
+            "sandbox_insufficient_funds",
+            card_alias="sandbox_insufficient_funds",
+            expected_final_status="failed",
+            tags=["sandbox", "three_ds", "negative", "insufficient_funds"],
+        ),
+        scenario(
+            "sandbox_moto_authorized",
+            card_alias="sandbox_moto_success",
+            requires_3ds=False,
+            moto=True,
+            expected_initialize_status="authorized",
+            expected_final_status="authorized",
+            tags=["sandbox", "moto"],
+        ),
+        scenario(
+            "sandbox_moto_declined",
+            card_alias="sandbox_moto_declined",
+            requires_3ds=False,
+            moto=True,
+            expected_initialize_status="failed",
+            expected_final_status="failed",
+            tags=["sandbox", "moto", "negative"],
+        ),
+        scenario(
+            "sandbox_payment_list_missing",
+            card_alias="sandbox_payment_list_success",
+            expected_final_status="failed",
+            tags=["sandbox", "negative", "payment_list"],
+        ),
+        scenario(
+            "sandbox_debit_3ds_capture",
+            card_alias="sandbox_debit_3ds_success",
+            tags=["sandbox", "three_ds", "debit"],
+        ),
+        scenario(
+            "sandbox_installment_2_capture",
+            card_alias="sandbox_installment_2_success",
+            installment_count=2,
+            tags=["sandbox", "three_ds", "installment"],
+        ),
+        scenario(
+            "sandbox_installment_3_capture",
+            card_alias="sandbox_installment_3_success",
+            installment_count=3,
+            tags=["sandbox", "three_ds", "installment"],
+        ),
+        scenario(
+            "sandbox_installment_6_capture",
+            card_alias="sandbox_installment_6_success",
+            installment_count=6,
+            tags=["sandbox", "three_ds", "installment"],
+        ),
+        scenario(
+            "sandbox_installment_9_capture",
+            card_alias="sandbox_installment_9_success",
+            installment_count=9,
+            tags=["sandbox", "three_ds", "installment"],
+        ),
+        scenario(
+            "sandbox_installment_12_capture",
+            card_alias="sandbox_installment_12_success",
+            installment_count=12,
+            tags=["sandbox", "three_ds", "installment"],
+        ),
+        scenario(
+            "sandbox_cancel_success",
+            card_alias="sandbox_cancel_success",
+            expected_final_status="cancelled",
+            tags=["sandbox", "three_ds", "cancel"],
+        ),
+        scenario(
+            "sandbox_refund_success",
+            card_alias="sandbox_refund_success",
+            expected_final_status="refunded",
+            tags=["sandbox", "three_ds", "refund"],
+        ),
+    )
+    scenario_aliases = {item.card_alias for item in scenarios}
     settings = RuntimeSettings.model_validate(
         runtime_settings_payload(
             cards=[
-                card_payload("sandbox_3ds_success"),
-                card_payload("sandbox_moto_success", requires_3ds=False),
+                card_payload(
+                    alias,
+                    requires_3ds=not alias.startswith("sandbox_moto"),
+                )
+                for alias in sorted(scenario_aliases)
             ]
         )
     )
-    catalog = PaymentScenarioCatalog(
-        scenarios=(
-            scenario("sandbox_3ds_capture", card_alias="sandbox_3ds_success"),
-            scenario(
-                "sandbox_moto_authorized",
-                card_alias="sandbox_moto_success",
-                requires_3ds=False,
-                moto=True,
-            ),
-        )
-    )
+    catalog = PaymentScenarioCatalog(scenarios=scenarios)
 
-    report = check_sandbox_readiness(settings, catalog, minimum_card_count=2)
+    report = check_sandbox_readiness(settings, catalog, minimum_card_count=len(scenario_aliases))
 
     assert report.ready is True
     assert format_readiness_report(report).startswith("Sandbox readiness: READY")
@@ -133,5 +243,44 @@ def test_check_sandbox_readiness_reports_actionable_issues() -> None:
         "insufficient_cards",
         "missing_card_aliases",
         "unused_card_aliases",
+        "missing_moto_success_scenario",
+        "missing_moto_negative_scenario",
+        "missing_wrong_otp_scenario",
+        "missing_invalid_cvv_scenario",
+        "missing_expired_card_scenario",
+        "missing_insufficient_funds_scenario",
+        "missing_payment_list_scenario",
+        "missing_debit_scenario",
+        "missing_credit_scenario",
+        "missing_cancel_scenario",
+        "missing_refund_scenario",
+        "missing_installment_scenarios",
     } <= issue_codes
     assert "Sandbox readiness: NOT READY" in format_readiness_report(report)
+
+
+@pytest.mark.sandbox
+@pytest.mark.negative
+def test_check_sandbox_readiness_reports_missing_3ds_families() -> None:
+    settings = RuntimeSettings.model_validate(
+        runtime_settings_payload(cards=[card_payload("sandbox_moto_success", requires_3ds=False)])
+    )
+    catalog = PaymentScenarioCatalog(
+        scenarios=(
+            scenario(
+                "sandbox_moto_authorized",
+                card_alias="sandbox_moto_success",
+                requires_3ds=False,
+                moto=True,
+                expected_initialize_status="authorized",
+                expected_final_status="authorized",
+                tags=["sandbox", "moto"],
+            ),
+        )
+    )
+
+    report = check_sandbox_readiness(settings, catalog, minimum_card_count=1)
+    issue_codes = {issue.code for issue in report.issues}
+
+    assert "missing_3ds_success_scenario" in issue_codes
+    assert "missing_3ds_negative_scenario" in issue_codes

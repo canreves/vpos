@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from paynkolay_pos.config import RuntimeSettings
-from paynkolay_pos.models import PaymentChannel
-from paynkolay_pos.scenarios import PaymentScenarioCatalog
+from paynkolay_pos.models import PaymentChannel, PaymentStatus
+from paynkolay_pos.scenarios import PaymentScenario, PaymentScenarioCatalog
+
+REQUIRED_INSTALLMENT_COUNTS = frozenset({2, 3, 6, 9, 12})
 
 
 @dataclass(frozen=True)
@@ -126,6 +129,8 @@ def check_sandbox_readiness(
                 )
             )
 
+    _append_required_family_issues(issues, catalog)
+
     return SandboxReadinessReport(
         environment=environment.name.value,
         card_count=len(environment.cards),
@@ -158,3 +163,102 @@ def _looks_placeholder(value: str) -> bool:
         or normalized.endswith(".example.test")
         or normalized in {"changeme", "todo", "placeholder"}
     )
+
+
+def _append_required_family_issues(
+    issues: list[SandboxReadinessIssue],
+    catalog: PaymentScenarioCatalog,
+) -> None:
+    scenarios = catalog.scenarios
+    requirements: dict[str, tuple[str, Callable[[PaymentScenario], bool]]] = {
+        "missing_3ds_success_scenario": (
+            "scenario catalogue must include a successful 3DS payment",
+            lambda scenario: (
+                scenario.requires_3ds
+                and not scenario.moto
+                and scenario.expected_final_status is PaymentStatus.CAPTURED
+            ),
+        ),
+        "missing_3ds_negative_scenario": (
+            "scenario catalogue must include a failed 3DS payment",
+            lambda scenario: (
+                scenario.requires_3ds
+                and "negative" in scenario.tags
+                and scenario.expected_final_status is PaymentStatus.FAILED
+            ),
+        ),
+        "missing_moto_success_scenario": (
+            "scenario catalogue must include a successful MoTo payment",
+            lambda scenario: (
+                scenario.moto
+                and scenario.payment_channel is PaymentChannel.MOTO
+                and scenario.expected_final_status is PaymentStatus.AUTHORIZED
+            ),
+        ),
+        "missing_moto_negative_scenario": (
+            "scenario catalogue must include a failed MoTo payment",
+            lambda scenario: (
+                scenario.moto
+                and "negative" in scenario.tags
+                and scenario.expected_final_status is PaymentStatus.FAILED
+            ),
+        ),
+        "missing_wrong_otp_scenario": (
+            "scenario catalogue must include a wrong OTP negative case",
+            lambda scenario: "wrong_otp" in scenario.tags,
+        ),
+        "missing_invalid_cvv_scenario": (
+            "scenario catalogue must include an invalid CVV negative case",
+            lambda scenario: "invalid_cvv" in scenario.tags,
+        ),
+        "missing_expired_card_scenario": (
+            "scenario catalogue must include an expired card negative case",
+            lambda scenario: "expired_card" in scenario.tags,
+        ),
+        "missing_insufficient_funds_scenario": (
+            "scenario catalogue must include an insufficient funds negative case",
+            lambda scenario: "insufficient_funds" in scenario.tags,
+        ),
+        "missing_payment_list_scenario": (
+            "scenario catalogue must include PaymentList verification coverage",
+            lambda scenario: "payment_list" in scenario.tags,
+        ),
+        "missing_debit_scenario": (
+            "scenario catalogue must include a debit card scenario",
+            lambda scenario: "debit" in scenario.tags,
+        ),
+        "missing_credit_scenario": (
+            "scenario catalogue must include a credit card scenario",
+            lambda scenario: "credit" in scenario.tags,
+        ),
+        "missing_cancel_scenario": (
+            "scenario catalogue must include cancel coverage",
+            lambda scenario: scenario.expected_final_status is PaymentStatus.CANCELLED
+            or "cancel" in scenario.tags,
+        ),
+        "missing_refund_scenario": (
+            "scenario catalogue must include refund coverage",
+            lambda scenario: scenario.expected_final_status is PaymentStatus.REFUNDED
+            or "refund" in scenario.tags,
+        ),
+    }
+    for code, (message, predicate) in requirements.items():
+        if not any(predicate(scenario) for scenario in scenarios):
+            issues.append(SandboxReadinessIssue(code=code, message=message))
+
+    configured_installments = {
+        scenario.installment_count
+        for scenario in scenarios
+        if "installment" in scenario.tags
+    }
+    missing_installments = sorted(REQUIRED_INSTALLMENT_COUNTS - configured_installments)
+    if missing_installments:
+        issues.append(
+            SandboxReadinessIssue(
+                code="missing_installment_scenarios",
+                message=(
+                    "scenario catalogue must include installment counts: "
+                    + ", ".join(str(count) for count in missing_installments)
+                ),
+            )
+        )
