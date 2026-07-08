@@ -176,6 +176,14 @@ brew install allure
 The generated HTML report is written to `allure-report/`. The raw pytest Allure files
 are written to `allure-results/`.
 
+The `/reports` page calls `/api/reports/latest` and reports whether
+`allure-report/index.html` exists. Override the report directory for local experiments
+with:
+
+```bash
+export PAYNKOLAY_ALLURE_REPORT_DIR=/path/to/allure-report
+```
+
 Remove generated local artifacts:
 
 ```bash
@@ -190,6 +198,54 @@ poetry run playwright install chromium
 
 Without browser binaries, that specific browser test skips locally. CI installs Chromium in
 the dedicated 3DS browser job.
+
+## Tester UI Workflow
+
+The web UI is the tester-facing entry point. It is useful for manual browser checks and
+private sandbox validation once credentials are available.
+
+Start the UI:
+
+```bash
+make web
+```
+
+Open:
+
+```text
+http://127.0.0.1:8000
+```
+
+If port `8000` is already in use, choose another port:
+
+```bash
+make web WEB_PORT=8001
+```
+
+Main tester pages:
+
+- `/` - payment form.
+- `/payments/{order_id}/three-ds` - transient provider 3DS form when Paynkolay returns
+  `BANK_REQUEST_MESSAGE`.
+- `/result?order_id={order_id}` - sanitized payment status lookup.
+- `/reports` - local Allure report status.
+
+Typical manual flow:
+
+1. Start the web UI with `make web`.
+2. Open `/` and submit card/payment fields.
+3. If the response requires 3DS, open the 3DS link and complete the bank/ACS form.
+4. After provider return, inspect `/result?order_id={order_id}`.
+5. Use `/result` to manually look up any existing in-memory order ID.
+6. Run `make report`, then open `/reports` to confirm local report availability.
+
+Payment submission requires `PAYNKOLAY_CONFIG_FILE` because the backend must know the
+selected merchant, Paynkolay base URL, success URL, fail URL, callback base URL, and
+merchant secret. The UI can render without private config, but provider initialization
+returns `503` until runtime config is available.
+
+The result and report pages only show sanitized state. They must not display full PAN,
+CVV, OTP, merchant secrets, API keys, `sx`, hashes, signatures, or raw 3DS HTML.
 
 ## Mock Vs Sandbox Execution
 
@@ -412,14 +468,34 @@ Current tests use:
 To switch from framework validation to real Paynkolay sandbox validation, collect:
 
 - Sandbox base URL.
-- Merchant ID, terminal ID, API key, optional cancel/refund API key, and secret/hash key.
-- Exact initialize/status endpoint paths.
-- Exact request and response field names.
-- Exact signature algorithm, field order, separator, and encoding rules.
-- Callback payload format and callback signature rules.
-- Test card catalogue, expected statuses, and 3DS OTP values.
+- Sales `sx`.
+- PaymentList `sx`, if different.
+- Cancel/refund `sx`, if different.
+- Merchant ID, terminal ID, and secret/hash key.
+- HTTPS success URL reachable by Paynkolay.
+- HTTPS fail URL reachable by Paynkolay.
+- Callback URL and callback payload sample, if callback delivery is separate from
+  success/fail redirects.
+- Callback signature algorithm and field order.
+- Test card catalogue, expected statuses, card types, banks, and 3DS OTP values.
 - 3DS sandbox page selectors or documented challenge flow.
 - Installment, MoTo, currency, capture, and detailed sandbox business rules.
+- Confirmation that `RESPONSE_CODE=2` maps to `captured` or `authorized` for the selected
+  Paynkolay flow.
+- Cancel/refund timing and amount rules.
+
+Before real calls, validate the private inputs:
+
+```bash
+export PAYNKOLAY_CONFIG_FILE=/path/outside/git/paynkolay-settings.json
+export PAYNKOLAY_SCENARIO_CATALOG=/path/outside/git/sandbox-scenarios.json
+make sandbox-ready
+```
+
+The readiness check expects the private catalogue to cover successful and negative 3DS,
+MoTo success/failure, wrong OTP, invalid CVV, expired card, insufficient funds, debit,
+credit, PaymentList verification, cancel/refund, and installment counts `2`, `3`, `6`,
+`9`, and `12`.
 
 ## Safety Rules
 
@@ -427,5 +503,4 @@ Do not expose full PAN, CVV, OTP, API keys, secret keys, signatures, or tokens i
 reports. Use `paynkolay_pos.reporting.sanitize_evidence()` or
 `attach_json_evidence()` before attaching payloads to Allure.
 
-Most local `guide/` notes remain ignored by Git. Checked-in guide files are intentional
-handoff documentation and must not contain private credentials or real card data.
+
