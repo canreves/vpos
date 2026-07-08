@@ -308,12 +308,32 @@ make private-config CONFIG_OUT=/tmp/paynkolay-private-settings.json
 export PAYNKOLAY_CONFIG_FILE=/tmp/paynkolay-private-settings.json
 ```
 
+Generate a matching local-only sandbox scenario catalogue:
+
+```bash
+make private-scenarios PRIVATE_SCENARIO_OUT=/tmp/paynkolay-private-scenarios.json
+export PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-private-scenarios.json
+```
+
+Create both files with one command:
+
+```bash
+make private-inputs \
+  CONFIG_OUT=/tmp/paynkolay-private-settings.json \
+  PRIVATE_SCENARIO_OUT=/tmp/paynkolay-private-scenarios.json \
+  PRIVATE_ENV=dev
+```
+
 The generated private skeleton keeps the scenario-critical aliases such as
 `visa_3ds_success`, `visa_installment_success`, `visa_moto_success`,
 `visa_invalid_cvv`, `visa_debit_3ds_success`, and `visa_credit_3ds_success`, then
 fills the remaining card slots with synthetic cards. Replace the placeholder merchant
 credentials, callback URLs, PAN, CVV, expiry, and OTP values with Paynkolay sandbox data
 before live sandbox execution.
+
+The generated private scenario catalogue keeps the checked-in payment plan, adds the
+`sandbox` tag required by readiness checks, and creates filler smoke scenarios so every
+generated card alias is exercised.
 
 Select an environment without editing the JSON file:
 
@@ -516,4 +536,3 @@ credit, PaymentList verification, cancel/refund, and installment counts `2`, `3`
 Do not expose full PAN, CVV, OTP, API keys, secret keys, signatures, or tokens in logs or
 reports. Use `paynkolay_pos.reporting.sanitize_evidence()` or
 `attach_json_evidence()` before attaching payloads to Allure.
-

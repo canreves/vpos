@@ -1,4 +1,4 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web web-test web-check allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web web-test web-check allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
@@ -11,6 +11,8 @@ OUT ?= /tmp/paynkolay-synthetic-cards.json
 CONFIG_OUT ?= /tmp/paynkolay-private-settings.json
 SCENARIO_COUNT ?= 1000
 SCENARIO_OUT ?= /tmp/paynkolay-synthetic-scenarios.json
+PRIVATE_SCENARIO_OUT ?= /tmp/paynkolay-private-scenarios.json
+PRIVATE_ENV ?= dev
 SCENARIO_FILE ?=
 WEB_HOST ?= 127.0.0.1
 WEB_PORT ?= 8000
@@ -42,6 +44,8 @@ help:
 	@echo "  make sandbox-3ds     Run private sandbox 3DS tests"
 	@echo "  make sandbox-moto    Run private sandbox MoTo tests"
 	@echo "  make private-config  Create a local-only private config skeleton"
+	@echo "  make private-scenarios Create a local-only sandbox scenario catalogue"
+	@echo "  make private-inputs  Create matching local-only config and scenarios"
 	@echo "  make synthetic-cards Generate a synthetic cards JSON array"
 	@echo "  make synthetic-scenarios Generate a synthetic scenario catalogue"
 	@echo "  make scale-demo      Generate 100 cards, 1000 scenarios, then run scenarios"
@@ -128,6 +132,15 @@ sandbox-report:
 
 private-config:
 	poetry run python tools/bootstrap_private_config.py --card-count $(COUNT) --output $(CONFIG_OUT)
+
+private-scenarios:
+	poetry run python tools/bootstrap_private_scenarios.py --card-count $(COUNT) --environment $(PRIVATE_ENV) --output $(PRIVATE_SCENARIO_OUT)
+
+private-inputs: private-config private-scenarios
+	@echo "Export these before sandbox readiness checks:"
+	@echo "  export PAYNKOLAY_CONFIG_FILE=$(CONFIG_OUT)"
+	@echo "  export PAYNKOLAY_SCENARIO_CATALOG=$(PRIVATE_SCENARIO_OUT)"
+	@echo "  export PAYNKOLAY_ENV=$(PRIVATE_ENV)"
 
 synthetic-cards:
 	poetry run python tools/generate_synthetic_cards.py --count $(COUNT) --output $(OUT)
