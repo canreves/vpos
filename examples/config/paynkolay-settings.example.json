@@ -51,6 +51,66 @@
           "expiry_year": 2030,
           "cvv": "003",
           "requires_3ds": false
+        },
+        {
+          "alias": "visa_3ds_wrong_otp",
+          "brand": "visa",
+          "pan": "0000000000000004",
+          "expiry_month": 12,
+          "expiry_year": 2030,
+          "cvv": "004",
+          "requires_3ds": true,
+          "expected_otp": "999999"
+        },
+        {
+          "alias": "visa_insufficient_funds",
+          "brand": "visa",
+          "pan": "0000000000000005",
+          "expiry_month": 12,
+          "expiry_year": 2030,
+          "cvv": "005",
+          "requires_3ds": true,
+          "expected_otp": "000005"
+        },
+        {
+          "alias": "visa_invalid_cvv",
+          "brand": "visa",
+          "pan": "0000000000000006",
+          "expiry_month": 12,
+          "expiry_year": 2030,
+          "cvv": "006",
+          "requires_3ds": true,
+          "expected_otp": "000006"
+        },
+        {
+          "alias": "visa_expired_card",
+          "brand": "visa",
+          "pan": "0000000000000007",
+          "expiry_month": 12,
+          "expiry_year": 2030,
+          "cvv": "007",
+          "requires_3ds": true,
+          "expected_otp": "000007"
+        },
+        {
+          "alias": "visa_debit_3ds_success",
+          "brand": "visa",
+          "pan": "0000000000000008",
+          "expiry_month": 12,
+          "expiry_year": 2030,
+          "cvv": "008",
+          "requires_3ds": true,
+          "expected_otp": "000008"
+        },
+        {
+          "alias": "visa_credit_3ds_success",
+          "brand": "visa",
+          "pan": "0000000000000009",
+          "expiry_month": 12,
+          "expiry_year": 2030,
+          "cvv": "009",
+          "requires_3ds": true,
+          "expected_otp": "000009"
         }
       ]
     },

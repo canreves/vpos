@@ -93,16 +93,29 @@ def test_load_payment_scenario_catalog_from_json_file() -> None:
 
     catalog = load_payment_scenario_catalog(catalog_path)
 
-    assert catalog.ids() == (
-        "visa_3ds_capture",
-        "visa_installment_capture",
-        "visa_3ds_declined",
-        "visa_moto_authorized",
-    )
+    assert "visa_3ds_capture" in catalog.ids()
+    assert "visa_moto_authorized" in catalog.ids()
+    assert "visa_installment_capture" in catalog.ids()
     assert catalog.get("visa_installment_capture").installment_count == 3
     assert catalog.get("visa_3ds_declined").expected_final_status is PaymentStatus.FAILED
     assert catalog.tagged("moto")[0].payment_channel is PaymentChannel.MOTO
     assert catalog.tagged("negative")[0].scenario_id == "visa_3ds_declined"
+    assert {scenario.installment_count for scenario in catalog.tagged("installment")} == {
+        2,
+        3,
+        6,
+        9,
+        12,
+    }
+    assert catalog.tagged("wrong_otp")[0].scenario_id == "visa_3ds_wrong_otp"
+    assert catalog.tagged("invalid_cvv")[0].scenario_id == "visa_invalid_cvv"
+    assert catalog.tagged("expired_card")[0].scenario_id == "visa_expired_card"
+    assert catalog.tagged("insufficient_funds")[0].scenario_id == "visa_insufficient_funds"
+    assert catalog.tagged("payment_list")[0].scenario_id == "visa_payment_list_missing"
+    assert catalog.tagged("cancel")[0].expected_final_status is PaymentStatus.CANCELLED
+    assert catalog.tagged("refund")[0].expected_final_status is PaymentStatus.REFUNDED
+    assert catalog.tagged("debit")[0].scenario_id == "visa_debit_3ds_capture"
+    assert catalog.tagged("credit")
 
 
 @pytest.mark.api
