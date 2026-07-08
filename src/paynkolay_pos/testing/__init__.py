@@ -5,6 +5,8 @@ from paynkolay_pos.testing.credential_matrix import (
     CredentialErrorMatrixItem,
     build_credential_matrix_json,
     build_credential_matrix_payload,
+    build_credential_scenario_catalog_json,
+    build_credential_scenario_catalog_payload,
 )
 from paynkolay_pos.testing.factories import (
     callback_payload,
@@ -38,6 +40,8 @@ __all__ = [
     "CredentialErrorMatrixItem",
     "build_credential_matrix_json",
     "build_credential_matrix_payload",
+    "build_credential_scenario_catalog_json",
+    "build_credential_scenario_catalog_payload",
     "callback_payload",
     "callback_payload_model",
     "generate_synthetic_card_payloads",

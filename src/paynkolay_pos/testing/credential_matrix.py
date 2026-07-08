@@ -9,6 +9,8 @@ import unicodedata
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from paynkolay_pos.scenarios import PaymentScenarioCatalog
+
 
 @dataclass(frozen=True)
 class CredentialCardMatrixItem:
@@ -87,6 +89,57 @@ def build_credential_matrix_json(
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
+def build_credential_scenario_catalog_payload(
+    *,
+    param_cards_path: Path | None = None,
+    paynkolay_cards_path: Path | None = None,
+    error_codes_path: Path | None = None,
+) -> dict[str, object]:
+    """Build executable local/mock scenarios from credential CSV files."""
+
+    matrix = build_credential_matrix_payload(
+        param_cards_path=param_cards_path,
+        paynkolay_cards_path=paynkolay_cards_path,
+        error_codes_path=error_codes_path,
+    )
+    cards = matrix["cards"]
+    errors = matrix["errors"]
+    if not isinstance(cards, list) or not isinstance(errors, list):
+        raise TypeError("credential matrix payload is invalid")
+
+    scenarios: list[dict[str, object]] = []
+    for index, card in enumerate(cards, start=1):
+        if not isinstance(card, dict):
+            raise TypeError("credential matrix card item is invalid")
+        scenarios.extend(_card_scenarios(card, index=index))
+
+    error_card = _first_card(cards)
+    for index, error in enumerate(errors, start=1):
+        if not isinstance(error, dict):
+            raise TypeError("credential matrix error item is invalid")
+        scenarios.append(_error_scenario(error, error_card=error_card, index=index))
+
+    payload: dict[str, object] = {"scenarios": scenarios}
+    PaymentScenarioCatalog.model_validate(payload)
+    return payload
+
+
+def build_credential_scenario_catalog_json(
+    *,
+    param_cards_path: Path | None = None,
+    paynkolay_cards_path: Path | None = None,
+    error_codes_path: Path | None = None,
+) -> str:
+    """Build pretty JSON for credential-driven local/mock scenarios."""
+
+    payload = build_credential_scenario_catalog_payload(
+        param_cards_path=param_cards_path,
+        paynkolay_cards_path=paynkolay_cards_path,
+        error_codes_path=error_codes_path,
+    )
+    return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
 def _read_param_cards(path: Path) -> list[CredentialCardMatrixItem]:
     rows = _read_csv(path)
     cards: list[CredentialCardMatrixItem] = []
@@ -112,6 +165,134 @@ def _read_param_cards(path: Path) -> list[CredentialCardMatrixItem]:
             )
         )
     return cards
+
+
+def _card_scenarios(card: dict[str, object], *, index: int) -> list[dict[str, object]]:
+    alias = str(card["alias"])
+    requires_3ds = bool(card["requires_3ds"])
+    card_type = str(card["card_type"])
+    scenarios: list[dict[str, object]] = []
+    if requires_3ds:
+        scenarios.append(
+            _scenario_payload(
+                scenario_id=f"credential_{alias}_3ds_success",
+                title=f"Credential {alias} 3DS success",
+                card_alias=alias,
+                amount=_amount(index),
+                requires_3ds=True,
+                expected_initialize_status="pending_3ds",
+                expected_final_status="captured",
+                installment_count=1,
+                payment_channel="e_commerce",
+                moto=False,
+                tags=["credential", "local_mock", "three_ds", card_type],
+            )
+        )
+    else:
+        scenarios.append(
+            _scenario_payload(
+                scenario_id=f"credential_{alias}_moto_authorized",
+                title=f"Credential {alias} MoTo authorized",
+                card_alias=alias,
+                amount=_amount(index),
+                requires_3ds=False,
+                expected_initialize_status="authorized",
+                expected_final_status="authorized",
+                installment_count=1,
+                payment_channel="moto",
+                moto=True,
+                tags=["credential", "local_mock", "moto", card_type],
+            )
+        )
+
+    if card_type == "credit":
+        scenarios.append(
+            _scenario_payload(
+                scenario_id=f"credential_{alias}_installment_3",
+                title=f"Credential {alias} 3 installment",
+                card_alias=alias,
+                amount="300.00",
+                requires_3ds=requires_3ds,
+                expected_initialize_status="pending_3ds" if requires_3ds else "authorized",
+                expected_final_status="captured" if requires_3ds else "authorized",
+                installment_count=3,
+                payment_channel="e_commerce" if requires_3ds else "moto",
+                moto=not requires_3ds,
+                tags=["credential", "local_mock", "installment", "credit"],
+            )
+        )
+    return scenarios
+
+
+def _error_scenario(
+    error: dict[str, object],
+    *,
+    error_card: dict[str, object],
+    index: int,
+) -> dict[str, object]:
+    alias = str(error_card["alias"])
+    requires_3ds = bool(error_card["requires_3ds"])
+    scenario_id = str(error["scenario_id"]).replace("cvv_", "credential_cvv_")
+    return _scenario_payload(
+        scenario_id=f"{scenario_id}_{index:02d}",
+        title=f"Credential CVV error {error['expected_error_code']}",
+        card_alias=alias,
+        amount="100.00",
+        requires_3ds=requires_3ds,
+        expected_initialize_status="failed",
+        expected_final_status="failed",
+        installment_count=1,
+        payment_channel="e_commerce",
+        moto=False,
+        tags=["credential", "local_mock", "negative", "invalid_cvv"],
+    )
+
+
+def _first_card(cards: list[object]) -> dict[str, object]:
+    if not cards:
+        raise ValueError("at least one credential card is required to build scenarios")
+    first = cards[0]
+    if not isinstance(first, dict):
+        raise TypeError("credential matrix card item is invalid")
+    return first
+
+
+def _scenario_payload(
+    *,
+    scenario_id: str,
+    title: str,
+    card_alias: str,
+    amount: str,
+    requires_3ds: bool,
+    expected_initialize_status: str,
+    expected_final_status: str,
+    installment_count: int,
+    payment_channel: str,
+    moto: bool,
+    tags: list[str],
+) -> dict[str, object]:
+    return {
+        "scenario_id": scenario_id[:80],
+        "title": title[:160],
+        "card_alias": card_alias,
+        "amount": amount,
+        "currency": "TRY",
+        "requires_3ds": requires_3ds,
+        "expected_initialize_status": expected_initialize_status,
+        "expected_final_status": expected_final_status,
+        "installment_count": installment_count,
+        "payment_channel": payment_channel,
+        "moto": moto,
+        "tags": _unique_tags(tags),
+    }
+
+
+def _unique_tags(tags: list[str]) -> list[str]:
+    return list(dict.fromkeys(tags))
+
+
+def _amount(index: int) -> str:
+    return f"{((index % 20) + 1) * 10}.00"
 
 
 def _read_paynkolay_cards(path: Path) -> list[CredentialCardMatrixItem]:

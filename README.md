@@ -345,6 +345,16 @@ This reads local files under `credentials/`, normalizes test cards and CVV-drive
 codes, then writes a private JSON matrix for local/mock scenario planning. The generated
 matrix may include PAN/CVV/OTP values and must stay outside Git.
 
+Generate executable local/mock scenarios from the same credential files:
+
+```bash
+make credential-scenarios CREDENTIAL_SCENARIO_OUT=/tmp/paynkolay-credential-scenarios.json
+make credential-scenario-test CREDENTIAL_SCENARIO_OUT=/tmp/paynkolay-credential-scenarios.json
+```
+
+Credential scenarios cover 3DS cards, MoTo candidates, credit/debit coverage, installment
+candidates, and CVV-driven negative cases from `param_hata_kodlari.csv`.
+
 Select an environment without editing the JSON file:
 
 ```bash

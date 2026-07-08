@@ -1,4 +1,4 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs credential-matrix synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web web-test web-check allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs credential-matrix credential-scenarios credential-scenario-test synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web web-test web-check allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
@@ -13,6 +13,7 @@ SCENARIO_COUNT ?= 1000
 SCENARIO_OUT ?= /tmp/paynkolay-synthetic-scenarios.json
 PRIVATE_SCENARIO_OUT ?= /tmp/paynkolay-private-scenarios.json
 MATRIX_OUT ?= /tmp/paynkolay-credential-matrix.json
+CREDENTIAL_SCENARIO_OUT ?= /tmp/paynkolay-credential-scenarios.json
 PRIVATE_ENV ?= dev
 SCENARIO_FILE ?=
 WEB_HOST ?= 127.0.0.1
@@ -48,6 +49,8 @@ help:
 	@echo "  make private-scenarios Create a local-only sandbox scenario catalogue"
 	@echo "  make private-inputs  Create matching local-only config and scenarios"
 	@echo "  make credential-matrix Build local/mock matrix from ignored credentials"
+	@echo "  make credential-scenarios Build scenarios from ignored credentials"
+	@echo "  make credential-scenario-test Run scenario tests from credential scenarios"
 	@echo "  make synthetic-cards Generate a synthetic cards JSON array"
 	@echo "  make synthetic-scenarios Generate a synthetic scenario catalogue"
 	@echo "  make scale-demo      Generate 100 cards, 1000 scenarios, then run scenarios"
@@ -146,6 +149,12 @@ private-inputs: private-config private-scenarios
 
 credential-matrix:
 	poetry run python tools/build_credential_matrix.py --output $(MATRIX_OUT)
+
+credential-scenarios:
+	poetry run python tools/build_credential_scenarios.py --output $(CREDENTIAL_SCENARIO_OUT)
+
+credential-scenario-test: credential-scenarios
+	PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) $(PYTEST) tests/scenarios/test_payment_scenarios.py
 
 synthetic-cards:
 	poetry run python tools/generate_synthetic_cards.py --count $(COUNT) --output $(OUT)

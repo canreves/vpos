@@ -3,7 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from paynkolay_pos.testing import build_credential_matrix_json, build_credential_matrix_payload
+import pytest
+
+from paynkolay_pos.scenarios import PaymentScenarioCatalog
+from paynkolay_pos.testing import (
+    build_credential_matrix_json,
+    build_credential_matrix_payload,
+    build_credential_scenario_catalog_json,
+    build_credential_scenario_catalog_payload,
+)
 
 
 def test_build_credential_matrix_payload_normalizes_cards_and_errors(tmp_path: Path) -> None:
@@ -75,3 +83,57 @@ def test_build_credential_matrix_json_serializes_payload(tmp_path: Path) -> None
     assert payload["errors"][0]["input_condition"] == (
         "Use CVV 120 to trigger provider error 12."
     )
+
+
+def test_build_credential_scenario_catalog_payload_validates(tmp_path: Path) -> None:
+    param_cards = tmp_path / "param_merchants.csv"
+    param_cards.write_text(
+        "\ufeffBanka,Kart Numarasi,Son Kullanma Tarihi,Guvenlik Numarasi (CVV),"
+        "Ticari Kart,Kart Tipi\n"
+        "Is Bankasi,6501738564461396,12/26,000,Hayir,"
+        "Kredi Karti / TROY - 3DS Sifre: test (orn: 102824)\n"
+        "Halk Bankasi,5818775818772285,12/26,001,Hayir,Debit / MASTERCARD\n",
+        encoding="utf-8",
+    )
+    errors = tmp_path / "param_hata_kodlari.csv"
+    errors.write_text(
+        "\ufeffCVV,Hata Kodu,Hata Aciklamasi\n"
+        "510,51,Limit Yetersiz\n",
+        encoding="utf-8",
+    )
+
+    payload = build_credential_scenario_catalog_payload(
+        param_cards_path=param_cards,
+        error_codes_path=errors,
+    )
+    catalog = PaymentScenarioCatalog.model_validate(payload)
+
+    assert len(catalog.scenarios) == 4
+    assert catalog.scenarios[0].scenario_id == "credential_is_bankasi_troy_1396_3ds_success"
+    assert catalog.scenarios[0].requires_3ds is True
+    assert "three_ds" in catalog.scenarios[0].tags
+    assert catalog.scenarios[1].installment_count == 3
+    assert catalog.scenarios[2].moto is True
+    assert catalog.scenarios[3].expected_final_status.value == "failed"
+    assert "invalid_cvv" in catalog.scenarios[3].tags
+
+
+def test_build_credential_scenario_catalog_json_serializes_catalogue(tmp_path: Path) -> None:
+    paynkolay_cards = tmp_path / "paynkolay_merchants.csv"
+    paynkolay_cards.write_text(
+        "\ufeffBanka Adi,Kart Numarasi,Kart Semasi,Son Kullanma Tarihi,CVC Kodu,Sifre\n"
+        "DenizBank,5200190006338608,MasterCard,2030/01,410,123456\n",
+        encoding="utf-8",
+    )
+
+    body = build_credential_scenario_catalog_json(paynkolay_cards_path=paynkolay_cards)
+    payload = json.loads(body)
+    catalog = PaymentScenarioCatalog.model_validate(payload)
+
+    assert len(catalog.scenarios) == 2
+    assert catalog.scenarios[0].card_alias == "denizbank_mastercard_8608"
+
+
+def test_build_credential_scenario_catalog_rejects_empty_card_set() -> None:
+    with pytest.raises(ValueError, match="at least one credential card"):
+        build_credential_scenario_catalog_payload()
