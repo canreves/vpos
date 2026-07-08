@@ -54,6 +54,12 @@ def allure_report_dir() -> Path:
     return Path(os.getenv("PAYNKOLAY_ALLURE_REPORT_DIR", "allure-report"))
 
 
+def allure_results_dir() -> Path:
+    """Return the local Allure raw results directory."""
+
+    return Path(os.getenv("PAYNKOLAY_ALLURE_RESULTS_DIR", "allure-results"))
+
+
 def get_payment_session_store(request: Request) -> PaymentSessionStore:
     """Return the app-scoped in-memory payment session store."""
 

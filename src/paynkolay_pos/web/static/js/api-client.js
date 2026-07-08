@@ -27,6 +27,9 @@
     getLatestReport() {
       return requestJson("/api/reports/latest");
     },
+    getReportHistory() {
+      return requestJson("/api/reports/history");
+    },
     createPayment(payload) {
       return requestJson("/api/payments", {
         method: "POST",

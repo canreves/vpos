@@ -153,6 +153,7 @@ async def test_reports_page_renders_dynamic_report_screen(client: httpx.AsyncCli
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert 'id="report-status"' in response.text
+    assert 'id="history-status"' in response.text
     assert "make credential-scenario-report" in response.text
     assert "/static/js/reports.js" in response.text
 
@@ -227,6 +228,76 @@ async def test_latest_report_returns_available_when_index_exists(
         "entrypoint": str(entrypoint),
         "message": "Allure HTML report is available.",
     }
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_report_history_returns_unavailable_when_results_are_missing(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    results_dir = tmp_path / "missing-results"
+    monkeypatch.setenv("PAYNKOLAY_ALLURE_RESULTS_DIR", str(results_dir))
+
+    response = await client.get("/api/reports/history")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "available": False,
+        "results_path": str(results_dir),
+        "latest": None,
+        "message": "Allure results have not been generated yet.",
+    }
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_report_history_summarizes_latest_allure_results(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    results_dir = tmp_path / "allure-results"
+    results_dir.mkdir()
+    monkeypatch.setenv("PAYNKOLAY_ALLURE_RESULTS_DIR", str(results_dir))
+    (results_dir / "passed-result.json").write_text(
+        json.dumps(
+            {
+                "name": "test_authorized_payment",
+                "status": "passed",
+                "start": 1783510684000,
+                "stop": 1783510684050,
+                "labels": [{"name": "suite", "value": "test_payments"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (results_dir / "failed-result.json").write_text(
+        json.dumps(
+            {
+                "name": "test_invalid_cvv",
+                "status": "failed",
+                "start": 1783510684100,
+                "stop": 1783510684200,
+                "labels": [{"name": "suite", "value": "test_payments"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    response = await client.get("/api/reports/history")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["available"] is True
+    assert payload["results_path"] == str(results_dir)
+    assert payload["latest"]["total"] == 2
+    assert payload["latest"]["passed"] == 1
+    assert payload["latest"]["failed"] == 1
+    assert payload["latest"]["duration_ms"] == 200
+    assert payload["latest"]["recent_tests"][0]["name"] == "test_invalid_cvv"
+    assert payload["latest"]["recent_tests"][0]["duration_ms"] == 100
 
 
 @pytest.mark.api

@@ -47,6 +47,50 @@
         </section>
         <section class="panel report-command-panel">
           <div class="panel-heading">
+            <h2>Latest Run</h2>
+            <span class="status-pill neutral" id="history-status">Checking</span>
+          </div>
+          <dl class="result-list">
+            <div>
+              <dt>Results path</dt>
+              <dd id="history-path">-</dd>
+            </div>
+            <div>
+              <dt>Total</dt>
+              <dd id="history-total">-</dd>
+            </div>
+            <div>
+              <dt>Status counts</dt>
+              <dd id="history-counts">-</dd>
+            </div>
+            <div>
+              <dt>Duration</dt>
+              <dd id="history-duration">-</dd>
+            </div>
+            <div>
+              <dt>Finished</dt>
+              <dd id="history-finished">-</dd>
+            </div>
+          </dl>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Test</th>
+                  <th>Suite</th>
+                  <th>Status</th>
+                  <th>Duration</th>
+                </tr>
+              </thead>
+              <tbody id="history-tests"></tbody>
+            </table>
+          </div>
+          <p class="inline-message" id="history-message">
+            Generate credential results with make credential-scenario-report.
+          </p>
+        </section>
+        <section class="panel report-command-panel">
+          <div class="panel-heading">
             <h2>Credential Run</h2>
             <span class="status-pill neutral">Local/mock</span>
           </div>

@@ -246,3 +246,37 @@ class ReportStatusResponse(BaseModel):
     report_path: str
     entrypoint: str | None = None
     message: str
+
+
+class ReportTestResultSummary(BaseModel):
+    """Safe summary of one local Allure test result."""
+
+    name: str
+    status: str
+    suite: str | None = None
+    duration_ms: int | None = None
+    started_at: str | None = None
+
+
+class ReportRunSummary(BaseModel):
+    """Aggregate summary of the latest local Allure result directory."""
+
+    total: int = 0
+    passed: int = 0
+    failed: int = 0
+    broken: int = 0
+    skipped: int = 0
+    unknown: int = 0
+    started_at: str | None = None
+    finished_at: str | None = None
+    duration_ms: int | None = None
+    recent_tests: list[ReportTestResultSummary] = Field(default_factory=list)
+
+
+class ReportHistoryResponse(BaseModel):
+    """Local test result history exposed to the browser."""
+
+    available: bool
+    results_path: str
+    latest: ReportRunSummary | None = None
+    message: str
