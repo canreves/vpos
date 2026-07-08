@@ -23,6 +23,16 @@
     state.className = `status-pill ${kind}`;
   }
 
+  function stateKind(status) {
+    if (status === "failed") {
+      return "error";
+    }
+    if (status === "completed") {
+      return "success";
+    }
+    return "neutral";
+  }
+
   function clearResult() {
     Object.values(fields).forEach((field) => {
       field.textContent = "-";
@@ -48,7 +58,7 @@
       threeDsLink.classList.add("hidden");
     }
 
-    setState(payment.status, payment.status === "failed" ? "error" : "success");
+    setState(payment.status, stateKind(payment.status));
     message.textContent = "Payment state loaded.";
   }
 

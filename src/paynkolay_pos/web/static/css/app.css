@@ -212,9 +212,26 @@ select {
   cursor: pointer;
 }
 
+.actions button:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
 .actions button:disabled {
   cursor: not-allowed;
   opacity: 0.65;
+}
+
+.lookup-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: end;
+  padding: 20px 20px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.lookup-form .actions {
+  grid-column: auto;
 }
 
 .result-list {
@@ -272,6 +289,12 @@ select {
   text-decoration: none;
 }
 
+.secondary-action:hover {
+  border-color: var(--accent-strong);
+  color: #ffffff;
+  background: var(--accent);
+}
+
 .hidden {
   display: none;
 }
@@ -294,8 +317,14 @@ select {
 }
 
 @media (max-width: 560px) {
-  .payment-form {
+  .payment-form,
+  .lookup-form {
     grid-template-columns: 1fr;
+  }
+
+  .lookup-form .actions,
+  .actions button {
+    width: 100%;
   }
 
   .result-list div {

@@ -161,6 +161,7 @@ async def test_result_page_renders_dynamic_lookup_screen(client: httpx.AsyncClie
     assert "text/html" in response.headers["content-type"]
     assert 'id="result-lookup-form"' in response.text
     assert 'id="lookup-order-id"' in response.text
+    assert 'class="nav-link active" href="/"' in response.text
     assert "/static/js/result.js" in response.text
 
 
