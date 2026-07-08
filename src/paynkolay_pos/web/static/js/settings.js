@@ -19,6 +19,15 @@
     issueCount: document.getElementById("settings-issue-count"),
     scenarioSource: document.getElementById("settings-scenario-source"),
     scenarioTags: document.getElementById("settings-scenario-tags"),
+    coverage3ds: document.getElementById("coverage-3ds"),
+    coverageMoto: document.getElementById("coverage-moto"),
+    coverageSingle: document.getElementById("coverage-single"),
+    coverageInstallment: document.getElementById("coverage-installment"),
+    coverageNegative: document.getElementById("coverage-negative"),
+    coverageChannels: document.getElementById("coverage-channels"),
+    coverageStatuses: document.getElementById("coverage-statuses"),
+    coverageInstallments: document.getElementById("coverage-installments"),
+    coverageErrors: document.getElementById("coverage-errors"),
   };
 
   function setStatus(element, text, kind) {
@@ -32,6 +41,27 @@
 
   function yesNo(value) {
     return value ? "Yes" : "No";
+  }
+
+  function countList(values) {
+    const entries = Object.entries(values || {});
+    if (entries.length === 0) {
+      return "-";
+    }
+    return entries.map(([key, count]) => `${key}: ${count}`).join(", ");
+  }
+
+  function renderCoverage(coverage) {
+    const summary = coverage || {};
+    fields.coverage3ds.textContent = String(summary.three_ds_count || 0);
+    fields.coverageMoto.textContent = String(summary.moto_count || 0);
+    fields.coverageSingle.textContent = String(summary.single_payment_count || 0);
+    fields.coverageInstallment.textContent = String(summary.installment_count || 0);
+    fields.coverageNegative.textContent = String(summary.negative_count || 0);
+    fields.coverageChannels.textContent = countList(summary.payment_channel_counts);
+    fields.coverageStatuses.textContent = countList(summary.final_status_counts);
+    fields.coverageInstallments.textContent = countList(summary.installment_counts);
+    fields.coverageErrors.textContent = countList(summary.error_code_counts);
   }
 
   function renderIssues(readiness) {
@@ -88,6 +118,7 @@
       fields.scenarioCount.textContent = String(overview.scenarios.scenario_count);
       fields.issueCount.textContent = "-";
       fields.scenarioTags.textContent = overview.scenarios.tags.join(", ") || "-";
+      renderCoverage(overview.scenarios.coverage);
       renderIssues(overview.readiness);
       renderCards([]);
       message.textContent = overview.message || "Runtime config is not loaded.";
@@ -117,6 +148,7 @@
     fields.scenarioSource.textContent = text(overview.scenarios.source);
     fields.scenarioTags.textContent = overview.scenarios.tags.join(", ") || "-";
 
+    renderCoverage(overview.scenarios.coverage);
     renderIssues(overview.readiness);
     renderCards(overview.cards);
     message.textContent = overview.readiness.ready

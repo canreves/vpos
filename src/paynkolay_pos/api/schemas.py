@@ -49,6 +49,20 @@ class ConfigMerchantSummary(BaseModel):
     has_cancel_refund_key: bool
 
 
+class ConfigScenarioCoverage(BaseModel):
+    """Aggregate scenario coverage counts safe for browser display."""
+
+    three_ds_count: int = 0
+    moto_count: int = 0
+    single_payment_count: int = 0
+    installment_count: int = 0
+    negative_count: int = 0
+    payment_channel_counts: dict[str, int] = Field(default_factory=dict)
+    final_status_counts: dict[str, int] = Field(default_factory=dict)
+    installment_counts: dict[str, int] = Field(default_factory=dict)
+    error_code_counts: dict[str, int] = Field(default_factory=dict)
+
+
 class ConfigScenarioSummary(BaseModel):
     """Safe scenario catalogue metadata for tester visibility."""
 
@@ -56,6 +70,7 @@ class ConfigScenarioSummary(BaseModel):
     source: str
     scenario_count: int = 0
     tags: list[str] = Field(default_factory=list)
+    coverage: ConfigScenarioCoverage = Field(default_factory=ConfigScenarioCoverage)
     message: str | None = None
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections import Counter
 
 from fastapi import APIRouter
 
@@ -13,6 +14,7 @@ from paynkolay_pos.api.schemas import (
     ConfigReadinessIssueSummary,
     ConfigReadinessSummary,
     ConfigResponse,
+    ConfigScenarioCoverage,
     ConfigScenarioSummary,
 )
 from paynkolay_pos.config import CardBrand, load_runtime_settings
@@ -141,6 +143,7 @@ def _scenario_summary() -> tuple[ConfigScenarioSummary, PaymentScenarioCatalog |
             source=source,
             scenario_count=len(catalog.scenarios),
             tags=tags,
+            coverage=_scenario_coverage(catalog),
         ),
         catalog,
     )
@@ -159,6 +162,34 @@ def _scenario_summary_without_runtime() -> ConfigScenarioSummary:
         source=source,
         scenario_count=len(catalog.scenarios),
         tags=tags,
+        coverage=_scenario_coverage(catalog),
+    )
+
+
+def _scenario_coverage(catalog: PaymentScenarioCatalog) -> ConfigScenarioCoverage:
+    payment_channels = Counter(scenario.payment_channel.value for scenario in catalog.scenarios)
+    final_statuses = Counter(scenario.expected_final_status.value for scenario in catalog.scenarios)
+    installments = Counter(str(scenario.installment_count) for scenario in catalog.scenarios)
+    error_codes = Counter(
+        tag.removeprefix("error_code_")
+        for scenario in catalog.scenarios
+        for tag in scenario.tags
+        if tag.startswith("error_code_")
+    )
+    return ConfigScenarioCoverage(
+        three_ds_count=sum(1 for scenario in catalog.scenarios if scenario.requires_3ds),
+        moto_count=sum(1 for scenario in catalog.scenarios if scenario.moto),
+        single_payment_count=sum(
+            1 for scenario in catalog.scenarios if scenario.installment_count == 1
+        ),
+        installment_count=sum(
+            1 for scenario in catalog.scenarios if scenario.installment_count > 1
+        ),
+        negative_count=sum(1 for scenario in catalog.scenarios if "negative" in scenario.tags),
+        payment_channel_counts=dict(sorted(payment_channels.items())),
+        final_status_counts=dict(sorted(final_statuses.items())),
+        installment_counts=dict(sorted(installments.items(), key=lambda item: int(item[0]))),
+        error_code_counts=dict(sorted(error_codes.items())),
     )
 
 

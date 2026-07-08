@@ -166,6 +166,7 @@ async def test_settings_page_renders_dynamic_config_screen(client: httpx.AsyncCl
     assert "text/html" in response.headers["content-type"]
     assert 'id="runtime-status"' in response.text
     assert 'id="settings-cards"' in response.text
+    assert 'id="coverage-3ds"' in response.text
     assert "make credential-inputs" in response.text
     assert "/static/js/settings.js" in response.text
 
@@ -309,6 +310,14 @@ async def test_config_overview_exposes_safe_runtime_metadata(
     assert "merchant-secret-1001" not in response.text
     assert payload["card_count"] == 100
     assert payload["scenarios"]["scenario_count"] == 109
+    assert payload["scenarios"]["coverage"]["three_ds_count"] > 0
+    assert payload["scenarios"]["coverage"]["moto_count"] > 0
+    assert payload["scenarios"]["coverage"]["single_payment_count"] > 0
+    assert payload["scenarios"]["coverage"]["installment_count"] > 0
+    assert payload["scenarios"]["coverage"]["negative_count"] > 0
+    assert payload["scenarios"]["coverage"]["payment_channel_counts"]["e_commerce"] > 0
+    assert payload["scenarios"]["coverage"]["payment_channel_counts"]["moto"] > 0
+    assert payload["scenarios"]["coverage"]["final_status_counts"]["failed"] > 0
     assert payload["readiness"]["checked"] is True
     assert payload["readiness"]["ready"] is True
     assert payload["readiness"]["issues"] == []

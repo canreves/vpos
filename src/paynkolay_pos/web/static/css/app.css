@@ -329,6 +329,35 @@ select {
   color: var(--text);
 }
 
+.coverage-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  padding: 20px 20px 8px;
+}
+
+.coverage-grid div {
+  display: grid;
+  gap: 6px;
+  min-height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface-muted);
+}
+
+.coverage-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.coverage-grid strong {
+  font-size: 24px;
+  line-height: 1;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -424,6 +453,10 @@ select {
   .topbar nav {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .coverage-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .nav-link {
