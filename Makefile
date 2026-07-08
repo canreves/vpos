@@ -164,8 +164,8 @@ credential-inputs: credential-config credential-scenarios
 	@echo "  export PAYNKOLAY_CONFIG_FILE=$(CREDENTIAL_CONFIG_OUT)"
 	@echo "  export PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT)"
 
-credential-scenario-test: credential-scenarios
-	PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) $(PYTEST) tests/scenarios/test_payment_scenarios.py
+credential-scenario-test: credential-config credential-scenarios
+	PAYNKOLAY_CONFIG_FILE=$(CREDENTIAL_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) $(PYTEST) tests/e2e/test_data_driven_payment_scenarios.py
 
 synthetic-cards:
 	poetry run python tools/generate_synthetic_cards.py --count $(COUNT) --output $(OUT)

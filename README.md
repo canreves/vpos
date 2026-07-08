@@ -358,6 +358,8 @@ make credential-scenario-test CREDENTIAL_SCENARIO_OUT=/tmp/paynkolay-credential-
 
 Credential scenarios cover 3DS cards, MoTo candidates, credit/debit coverage, installment
 candidates, and CVV-driven negative cases from `param_hata_kodlari.csv`.
+`make credential-scenario-test` builds credential config plus scenarios, then executes the
+generated catalogue against the mocked payment flow.
 Export the generated config and scenario files before opening `/settings` when you want
 the tester UI to display local/mock card and readiness metadata:
 

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+from hashlib import sha1
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
@@ -30,6 +33,12 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
 
 def runtime_settings() -> RuntimeSettings:
+    config_file = os.getenv("PAYNKOLAY_CONFIG_FILE")
+    if config_file:
+        return RuntimeSettings.model_validate_json(
+            Path(config_file).expanduser().read_text(encoding="utf-8")
+        )
+
     return RuntimeSettings.model_validate(
         {
             "active_environment": "dev",
@@ -135,7 +144,7 @@ async def test_catalog_scenario_executes_against_mocked_provider(
     settings = runtime_settings()
     environment = settings.current
     card = card_payload_for(environment, scenario.card_alias)
-    order_id = f"order-{scenario.scenario_id}"
+    order_id = order_id_for(scenario)
     request = PaymentInitializeRequest.model_validate(
         scenario.payment_request_payload(
             merchant_id=environment.merchant.merchant_id,
@@ -170,6 +179,11 @@ async def test_catalog_scenario_executes_against_mocked_provider(
     assert provider.initialize_payload["installment_count"] == scenario.installment_count
     assert provider.initialize_payload["requires_3ds"] is scenario.requires_3ds
     assert provider.initialize_payload["moto"] is scenario.moto
+
+
+def order_id_for(scenario: PaymentScenario) -> str:
+    digest = sha1(scenario.scenario_id.encode("utf-8")).hexdigest()[:12]
+    return f"order-{digest}"
 
 
 def card_payload_for(environment: PaymentEnvironment, alias: str) -> dict[str, object]:
