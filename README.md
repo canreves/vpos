@@ -371,6 +371,19 @@ export PAYNKOLAY_CONFIG_FILE=/tmp/paynkolay-credential-settings.json
 export PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-credential-scenarios.json
 ```
 
+Local/mock tester handoff:
+
+```bash
+make credential-inputs
+export PAYNKOLAY_CONFIG_FILE=/tmp/paynkolay-credential-settings.json
+export PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-credential-scenarios.json
+make credential-scenario-report
+make web
+```
+
+Then open `/settings` to inspect the loaded credential cards and scenarios, and `/reports`
+to confirm the generated Allure report.
+
 Select an environment without editing the JSON file:
 
 ```bash

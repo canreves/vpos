@@ -166,6 +166,7 @@ async def test_settings_page_renders_dynamic_config_screen(client: httpx.AsyncCl
     assert "text/html" in response.headers["content-type"]
     assert 'id="runtime-status"' in response.text
     assert 'id="settings-cards"' in response.text
+    assert "make credential-inputs" in response.text
     assert "/static/js/settings.js" in response.text
 
 
