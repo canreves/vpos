@@ -9,6 +9,7 @@ import unicodedata
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from paynkolay_pos.config import RuntimeSettings
 from paynkolay_pos.scenarios import PaymentScenarioCatalog
 
 
@@ -140,6 +141,57 @@ def build_credential_scenario_catalog_json(
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
+def build_credential_runtime_config_payload(
+    *,
+    param_cards_path: Path | None = None,
+    paynkolay_cards_path: Path | None = None,
+) -> dict[str, object]:
+    """Build a local/mock runtime config from credential card CSV files."""
+
+    matrix = build_credential_matrix_payload(
+        param_cards_path=param_cards_path,
+        paynkolay_cards_path=paynkolay_cards_path,
+    )
+    cards = matrix["cards"]
+    if not isinstance(cards, list) or not cards:
+        raise ValueError("at least one credential card is required to build runtime config")
+
+    payload: dict[str, object] = {
+        "active_environment": "dev",
+        "environments": {
+            "dev": {
+                "name": "dev",
+                "base_url": "https://local-mock.payments.invalid",
+                "callback_base_url": "https://local-mock.callbacks.invalid",
+                "merchant": {
+                    "merchant_id": "local-mock-merchant",
+                    "terminal_id": "local-mock-terminal",
+                    "api_key": "local-mock-payment-key",
+                    "cancel_refund_api_key": "local-mock-cancel-refund-key",
+                    "secret_key": "local-mock-secret-key",
+                },
+                "cards": [_runtime_card_payload(card) for card in cards],
+            }
+        },
+    }
+    RuntimeSettings.model_validate(payload)
+    return payload
+
+
+def build_credential_runtime_config_json(
+    *,
+    param_cards_path: Path | None = None,
+    paynkolay_cards_path: Path | None = None,
+) -> str:
+    """Build pretty JSON for a local/mock runtime config from credential cards."""
+
+    payload = build_credential_runtime_config_payload(
+        param_cards_path=param_cards_path,
+        paynkolay_cards_path=paynkolay_cards_path,
+    )
+    return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
 def _read_param_cards(path: Path) -> list[CredentialCardMatrixItem]:
     rows = _read_csv(path)
     cards: list[CredentialCardMatrixItem] = []
@@ -165,6 +217,25 @@ def _read_param_cards(path: Path) -> list[CredentialCardMatrixItem]:
             )
         )
     return cards
+
+
+def _runtime_card_payload(card: object) -> dict[str, object]:
+    if not isinstance(card, dict):
+        raise TypeError("credential matrix card item is invalid")
+
+    payload: dict[str, object] = {
+        "alias": str(card["alias"]),
+        "brand": str(card["brand"]),
+        "pan": str(card["pan"]),
+        "expiry_month": int(card["expiry_month"]),
+        "expiry_year": int(card["expiry_year"]),
+        "cvv": str(card["cvv"]),
+        "requires_3ds": bool(card["requires_3ds"]),
+    }
+    expected_otp = card.get("expected_otp")
+    if expected_otp is not None:
+        payload["expected_otp"] = str(expected_otp)
+    return payload
 
 
 def _card_scenarios(card: dict[str, object], *, index: int) -> list[dict[str, object]]:
@@ -288,7 +359,7 @@ def _scenario_payload(
 
 
 def _unique_tags(tags: list[str]) -> list[str]:
-    return list(dict.fromkeys(tags))
+    return list(dict.fromkeys(["sandbox", *tags]))
 
 
 def _amount(index: int) -> str:

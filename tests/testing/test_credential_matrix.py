@@ -5,10 +5,13 @@ from pathlib import Path
 
 import pytest
 
+from paynkolay_pos.config import RuntimeSettings
 from paynkolay_pos.scenarios import PaymentScenarioCatalog
 from paynkolay_pos.testing import (
     build_credential_matrix_json,
     build_credential_matrix_payload,
+    build_credential_runtime_config_json,
+    build_credential_runtime_config_payload,
     build_credential_scenario_catalog_json,
     build_credential_scenario_catalog_payload,
 )
@@ -137,3 +140,53 @@ def test_build_credential_scenario_catalog_json_serializes_catalogue(tmp_path: P
 def test_build_credential_scenario_catalog_rejects_empty_card_set() -> None:
     with pytest.raises(ValueError, match="at least one credential card"):
         build_credential_scenario_catalog_payload()
+
+
+def test_build_credential_runtime_config_payload_matches_scenario_aliases(
+    tmp_path: Path,
+) -> None:
+    param_cards = tmp_path / "param_merchants.csv"
+    param_cards.write_text(
+        "\ufeffBanka,Kart Numarasi,Son Kullanma Tarihi,Guvenlik Numarasi (CVV),"
+        "Ticari Kart,Kart Tipi\n"
+        "Is Bankasi,6501738564461396,12/26,000,Hayir,"
+        "Kredi Karti / TROY - 3DS Sifre: test (orn: 102824)\n"
+        "Halk Bankasi,5818775818772285,12/26,001,Hayir,Debit / MASTERCARD\n",
+        encoding="utf-8",
+    )
+
+    settings = RuntimeSettings.model_validate(
+        build_credential_runtime_config_payload(param_cards_path=param_cards)
+    )
+    catalog = PaymentScenarioCatalog.model_validate(
+        build_credential_scenario_catalog_payload(param_cards_path=param_cards)
+    )
+
+    configured_aliases = {card.alias for card in settings.current.cards}
+    scenario_aliases = {scenario.card_alias for scenario in catalog.scenarios}
+
+    assert len(settings.current.cards) == 2
+    assert scenario_aliases <= configured_aliases
+    assert settings.current.cards[0].alias == "is_bankasi_troy_1396"
+    assert settings.current.cards[0].expected_otp is not None
+
+
+def test_build_credential_runtime_config_json_serializes_valid_settings(tmp_path: Path) -> None:
+    paynkolay_cards = tmp_path / "paynkolay_merchants.csv"
+    paynkolay_cards.write_text(
+        "\ufeffBanka Adi,Kart Numarasi,Kart Semasi,Son Kullanma Tarihi,CVC Kodu,Sifre\n"
+        "DenizBank,5200190006338608,MasterCard,2030/01,410,123456\n",
+        encoding="utf-8",
+    )
+
+    body = build_credential_runtime_config_json(paynkolay_cards_path=paynkolay_cards)
+    settings = RuntimeSettings.model_validate_json(body)
+
+    assert settings.current.name == "dev"
+    assert settings.current.cards[0].alias == "denizbank_mastercard_8608"
+    assert settings.current.cards[0].requires_3ds is True
+
+
+def test_build_credential_runtime_config_rejects_empty_card_set() -> None:
+    with pytest.raises(ValueError, match="at least one credential card"):
+        build_credential_runtime_config_payload()

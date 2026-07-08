@@ -348,12 +348,23 @@ matrix may include PAN/CVV/OTP values and must stay outside Git.
 Generate executable local/mock scenarios from the same credential files:
 
 ```bash
+make credential-config CREDENTIAL_CONFIG_OUT=/tmp/paynkolay-credential-settings.json
 make credential-scenarios CREDENTIAL_SCENARIO_OUT=/tmp/paynkolay-credential-scenarios.json
+make credential-inputs \
+  CREDENTIAL_CONFIG_OUT=/tmp/paynkolay-credential-settings.json \
+  CREDENTIAL_SCENARIO_OUT=/tmp/paynkolay-credential-scenarios.json
 make credential-scenario-test CREDENTIAL_SCENARIO_OUT=/tmp/paynkolay-credential-scenarios.json
 ```
 
 Credential scenarios cover 3DS cards, MoTo candidates, credit/debit coverage, installment
 candidates, and CVV-driven negative cases from `param_hata_kodlari.csv`.
+Export the generated config and scenario files before opening `/settings` when you want
+the tester UI to display local/mock card and readiness metadata:
+
+```bash
+export PAYNKOLAY_CONFIG_FILE=/tmp/paynkolay-credential-settings.json
+export PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-credential-scenarios.json
+```
 
 Select an environment without editing the JSON file:
 
