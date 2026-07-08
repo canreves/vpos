@@ -32,6 +32,66 @@ class ConfigResponse(BaseModel):
     message: str | None = None
 
 
+class ConfigCardSummary(BaseModel):
+    """Safe test card metadata for tester visibility."""
+
+    alias: str
+    brand: str
+    requires_3ds: bool
+    has_expected_otp: bool
+
+
+class ConfigMerchantSummary(BaseModel):
+    """Masked merchant metadata for tester visibility."""
+
+    merchant_id: str
+    terminal_id: str
+    has_cancel_refund_key: bool
+
+
+class ConfigScenarioSummary(BaseModel):
+    """Safe scenario catalogue metadata for tester visibility."""
+
+    configured: bool
+    source: str
+    scenario_count: int = 0
+    tags: list[str] = Field(default_factory=list)
+    message: str | None = None
+
+
+class ConfigReadinessIssueSummary(BaseModel):
+    """One safe readiness issue exposed to the browser."""
+
+    code: str
+    message: str
+
+
+class ConfigReadinessSummary(BaseModel):
+    """Sandbox readiness metadata for tester visibility."""
+
+    checked: bool
+    ready: bool = False
+    issue_count: int = 0
+    issues: list[ConfigReadinessIssueSummary] = Field(default_factory=list)
+    message: str | None = None
+
+
+class ConfigOverviewResponse(BaseModel):
+    """Safe operational overview for the tester UI."""
+
+    runtime_configured: bool
+    active_environment: str | None = None
+    config_source: str | None = None
+    base_url_configured: bool = False
+    callback_configured: bool = False
+    merchant: ConfigMerchantSummary | None = None
+    card_count: int = 0
+    cards: list[ConfigCardSummary] = Field(default_factory=list)
+    scenarios: ConfigScenarioSummary
+    readiness: ConfigReadinessSummary
+    message: str | None = None
+
+
 class PaymentFormRequest(BaseModel):
     """Payment form payload accepted from the browser."""
 

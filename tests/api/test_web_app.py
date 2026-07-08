@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -17,6 +19,7 @@ from paynkolay_pos.api.payment_initializer import (
     PaymentProviderInitializationError,
 )
 from paynkolay_pos.api.schemas import PaymentFormRequest
+from paynkolay_pos.config import build_private_runtime_config_payload
 from paynkolay_pos.models import (
     Currency,
     PaymentCardInput,
@@ -25,6 +28,7 @@ from paynkolay_pos.models import (
     PaynkolayThreeDSInitializeResult,
 )
 from paynkolay_pos.reporting import PaymentLogEvent
+from paynkolay_pos.scenarios import build_private_scenario_catalog_payload
 
 
 @pytest_asyncio.fixture
@@ -154,6 +158,18 @@ async def test_reports_page_renders_dynamic_report_screen(client: httpx.AsyncCli
 
 @pytest.mark.api
 @pytest.mark.asyncio
+async def test_settings_page_renders_dynamic_config_screen(client: httpx.AsyncClient) -> None:
+    response = await client.get("/settings")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert 'id="runtime-status"' in response.text
+    assert 'id="settings-cards"' in response.text
+    assert "/static/js/settings.js" in response.text
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
 async def test_result_page_renders_dynamic_lookup_screen(client: httpx.AsyncClient) -> None:
     response = await client.get("/result?order_id=order-web-1001")
 
@@ -227,6 +243,79 @@ async def test_config_route_exposes_safe_defaults_without_runtime_settings(
     assert payload["supported_card_brands"] == ["visa", "mastercard", "troy"]
     assert payload["payment_channels"] == ["e_commerce", "moto"]
     assert payload["card_aliases"] == []
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_config_overview_reports_missing_runtime_without_secrets(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PAYNKOLAY_CONFIG_FILE", raising=False)
+
+    response = await client.get("/api/config/overview")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["runtime_configured"] is False
+    assert payload["readiness"]["checked"] is False
+    assert payload["card_count"] == 0
+    assert payload["cards"] == []
+    assert "PAYNKOLAY_CONFIG_FILE" in payload["message"]
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_config_overview_exposes_safe_runtime_metadata(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "settings.json"
+    scenario_path = tmp_path / "scenarios.json"
+    config_payload = build_private_runtime_config_payload(card_count=100)
+    environments = cast(dict[str, Any], config_payload["environments"])
+    dev = cast(dict[str, Any], environments["dev"])
+    dev["callback_base_url"] = "https://merchant-callback.test"
+    merchant = cast(dict[str, Any], dev["merchant"])
+    merchant.update(
+        {
+            "merchant_id": "merchant-1001",
+            "terminal_id": "terminal-1001",
+            "api_key": "payment-api-key-1001",
+            "cancel_refund_api_key": "refund-api-key-1001",
+            "secret_key": "merchant-secret-1001",
+        }
+    )
+    config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+    scenario_path.write_text(
+        json.dumps(build_private_scenario_catalog_payload(card_count=100)),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PAYNKOLAY_CONFIG_FILE", str(config_path))
+    monkeypatch.setenv("PAYNKOLAY_SCENARIO_CATALOG", str(scenario_path))
+
+    response = await client.get("/api/config/overview")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["runtime_configured"] is True
+    assert payload["active_environment"] == "dev"
+    assert payload["merchant"]["merchant_id"].startswith("me")
+    assert "merchant-1001" not in response.text
+    assert "payment-api-key-1001" not in response.text
+    assert "merchant-secret-1001" not in response.text
+    assert payload["card_count"] == 100
+    assert payload["scenarios"]["scenario_count"] == 109
+    assert payload["readiness"]["checked"] is True
+    assert payload["readiness"]["ready"] is True
+    assert payload["readiness"]["issues"] == []
+    assert payload["cards"][0] == {
+        "alias": "visa_3ds_success",
+        "brand": "visa",
+        "requires_3ds": True,
+        "has_expected_otp": True,
+    }
 
 
 @pytest.mark.api

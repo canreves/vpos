@@ -21,6 +21,9 @@
     getConfig() {
       return requestJson("/api/config");
     },
+    getConfigOverview() {
+      return requestJson("/api/config/overview");
+    },
     getLatestReport() {
       return requestJson("/api/reports/latest");
     },

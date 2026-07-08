@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Settings</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script src="/static/js/api-client.js" defer></script>
+    <script src="/static/js/settings.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Settings</h1>
+          <p>Paynkolay POS</p>
+        </div>
+        <nav aria-label="Primary">
+          <a class="nav-link" href="/">Payment</a>
+          <a class="nav-link active" href="/settings">Settings</a>
+          <a class="nav-link" href="/reports">Reports</a>
+        </nav>
+      </header>
+
+      <main class="workspace settings-workspace">
+        <section class="panel" aria-labelledby="runtime-title">
+          <div class="panel-heading">
+            <h2 id="runtime-title">Runtime</h2>
+            <span class="status-pill neutral" id="runtime-status">Checking</span>
+          </div>
+          <dl class="result-list">
+            <div>
+              <dt>Environment</dt>
+              <dd id="settings-environment">-</dd>
+            </div>
+            <div>
+              <dt>Config file</dt>
+              <dd id="settings-config-source">-</dd>
+            </div>
+            <div>
+              <dt>Merchant</dt>
+              <dd id="settings-merchant">-</dd>
+            </div>
+            <div>
+              <dt>Terminal</dt>
+              <dd id="settings-terminal">-</dd>
+            </div>
+            <div>
+              <dt>Cancel/refund key</dt>
+              <dd id="settings-cancel-key">-</dd>
+            </div>
+            <div>
+              <dt>Callback</dt>
+              <dd id="settings-callback">-</dd>
+            </div>
+          </dl>
+        </section>
+
+        <aside class="panel" aria-labelledby="readiness-title">
+          <div class="panel-heading">
+            <h2 id="readiness-title">Readiness</h2>
+            <span class="status-pill neutral" id="readiness-status">Checking</span>
+          </div>
+          <dl class="result-list compact-list">
+            <div>
+              <dt>Cards</dt>
+              <dd id="settings-card-count">-</dd>
+            </div>
+            <div>
+              <dt>Scenarios</dt>
+              <dd id="settings-scenario-count">-</dd>
+            </div>
+            <div>
+              <dt>Issues</dt>
+              <dd id="settings-issue-count">-</dd>
+            </div>
+          </dl>
+          <ul class="issue-list" id="settings-issues"></ul>
+        </aside>
+
+        <section class="panel settings-wide" aria-labelledby="cards-title">
+          <div class="panel-heading">
+            <h2 id="cards-title">Cards</h2>
+            <span class="status-pill neutral" id="cards-status">0</span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Alias</th>
+                  <th>Brand</th>
+                  <th>3DS</th>
+                  <th>OTP</th>
+                </tr>
+              </thead>
+              <tbody id="settings-cards"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel settings-wide" aria-labelledby="scenarios-title">
+          <div class="panel-heading">
+            <h2 id="scenarios-title">Scenarios</h2>
+            <span class="status-pill neutral" id="scenarios-status">Pending</span>
+          </div>
+          <dl class="result-list">
+            <div>
+              <dt>Source</dt>
+              <dd id="settings-scenario-source">-</dd>
+            </div>
+            <div>
+              <dt>Tags</dt>
+              <dd id="settings-scenario-tags">-</dd>
+            </div>
+          </dl>
+          <p class="inline-message" id="settings-message">Loading configuration overview.</p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

@@ -51,6 +51,14 @@ def create_app() -> FastAPI:
             {"title": "Reports"},
         )
 
+    @app.get("/settings", include_in_schema=False)
+    async def settings_page(request: Request) -> Response:
+        return templates.TemplateResponse(
+            request,
+            "settings.html",
+            {"title": "Settings"},
+        )
+
     app.include_router(health.router)
     app.include_router(config.router)
     app.include_router(payments.router)

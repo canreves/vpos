@@ -91,6 +91,14 @@ select {
   grid-template-columns: minmax(0, 720px);
 }
 
+.settings-workspace {
+  grid-template-columns: minmax(0, 1fr) 380px;
+}
+
+.settings-wide {
+  grid-column: 1 / -1;
+}
+
 .panel {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -254,6 +262,10 @@ select {
   border-bottom: 0;
 }
 
+.compact-list div {
+  grid-template-columns: 110px minmax(0, 1fr);
+}
+
 .result-list dt {
   color: var(--muted);
   font-weight: 700;
@@ -276,6 +288,53 @@ select {
   display: flex;
   justify-content: flex-end;
   padding: 12px 20px 0;
+}
+
+.issue-list {
+  display: grid;
+  gap: 8px;
+  max-height: 280px;
+  margin: 0;
+  padding: 12px 20px 20px;
+  overflow: auto;
+  color: var(--muted);
+}
+
+.issue-list li {
+  overflow-wrap: anywhere;
+}
+
+.table-wrap {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.data-table th,
+.data-table td {
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 20px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.data-table tr:last-child td {
+  border-bottom: 0;
 }
 
 .secondary-action {
@@ -311,8 +370,13 @@ select {
   }
 
   .workspace,
-  .workspace.single {
+  .workspace.single,
+  .settings-workspace {
     grid-template-columns: 1fr;
+  }
+
+  .settings-wide {
+    grid-column: auto;
   }
 }
 
@@ -339,7 +403,7 @@ select {
 
   .topbar nav {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 
   .nav-link {

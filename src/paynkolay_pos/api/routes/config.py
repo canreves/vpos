@@ -2,11 +2,27 @@
 
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter
 
-from paynkolay_pos.api.schemas import ConfigResponse
+from paynkolay_pos.api.schemas import (
+    ConfigCardSummary,
+    ConfigMerchantSummary,
+    ConfigOverviewResponse,
+    ConfigReadinessIssueSummary,
+    ConfigReadinessSummary,
+    ConfigResponse,
+    ConfigScenarioSummary,
+)
 from paynkolay_pos.config import CardBrand, load_runtime_settings
 from paynkolay_pos.models import Currency, PaymentChannel
+from paynkolay_pos.sandbox import check_sandbox_readiness
+from paynkolay_pos.scenarios import (
+    PaymentScenarioCatalog,
+    load_payment_scenario_catalog_from_env,
+    scenario_catalog_path_from_env,
+)
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -40,3 +56,113 @@ async def get_config() -> ConfigResponse:
         card_aliases=[card.alias for card in current.cards],
     )
 
+
+@router.get("/overview", response_model=ConfigOverviewResponse)
+async def get_config_overview() -> ConfigOverviewResponse:
+    """Return safe runtime, scenario, and readiness metadata for testers."""
+
+    config_source = os.getenv("PAYNKOLAY_CONFIG_FILE")
+    try:
+        settings = load_runtime_settings()
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        return ConfigOverviewResponse(
+            runtime_configured=False,
+            config_source=config_source,
+            scenarios=_scenario_summary_without_runtime(),
+            readiness=ConfigReadinessSummary(
+                checked=False,
+                message="Runtime config is required before readiness can be checked.",
+            ),
+            message=str(exc),
+        )
+
+    current = settings.current
+    scenario_summary, catalog = _scenario_summary()
+    readiness = ConfigReadinessSummary(
+        checked=False,
+        message="Scenario catalogue is required before readiness can be checked.",
+    )
+    if catalog is not None:
+        report = check_sandbox_readiness(settings, catalog)
+        readiness = ConfigReadinessSummary(
+            checked=True,
+            ready=report.ready,
+            issue_count=len(report.issues),
+            issues=[
+                ConfigReadinessIssueSummary(code=issue.code, message=issue.message)
+                for issue in report.issues
+            ],
+        )
+
+    return ConfigOverviewResponse(
+        runtime_configured=True,
+        active_environment=current.name.value,
+        config_source=config_source,
+        base_url_configured=True,
+        callback_configured=True,
+        merchant=ConfigMerchantSummary(
+            merchant_id=_mask_value(current.merchant.merchant_id),
+            terminal_id=_mask_value(current.merchant.terminal_id),
+            has_cancel_refund_key=current.merchant.cancel_refund_api_key is not None,
+        ),
+        card_count=len(current.cards),
+        cards=[
+            ConfigCardSummary(
+                alias=card.alias,
+                brand=card.brand.value,
+                requires_3ds=card.requires_3ds,
+                has_expected_otp=card.expected_otp is not None,
+            )
+            for card in current.cards
+        ],
+        scenarios=scenario_summary,
+        readiness=readiness,
+    )
+
+
+def _scenario_summary() -> tuple[ConfigScenarioSummary, PaymentScenarioCatalog | None]:
+    source = str(scenario_catalog_path_from_env())
+    try:
+        catalog = load_payment_scenario_catalog_from_env()
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        return (
+            ConfigScenarioSummary(
+                configured=False,
+                source=source,
+                message=str(exc),
+            ),
+            None,
+        )
+
+    tags = sorted({tag for scenario in catalog.scenarios for tag in scenario.tags})
+    return (
+        ConfigScenarioSummary(
+            configured=True,
+            source=source,
+            scenario_count=len(catalog.scenarios),
+            tags=tags,
+        ),
+        catalog,
+    )
+
+
+def _scenario_summary_without_runtime() -> ConfigScenarioSummary:
+    source = str(scenario_catalog_path_from_env())
+    try:
+        catalog = load_payment_scenario_catalog_from_env()
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        return ConfigScenarioSummary(configured=False, source=source, message=str(exc))
+
+    tags = sorted({tag for scenario in catalog.scenarios for tag in scenario.tags})
+    return ConfigScenarioSummary(
+        configured=True,
+        source=source,
+        scenario_count=len(catalog.scenarios),
+        tags=tags,
+    )
+
+
+def _mask_value(value: str) -> str:
+    if len(value) <= 4:
+        return "*" * len(value)
+    return f"{value[:2]}{'*' * max(len(value) - 4, 4)}{value[-2:]}"
