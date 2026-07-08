@@ -120,12 +120,16 @@ class MockPaynkolayFormProvider:
         provider_status: str = "SUCCESS",
         auth_code: str = "S00586",
         description: str = "",
+        cancel_refund_response_code: int = 2,
+        cancel_refund_response_data: str = "Islem basarili",
     ) -> None:
         self.client_reference_code = client_reference_code
         self.reference_code = reference_code
         self.provider_status = provider_status
         self.auth_code = auth_code
         self.description = description
+        self.cancel_refund_response_code = cancel_refund_response_code
+        self.cancel_refund_response_data = cancel_refund_response_data
         self.payment_request: httpx.Request | None = None
         self.payment_list_request: httpx.Request | None = None
         self.cancel_refund_request: httpx.Request | None = None
@@ -171,7 +175,10 @@ class MockPaynkolayFormProvider:
             self.cancel_refund_request = request
             return httpx.Response(
                 status_code=200,
-                json={"responseCode": 2, "responseData": "Islem basarili"},
+                json={
+                    "responseCode": self.cancel_refund_response_code,
+                    "responseData": self.cancel_refund_response_data,
+                },
             )
 
         return httpx.Response(status_code=404, json={"error": "not_found"})
@@ -377,6 +384,108 @@ async def test_mocked_paynkolay_form_lifecycle_confirms_result_and_payment_list_
     assert b'name="type"' in provider.cancel_refund_request.content
     assert b"refund" in provider.cancel_refund_request.content
     assert b"cancel-refund-sx" in provider.cancel_refund_request.content
+
+
+@pytest.mark.api
+@pytest.mark.three_ds
+@pytest.mark.asyncio
+async def test_mocked_paynkolay_form_lifecycle_cancels_captured_payment() -> None:
+    settings = runtime_settings()
+    scenario = captured_payment_scenario()
+    request = PaymentInitializeRequest.model_validate(
+        scenario.payment_request_payload(
+            merchant_id=settings.current.merchant.merchant_id,
+            terminal_id=settings.current.merchant.terminal_id,
+            callback_url=f"{settings.current.callback_base_url}/callback",
+            card=payment_card_payload(),
+            order_id="order-1001",
+            correlation_id="corr-1001-cancel",
+        )
+    )
+    provider = MockPaynkolayFormProvider()
+
+    async with PaynkolayClient(
+        settings.current,
+        transport=httpx.MockTransport(provider),
+    ) as client:
+        result_payload = paynkolay_success_result_payload()
+        payment_result = parse_paynkolay_payment_result(result_payload)
+        if not isinstance(payment_result, PaynkolayPaymentResult):
+            raise TypeError("expected Paynkolay payment result payload")
+
+        final_status = await client.get_transaction_status_from_payment_list(
+            request.order_id,
+            start_date="01.07.2026",
+            end_date="31.07.2026",
+        )
+        cancel_result = await client.cancel_payment(
+            reference_code=payment_result.reference_code,
+            amount=payment_result.canonical_authorization_amount,
+            trx_date="2026.07.03",
+            sx=SecretStr("cancel-refund-sx"),
+        )
+
+    assert final_status.status is scenario.expected_final_status
+    assert final_status.provider_transaction_id == payment_result.reference_code
+    assert isinstance(cancel_result, PaynkolayCancelRefundResult)
+    assert cancel_result.successful is True
+    assert cancel_result.status is PaymentStatus.CANCELLED
+    assert provider.cancel_refund_request is not None
+    assert provider.cancel_refund_request.url.path == "/v1/CancelRefundPayment"
+    assert b'name="referenceCode"' in provider.cancel_refund_request.content
+    assert b"IKSIRPF102168" in provider.cancel_refund_request.content
+    assert b'name="type"' in provider.cancel_refund_request.content
+    assert b"cancel" in provider.cancel_refund_request.content
+
+
+@pytest.mark.api
+@pytest.mark.negative
+@pytest.mark.asyncio
+async def test_mocked_paynkolay_form_lifecycle_reports_failed_refund() -> None:
+    settings = runtime_settings()
+    scenario = captured_payment_scenario()
+    request = PaymentInitializeRequest.model_validate(
+        scenario.payment_request_payload(
+            merchant_id=settings.current.merchant.merchant_id,
+            terminal_id=settings.current.merchant.terminal_id,
+            callback_url=f"{settings.current.callback_base_url}/callback",
+            card=payment_card_payload(),
+            order_id="order-1001",
+            correlation_id="corr-1001-refund-failed",
+        )
+    )
+    provider = MockPaynkolayFormProvider(
+        cancel_refund_response_code=99,
+        cancel_refund_response_data="Reference code not found",
+    )
+
+    async with PaynkolayClient(
+        settings.current,
+        transport=httpx.MockTransport(provider),
+    ) as client:
+        final_status = await client.get_transaction_status_from_payment_list(
+            request.order_id,
+            start_date="01.07.2026",
+            end_date="31.07.2026",
+        )
+        refund_result = await client.refund_payment(
+            reference_code="missing-reference",
+            amount=final_status.amount,
+            trx_date="2026.07.03",
+            sx=SecretStr("cancel-refund-sx"),
+        )
+
+    assert final_status.status is scenario.expected_final_status
+    assert isinstance(refund_result, PaynkolayCancelRefundResult)
+    assert refund_result.successful is False
+    assert refund_result.status is PaymentStatus.FAILED
+    assert refund_result.response_code == "99"
+    assert refund_result.response_data == "Reference code not found"
+    assert provider.cancel_refund_request is not None
+    assert provider.cancel_refund_request.url.path == "/v1/CancelRefundPayment"
+    assert b"missing-reference" in provider.cancel_refund_request.content
+    assert b'name="type"' in provider.cancel_refund_request.content
+    assert b"refund" in provider.cancel_refund_request.content
 
 
 @pytest.mark.api

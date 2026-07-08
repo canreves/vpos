@@ -25,23 +25,21 @@ class FixedClock:
 
 
 @pytest.mark.api
-@pytest.mark.parametrize(
-    ("pan", "masked"),
-    [
+def test_mask_pan_returns_safe_display_value() -> None:
+    cases = (
         ("4111111111111111", "411111******1111"),
         ("123456789012", "123456**9012"),
         ("1234567890123456789", "123456*********6789"),
-    ],
-)
-def test_mask_pan_returns_safe_display_value(pan: str, masked: str) -> None:
-    assert mask_pan(pan) == masked
+    )
+    for pan, masked in cases:
+        assert mask_pan(pan) == masked
 
 
 @pytest.mark.api
-@pytest.mark.parametrize("pan", ["41111111111x1111", "123", "12345678901234567890"])
-def test_mask_pan_rejects_invalid_values(pan: str) -> None:
-    with pytest.raises(ValueError):
-        mask_pan(pan)
+def test_mask_pan_rejects_invalid_values() -> None:
+    for pan in ("41111111111x1111", "123", "12345678901234567890"):
+        with pytest.raises(ValueError):
+            mask_pan(pan)
 
 
 @pytest.mark.api
@@ -119,4 +117,3 @@ async def test_session_store_raises_for_unknown_session() -> None:
 
     with pytest.raises(PaymentSessionNotFoundError):
         await store.get("missing-order")
-
