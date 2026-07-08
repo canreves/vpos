@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Reports</title>
     <link rel="stylesheet" href="/static/css/app.css">
+    <script src="/static/js/api-client.js" defer></script>
+    <script src="/static/js/reports.js" defer></script>
   </head>
   <body>
     <div class="shell">
@@ -22,21 +24,27 @@
         <section class="panel">
           <div class="panel-heading">
             <h2>Allure</h2>
-            <span class="status-pill neutral">Local</span>
+            <span class="status-pill neutral" id="report-status">Checking</span>
           </div>
           <dl class="result-list">
             <div>
               <dt>Path</dt>
-              <dd>allure-report/index.html</dd>
+              <dd id="report-path">-</dd>
+            </div>
+            <div>
+              <dt>Entrypoint</dt>
+              <dd id="report-entrypoint">-</dd>
             </div>
             <div>
               <dt>Status</dt>
-              <dd>Available after report generation</dd>
+              <dd id="report-message">Checking report status</dd>
             </div>
           </dl>
+          <p class="inline-message" id="report-help">
+            Generate the report with make report, then refresh this page.
+          </p>
         </section>
       </main>
     </div>
   </body>
 </html>
-

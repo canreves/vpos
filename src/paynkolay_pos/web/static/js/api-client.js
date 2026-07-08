@@ -21,6 +21,9 @@
     getConfig() {
       return requestJson("/api/config");
     },
+    getLatestReport() {
+      return requestJson("/api/reports/latest");
+    },
     createPayment(payload) {
       return requestJson("/api/payments", {
         method: "POST",
@@ -29,4 +32,3 @@
     },
   };
 })();
-

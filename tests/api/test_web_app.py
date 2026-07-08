@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest
@@ -138,6 +139,62 @@ async def test_root_renders_payment_screen(client: httpx.AsyncClient) -> None:
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert 'id="payment-form"' in response.text
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_reports_page_renders_dynamic_report_screen(client: httpx.AsyncClient) -> None:
+    response = await client.get("/reports")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert 'id="report-status"' in response.text
+    assert "/static/js/reports.js" in response.text
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_latest_report_returns_unavailable_when_report_is_missing(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    report_dir = tmp_path / "missing-report"
+    monkeypatch.setenv("PAYNKOLAY_ALLURE_REPORT_DIR", str(report_dir))
+
+    response = await client.get("/api/reports/latest")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "available": False,
+        "report_path": str(report_dir),
+        "entrypoint": None,
+        "message": "Allure HTML report has not been generated yet.",
+    }
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_latest_report_returns_available_when_index_exists(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    report_dir = tmp_path / "allure-report"
+    report_dir.mkdir()
+    entrypoint = report_dir / "index.html"
+    entrypoint.write_text("<!doctype html><title>Allure</title>", encoding="utf-8")
+    monkeypatch.setenv("PAYNKOLAY_ALLURE_REPORT_DIR", str(report_dir))
+
+    response = await client.get("/api/reports/latest")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "available": True,
+        "report_path": str(report_dir),
+        "entrypoint": str(entrypoint),
+        "message": "Allure HTML report is available.",
+    }
 
 
 @pytest.mark.api
