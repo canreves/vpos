@@ -19,12 +19,27 @@ from paynkolay_pos.models import (
 )
 from paynkolay_pos.scenarios.error_matrix import ErrorMatrixCase, load_error_matrix
 
-# Maps a "magic" trigger CVV to a scenario name in the error matrix.
+# Bank-decline scenarios reproducible from a single request via a "magic" CVV.
+# Each trigger CVV maps to a scenario name defined in the CSV error matrix.
 DEFAULT_TRIGGER_CVVS: Mapping[str, str] = {
     "501": "wrong_otp",
     "502": "expired_card",
     "503": "insufficient_funds",
+    "504": "limit_exceeded",
+    "505": "expired_otp",
 }
+
+# NOTE: The following matrix scenarios are intentionally NOT CVV-triggerable,
+# because they cannot be reproduced from a single request's card data:
+#   - duplicate_order_id: needs comparison across two requests (idempotency)
+#   - signature_mismatch: belongs to the security/callback layer, not card input
+#   - refund_already_refunded: needs prior transaction state/history
+# These require a different mechanism and should be designed separately.
+UNSUPPORTED_CVV_SCENARIOS: tuple[str, ...] = (
+    "duplicate_order_id",
+    "signature_mismatch",
+    "refund_already_refunded",
+)
 
 
 class MockErrorInterceptor:
