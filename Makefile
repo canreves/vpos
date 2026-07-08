@@ -1,4 +1,4 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs credential-matrix credential-config credential-scenarios credential-inputs credential-scenario-test synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web web-test web-check allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs credential-matrix credential-config credential-scenarios credential-inputs credential-scenario-test credential-scenario-report synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web web-test web-check allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
@@ -54,6 +54,7 @@ help:
 	@echo "  make credential-scenarios Build scenarios from ignored credentials"
 	@echo "  make credential-inputs Build local/mock config and scenarios"
 	@echo "  make credential-scenario-test Run scenario tests from credential scenarios"
+	@echo "  make credential-scenario-report Generate Allure report for credential scenarios"
 	@echo "  make synthetic-cards Generate a synthetic cards JSON array"
 	@echo "  make synthetic-scenarios Generate a synthetic scenario catalogue"
 	@echo "  make scale-demo      Generate 100 cards, 1000 scenarios, then run scenarios"
@@ -166,6 +167,12 @@ credential-inputs: credential-config credential-scenarios
 
 credential-scenario-test: credential-config credential-scenarios
 	PAYNKOLAY_CONFIG_FILE=$(CREDENTIAL_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) $(PYTEST) tests/e2e/test_data_driven_payment_scenarios.py
+
+credential-scenario-report: credential-config credential-scenarios
+	rm -rf $(ALLURE_RESULTS)
+	PAYNKOLAY_CONFIG_FILE=$(CREDENTIAL_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) $(PYTEST) tests/e2e/test_data_driven_payment_scenarios.py --alluredir=$(ALLURE_RESULTS)
+	@command -v allure >/dev/null 2>&1 || { echo "Allure CLI is required. Install it with: brew install allure"; exit 1; }
+	allure generate $(ALLURE_RESULTS) -o $(ALLURE_REPORT) --clean
 
 synthetic-cards:
 	poetry run python tools/generate_synthetic_cards.py --count $(COUNT) --output $(OUT)

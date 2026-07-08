@@ -354,12 +354,15 @@ make credential-inputs \
   CREDENTIAL_CONFIG_OUT=/tmp/paynkolay-credential-settings.json \
   CREDENTIAL_SCENARIO_OUT=/tmp/paynkolay-credential-scenarios.json
 make credential-scenario-test CREDENTIAL_SCENARIO_OUT=/tmp/paynkolay-credential-scenarios.json
+make credential-scenario-report CREDENTIAL_SCENARIO_OUT=/tmp/paynkolay-credential-scenarios.json
 ```
 
 Credential scenarios cover 3DS cards, MoTo candidates, credit/debit coverage, installment
 candidates, and CVV-driven negative cases from `param_hata_kodlari.csv`.
 `make credential-scenario-test` builds credential config plus scenarios, then executes the
 generated catalogue against the mocked payment flow.
+`make credential-scenario-report` runs the same mocked flow and generates an Allure HTML
+report under `allure-report/`.
 Export the generated config and scenario files before opening `/settings` when you want
 the tester UI to display local/mock card and readiness metadata:
 
