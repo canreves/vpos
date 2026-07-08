@@ -154,6 +154,18 @@ async def test_reports_page_renders_dynamic_report_screen(client: httpx.AsyncCli
 
 @pytest.mark.api
 @pytest.mark.asyncio
+async def test_result_page_renders_dynamic_lookup_screen(client: httpx.AsyncClient) -> None:
+    response = await client.get("/result?order_id=order-web-1001")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert 'id="result-lookup-form"' in response.text
+    assert 'id="lookup-order-id"' in response.text
+    assert "/static/js/result.js" in response.text
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
 async def test_latest_report_returns_unavailable_when_report_is_missing(
     client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -297,6 +309,61 @@ async def test_payment_lookup_returns_stored_session(client: httpx.AsyncClient) 
     assert payload["links"]["three_ds"] == "/payments/order-web-1001/three-ds"
     assert "4111111111111111" not in response.text
     assert "123" not in response.text
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_payment_lookup_returns_completed_session_for_result_screen() -> None:
+    final_result = PaynkolayPaymentResult.model_validate(
+        {
+            "RESPONSE_CODE": "2",
+            "RESPONSE_DATA": "Islem Basarili",
+            "USE_3D": "false",
+            "RND": "rnd-lookup",
+            "MERCHANT_NO": "merchant-web",
+            "AUTH_CODE": "AUTHLOOKUP",
+            "REFERENCE_CODE": "ref-lookup",
+            "CLIENT_REFERENCE_CODE": "order-result-lookup",
+            "TIMESTAMP": "2026-07-07T12:00:00+00:00",
+            "TRANSACTION_AMOUNT": "100.00",
+            "AUTHORIZATION_AMOUNT": "100.00",
+            "INSTALLMENT": 1,
+            "CURRENCY_CODE": Currency.TRY,
+            "hashDataV2": "hash",
+        }
+    )
+    app = create_app()
+    app.dependency_overrides[get_payment_initializer] = lambda: FakePaymentInitializer(
+        provider_result=final_result
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        create_response = await client.post(
+            "/api/payments",
+            json={
+                "order_id": "order-result-lookup",
+                "amount": "100.00",
+                "currency": "TRY",
+                "card_number": "4111111111111111",
+                "card_holder": "PAYNKOLAY TEST",
+                "expiry_month": 12,
+                "expiry_year": 2030,
+                "cvv": "123",
+                "requires_3ds": False,
+                "installment_count": 1,
+            },
+        )
+        lookup_response = await client.get("/api/payments/order-result-lookup")
+
+    assert create_response.status_code == 202
+    assert lookup_response.status_code == 200
+    payload = lookup_response.json()
+    assert payload["status"] == "completed"
+    assert payload["provider_transaction_id"] == "ref-lookup"
+    assert payload["failure_reason"] is None
+    assert payload["links"] == {"result": "/result?order_id=order-result-lookup"}
+    assert "4111111111111111" not in lookup_response.text
+    assert "123" not in lookup_response.text
 
 
 @pytest.mark.api

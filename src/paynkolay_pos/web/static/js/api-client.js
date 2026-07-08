@@ -30,5 +30,8 @@
         body: JSON.stringify(payload),
       });
     },
+    getPayment(orderId) {
+      return requestJson(`/api/payments/${encodeURIComponent(orderId)}`);
+    },
   };
 })();

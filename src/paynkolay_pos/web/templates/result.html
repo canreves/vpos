@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Payment Result</title>
     <link rel="stylesheet" href="/static/css/app.css">
+    <script src="/static/js/api-client.js" defer></script>
+    <script src="/static/js/result.js" defer></script>
   </head>
   <body>
     <div class="shell">
@@ -22,21 +24,65 @@
         <section class="panel">
           <div class="panel-heading">
             <h2>Result</h2>
-            <span class="status-pill neutral">Phase 1</span>
+            <span class="status-pill neutral" id="result-state">Idle</span>
           </div>
+
+          <form id="result-lookup-form" class="lookup-form" autocomplete="off">
+            <label class="field">
+              <span>Order ID</span>
+              <input id="lookup-order-id" name="order_id" maxlength="64" required>
+            </label>
+            <div class="actions">
+              <button id="lookup-payment" type="submit">Lookup payment</button>
+            </div>
+          </form>
+
           <dl class="result-list">
             <div>
               <dt>Order ID</dt>
-              <dd id="result-order-id">Pending session storage</dd>
+              <dd id="result-order-id">-</dd>
             </div>
             <div>
               <dt>Status</dt>
-              <dd>Not tracked</dd>
+              <dd id="result-status">-</dd>
+            </div>
+            <div>
+              <dt>Amount</dt>
+              <dd id="result-amount">-</dd>
+            </div>
+            <div>
+              <dt>Card</dt>
+              <dd id="result-card">-</dd>
+            </div>
+            <div>
+              <dt>Card holder</dt>
+              <dd id="result-card-holder">-</dd>
+            </div>
+            <div>
+              <dt>Installment</dt>
+              <dd id="result-installment">-</dd>
+            </div>
+            <div>
+              <dt>Provider ref</dt>
+              <dd id="result-provider-ref">-</dd>
+            </div>
+            <div>
+              <dt>Failure</dt>
+              <dd id="result-failure">-</dd>
+            </div>
+            <div>
+              <dt>Updated</dt>
+              <dd id="result-updated">-</dd>
             </div>
           </dl>
+          <div class="result-actions">
+            <a id="result-three-ds-link" class="secondary-action hidden" href="/#" rel="noopener">
+              Open 3D Secure
+            </a>
+          </div>
+          <p class="inline-message" id="result-message">Enter an order ID to inspect payment state.</p>
         </section>
       </main>
     </div>
   </body>
 </html>
-
