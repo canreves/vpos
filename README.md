@@ -301,6 +301,20 @@ cp examples/config/paynkolay-settings.example.json /path/outside/git/paynkolay-s
 export PAYNKOLAY_CONFIG_FILE=/path/outside/git/paynkolay-settings.json
 ```
 
+Or generate a local-only skeleton with 100 cards per environment:
+
+```bash
+make private-config CONFIG_OUT=/tmp/paynkolay-private-settings.json
+export PAYNKOLAY_CONFIG_FILE=/tmp/paynkolay-private-settings.json
+```
+
+The generated private skeleton keeps the scenario-critical aliases such as
+`visa_3ds_success`, `visa_installment_success`, `visa_moto_success`,
+`visa_invalid_cvv`, `visa_debit_3ds_success`, and `visa_credit_3ds_success`, then
+fills the remaining card slots with synthetic cards. Replace the placeholder merchant
+credentials, callback URLs, PAN, CVV, expiry, and OTP values with Paynkolay sandbox data
+before live sandbox execution.
+
 Select an environment without editing the JSON file:
 
 ```bash
@@ -502,5 +516,4 @@ credit, PaymentList verification, cancel/refund, and installment counts `2`, `3`
 Do not expose full PAN, CVV, OTP, API keys, secret keys, signatures, or tokens in logs or
 reports. Use `paynkolay_pos.reporting.sanitize_evidence()` or
 `attach_json_evidence()` before attaching payloads to Allure.
-
 

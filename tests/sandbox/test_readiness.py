@@ -261,6 +261,51 @@ def test_check_sandbox_readiness_reports_actionable_issues() -> None:
 
 @pytest.mark.sandbox
 @pytest.mark.negative
+def test_check_sandbox_readiness_reports_scenario_card_3ds_mismatch() -> None:
+    settings = RuntimeSettings.model_validate(
+        runtime_settings_payload(cards=[card_payload("moto_only_card", requires_3ds=False)])
+    )
+    catalog = PaymentScenarioCatalog(
+        scenarios=(
+            scenario("sandbox_3ds_capture", card_alias="moto_only_card"),
+        )
+    )
+
+    report = check_sandbox_readiness(settings, catalog, minimum_card_count=1)
+    issue_codes = {issue.code for issue in report.issues}
+
+    assert "scenario_card_3ds_mismatch" in issue_codes
+
+
+@pytest.mark.sandbox
+@pytest.mark.negative
+def test_check_sandbox_readiness_reports_moto_bound_to_3ds_card() -> None:
+    settings = RuntimeSettings.model_validate(
+        runtime_settings_payload(cards=[card_payload("three_ds_card", requires_3ds=True)])
+    )
+    catalog = PaymentScenarioCatalog(
+        scenarios=(
+            scenario(
+                "sandbox_moto_authorized",
+                card_alias="three_ds_card",
+                requires_3ds=False,
+                moto=True,
+                expected_initialize_status="authorized",
+                expected_final_status="authorized",
+                tags=["sandbox", "moto"],
+            ),
+        )
+    )
+
+    report = check_sandbox_readiness(settings, catalog, minimum_card_count=1)
+    issue_codes = {issue.code for issue in report.issues}
+
+    assert "scenario_card_3ds_mismatch" in issue_codes
+    assert "moto_card_requires_3ds" in issue_codes
+
+
+@pytest.mark.sandbox
+@pytest.mark.negative
 def test_check_sandbox_readiness_reports_missing_3ds_families() -> None:
     settings = RuntimeSettings.model_validate(
         runtime_settings_payload(cards=[card_payload("sandbox_moto_success", requires_3ds=False)])

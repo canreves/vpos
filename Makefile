@@ -1,4 +1,4 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web web-test web-check allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web web-test web-check allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
@@ -8,6 +8,7 @@ ALLURE_RESULTS ?= allure-results
 ALLURE_REPORT ?= allure-report
 COUNT ?= 100
 OUT ?= /tmp/paynkolay-synthetic-cards.json
+CONFIG_OUT ?= /tmp/paynkolay-private-settings.json
 SCENARIO_COUNT ?= 1000
 SCENARIO_OUT ?= /tmp/paynkolay-synthetic-scenarios.json
 SCENARIO_FILE ?=
@@ -40,6 +41,7 @@ help:
 	@echo "  make sandbox         Run private Paynkolay sandbox skeleton/live tests"
 	@echo "  make sandbox-3ds     Run private sandbox 3DS tests"
 	@echo "  make sandbox-moto    Run private sandbox MoTo tests"
+	@echo "  make private-config  Create a local-only private config skeleton"
 	@echo "  make synthetic-cards Generate a synthetic cards JSON array"
 	@echo "  make synthetic-scenarios Generate a synthetic scenario catalogue"
 	@echo "  make scale-demo      Generate 100 cards, 1000 scenarios, then run scenarios"
@@ -123,6 +125,9 @@ sandbox-report:
 	$(PYTEST) -m sandbox --alluredir=$(ALLURE_RESULTS)
 	@command -v allure >/dev/null 2>&1 || { echo "Allure CLI is required. Install it with: brew install allure"; exit 1; }
 	allure generate $(ALLURE_RESULTS) -o $(ALLURE_REPORT) --clean
+
+private-config:
+	poetry run python tools/bootstrap_private_config.py --card-count $(COUNT) --output $(CONFIG_OUT)
 
 synthetic-cards:
 	poetry run python tools/generate_synthetic_cards.py --count $(COUNT) --output $(OUT)

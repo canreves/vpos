@@ -46,7 +46,8 @@ def check_sandbox_readiness(
 
     environment = settings.current
     issues: list[SandboxReadinessIssue] = []
-    configured_aliases = {card.alias for card in environment.cards}
+    configured_cards_by_alias = {card.alias: card for card in environment.cards}
+    configured_aliases = set(configured_cards_by_alias)
     scenario_aliases = {scenario.card_alias for scenario in catalog.scenarios}
 
     for field_name, value in {
@@ -104,6 +105,28 @@ def check_sandbox_readiness(
             )
 
     for scenario in catalog.scenarios:
+        scenario_card = configured_cards_by_alias.get(scenario.card_alias)
+        if scenario_card is not None and scenario.requires_3ds != scenario_card.requires_3ds:
+            issues.append(
+                SandboxReadinessIssue(
+                    code="scenario_card_3ds_mismatch",
+                    message=(
+                        f"scenario {scenario.scenario_id!r} requires_3ds="
+                        f"{scenario.requires_3ds!s} but card {scenario_card.alias!r} "
+                        f"requires_3ds={scenario_card.requires_3ds!s}"
+                    ),
+                )
+            )
+        if scenario_card is not None and scenario.moto and scenario_card.requires_3ds:
+            issues.append(
+                SandboxReadinessIssue(
+                    code="moto_card_requires_3ds",
+                    message=(
+                        f"MoTo scenario {scenario.scenario_id!r} "
+                        f"uses 3DS card {scenario_card.alias!r}"
+                    ),
+                )
+            )
         if scenario.moto and scenario.requires_3ds:
             issues.append(
                 SandboxReadinessIssue(
