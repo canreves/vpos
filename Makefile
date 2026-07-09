@@ -1,4 +1,4 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs credential-matrix credential-config credential-scenarios credential-inputs credential-scenario-test credential-scenario-report synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web web-test web-check allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs credential-matrix credential-config credential-scenarios credential-inputs uat-config uat-inputs credential-scenario-test credential-scenario-report synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web web-test web-check allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
@@ -15,7 +15,14 @@ PRIVATE_SCENARIO_OUT ?= /tmp/paynkolay-private-scenarios.json
 MATRIX_OUT ?= /tmp/paynkolay-credential-matrix.json
 CREDENTIAL_CONFIG_OUT ?= /tmp/paynkolay-credential-settings.json
 CREDENTIAL_SCENARIO_OUT ?= /tmp/paynkolay-credential-scenarios.json
+UAT_CONFIG_OUT ?= /tmp/paynkolay-uat-settings.json
 PRIVATE_ENV ?= dev
+UAT_CALLBACK_BASE_URL ?= https://replace-with-internal-paynkolay-callback-host
+UAT_MERCHANT_ID ?= replace-with-uat-merchant-id
+UAT_TERMINAL_ID ?= replace-with-uat-terminal-id
+UAT_PAYMENT_SX ?= replace-with-uat-payment-sx
+UAT_CANCEL_REFUND_SX ?= replace-with-uat-cancel-refund-sx
+UAT_SECRET_KEY ?= replace-with-uat-secret-key
 SCENARIO_FILE ?=
 WEB_HOST ?= 127.0.0.1
 WEB_PORT ?= 8000
@@ -53,6 +60,8 @@ help:
 	@echo "  make credential-config Build local/mock config from ignored credentials"
 	@echo "  make credential-scenarios Build scenarios from ignored credentials"
 	@echo "  make credential-inputs Build local/mock config and scenarios"
+	@echo "  make uat-config      Build UAT config from ignored credentials and provided merchant values"
+	@echo "  make uat-inputs      Build UAT config and credential scenario catalogue"
 	@echo "  make credential-scenario-test Run scenario tests from credential scenarios"
 	@echo "  make credential-scenario-report Generate Allure report for credential scenarios"
 	@echo "  make synthetic-cards Generate a synthetic cards JSON array"
@@ -157,6 +166,9 @@ credential-matrix:
 credential-config:
 	poetry run python tools/build_credential_config.py --output $(CREDENTIAL_CONFIG_OUT)
 
+uat-config:
+	poetry run python tools/build_credential_config.py --environment uat --base-url https://paynkolaytest.nkolayislem.com.tr/Vpos --callback-base-url $(UAT_CALLBACK_BASE_URL) --merchant-id $(UAT_MERCHANT_ID) --terminal-id $(UAT_TERMINAL_ID) --api-key $(UAT_PAYMENT_SX) --cancel-refund-api-key $(UAT_CANCEL_REFUND_SX) --secret-key $(UAT_SECRET_KEY) --output $(UAT_CONFIG_OUT)
+
 credential-scenarios:
 	poetry run python tools/build_credential_scenarios.py --output $(CREDENTIAL_SCENARIO_OUT)
 
@@ -164,6 +176,12 @@ credential-inputs: credential-config credential-scenarios
 	@echo "Export these for tester UI local/mock visibility:"
 	@echo "  export PAYNKOLAY_CONFIG_FILE=$(CREDENTIAL_CONFIG_OUT)"
 	@echo "  export PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT)"
+
+uat-inputs: uat-config credential-scenarios
+	@echo "Export these for UAT readiness and runs:"
+	@echo "  export PAYNKOLAY_CONFIG_FILE=$(UAT_CONFIG_OUT)"
+	@echo "  export PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT)"
+	@echo "  export PAYNKOLAY_ENV=uat"
 
 credential-scenario-test: credential-config credential-scenarios
 	PAYNKOLAY_CONFIG_FILE=$(CREDENTIAL_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) $(PYTEST) tests/e2e/test_data_driven_payment_scenarios.py

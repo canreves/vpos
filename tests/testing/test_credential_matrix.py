@@ -111,16 +111,21 @@ def test_build_credential_scenario_catalog_payload_validates(tmp_path: Path) -> 
     )
     catalog = PaymentScenarioCatalog.model_validate(payload)
 
-    assert len(catalog.scenarios) == 4
+    assert len(catalog.scenarios) >= 4
     assert catalog.scenarios[0].scenario_id == "credential_is_bankasi_troy_1396_3ds_success"
     assert catalog.scenarios[0].requires_3ds is True
     assert "three_ds" in catalog.scenarios[0].tags
     assert catalog.scenarios[1].installment_count == 3
-    assert catalog.scenarios[2].moto is True
-    assert catalog.scenarios[3].expected_final_status.value == "failed"
-    assert "invalid_cvv" in catalog.scenarios[3].tags
-    assert "cvv_error" in catalog.scenarios[3].tags
-    assert "error_code_51" in catalog.scenarios[3].tags
+    assert any(scenario.moto for scenario in catalog.scenarios)
+    negative = catalog.tagged("cvv_error")[0]
+    assert negative.expected_final_status.value == "failed"
+    assert "invalid_cvv" in negative.tags
+    assert "insufficient_funds" in negative.tags
+    assert "error_code_51" in negative.tags
+    assert catalog.tagged("wrong_otp")
+    assert catalog.tagged("payment_list")
+    assert catalog.tagged("cancel")
+    assert catalog.tagged("refund")
 
 
 def test_build_credential_scenario_catalog_json_serializes_catalogue(tmp_path: Path) -> None:
@@ -135,7 +140,7 @@ def test_build_credential_scenario_catalog_json_serializes_catalogue(tmp_path: P
     payload = json.loads(body)
     catalog = PaymentScenarioCatalog.model_validate(payload)
 
-    assert len(catalog.scenarios) == 2
+    assert len(catalog.scenarios) >= 2
     assert catalog.scenarios[0].card_alias == "denizbank_mastercard_8608"
 
 
@@ -187,6 +192,40 @@ def test_build_credential_runtime_config_json_serializes_valid_settings(tmp_path
     assert settings.current.name == "dev"
     assert settings.current.cards[0].alias == "denizbank_mastercard_8608"
     assert settings.current.cards[0].requires_3ds is True
+
+
+def test_build_credential_runtime_config_can_target_uat(tmp_path: Path) -> None:
+    paynkolay_cards = tmp_path / "paynkolay_merchants.csv"
+    paynkolay_cards.write_text(
+        "\ufeffBanka Adi,Kart Numarasi,Kart Semasi,Son Kullanma Tarihi,CVC Kodu,Sifre\n"
+        "DenizBank,5200190006338608,MasterCard,2030/01,410,123456\n",
+        encoding="utf-8",
+    )
+
+    settings = RuntimeSettings.model_validate(
+        build_credential_runtime_config_payload(
+            paynkolay_cards_path=paynkolay_cards,
+            active_environment="uat",
+            base_url="https://paynkolaytest.nkolayislem.com.tr/Vpos",
+            callback_base_url="https://internal.example.com/paynkolay",
+            merchant_id="uat-merchant",
+            terminal_id="uat-terminal",
+            api_key="uat-payment-sx",
+            cancel_refund_api_key="uat-cancel-sx",
+            secret_key="uat-secret",
+        )
+    )
+
+    assert settings.active_environment == "uat"
+    assert settings.current.name == "uat"
+    assert settings.current.base_url == "https://paynkolaytest.nkolayislem.com.tr/Vpos"
+    assert settings.current.callback_base_url == "https://internal.example.com/paynkolay"
+    assert settings.current.merchant.api_key.get_secret_value() == "uat-payment-sx"
+    assert settings.current.merchant.cancel_refund_api_key is not None
+    assert (
+        settings.current.merchant.cancel_refund_api_key.get_secret_value()
+        == "uat-cancel-sx"
+    )
 
 
 def test_build_credential_runtime_config_rejects_empty_card_set() -> None:

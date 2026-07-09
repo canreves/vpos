@@ -1,4 +1,4 @@
-"""Build local/mock test matrices from externally supplied credential CSV files."""
+"""Build UAT/local test matrices from externally supplied credential CSV files."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import csv
 import json
 import re
 import unicodedata
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -120,6 +121,8 @@ def build_credential_scenario_catalog_payload(
             raise TypeError("credential matrix error item is invalid")
         scenarios.append(_error_scenario(error, error_card=error_card, index=index))
 
+    _append_uat_coverage_scenarios(scenarios, cards)
+
     payload: dict[str, object] = {"scenarios": scenarios}
     PaymentScenarioCatalog.model_validate(payload)
     return payload
@@ -145,8 +148,21 @@ def build_credential_runtime_config_payload(
     *,
     param_cards_path: Path | None = None,
     paynkolay_cards_path: Path | None = None,
+    active_environment: str = "dev",
+    base_url: str = "https://local-mock.payments.invalid",
+    callback_base_url: str = "https://local-mock.callbacks.invalid",
+    merchant_id: str = "local-mock-merchant",
+    terminal_id: str = "local-mock-terminal",
+    api_key: str = "local-mock-payment-key",
+    cancel_refund_api_key: str = "local-mock-cancel-refund-key",
+    secret_key: str = "local-mock-secret-key",
 ) -> dict[str, object]:
-    """Build a local/mock runtime config from credential card CSV files."""
+    """Build a runtime config from credential card CSV files.
+
+    Defaults preserve the original local/mock behavior. Callers can pass UAT endpoint,
+    merchant, and callback values to create a private UAT-ready config without copying
+    credential values into the repository.
+    """
 
     matrix = build_credential_matrix_payload(
         param_cards_path=param_cards_path,
@@ -156,19 +172,20 @@ def build_credential_runtime_config_payload(
     if not isinstance(cards, list) or not cards:
         raise ValueError("at least one credential card is required to build runtime config")
 
+    normalized_environment = active_environment.strip().lower()
     payload: dict[str, object] = {
-        "active_environment": "dev",
+        "active_environment": normalized_environment,
         "environments": {
-            "dev": {
-                "name": "dev",
-                "base_url": "https://local-mock.payments.invalid",
-                "callback_base_url": "https://local-mock.callbacks.invalid",
+            normalized_environment: {
+                "name": normalized_environment,
+                "base_url": base_url,
+                "callback_base_url": callback_base_url,
                 "merchant": {
-                    "merchant_id": "local-mock-merchant",
-                    "terminal_id": "local-mock-terminal",
-                    "api_key": "local-mock-payment-key",
-                    "cancel_refund_api_key": "local-mock-cancel-refund-key",
-                    "secret_key": "local-mock-secret-key",
+                    "merchant_id": merchant_id,
+                    "terminal_id": terminal_id,
+                    "api_key": api_key,
+                    "cancel_refund_api_key": cancel_refund_api_key,
+                    "secret_key": secret_key,
                 },
                 "cards": [_runtime_card_payload(card) for card in cards],
             }
@@ -182,12 +199,28 @@ def build_credential_runtime_config_json(
     *,
     param_cards_path: Path | None = None,
     paynkolay_cards_path: Path | None = None,
+    active_environment: str = "dev",
+    base_url: str = "https://local-mock.payments.invalid",
+    callback_base_url: str = "https://local-mock.callbacks.invalid",
+    merchant_id: str = "local-mock-merchant",
+    terminal_id: str = "local-mock-terminal",
+    api_key: str = "local-mock-payment-key",
+    cancel_refund_api_key: str = "local-mock-cancel-refund-key",
+    secret_key: str = "local-mock-secret-key",
 ) -> str:
-    """Build pretty JSON for a local/mock runtime config from credential cards."""
+    """Build pretty JSON for a runtime config from credential cards."""
 
     payload = build_credential_runtime_config_payload(
         param_cards_path=param_cards_path,
         paynkolay_cards_path=paynkolay_cards_path,
+        active_environment=active_environment,
+        base_url=base_url,
+        callback_base_url=callback_base_url,
+        merchant_id=merchant_id,
+        terminal_id=terminal_id,
+        api_key=api_key,
+        cancel_refund_api_key=cancel_refund_api_key,
+        secret_key=secret_key,
     )
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
@@ -277,22 +310,150 @@ def _card_scenarios(card: dict[str, object], *, index: int) -> list[dict[str, ob
         )
 
     if card_type == "credit":
+        for installment_count in (3, 2, 6, 9, 12):
+            scenarios.append(
+                _scenario_payload(
+                    scenario_id=f"credential_{alias}_installment_{installment_count}",
+                    title=f"Credential {alias} {installment_count} installment",
+                    card_alias=alias,
+                    amount=f"{installment_count * 100}.00",
+                    requires_3ds=requires_3ds,
+                    expected_initialize_status=(
+                        "pending_3ds" if requires_3ds else "authorized"
+                    ),
+                    expected_final_status="captured" if requires_3ds else "authorized",
+                    installment_count=installment_count,
+                    payment_channel="e_commerce" if requires_3ds else "moto",
+                    moto=not requires_3ds,
+                    tags=["credential", "local_mock", "installment", "credit"],
+                )
+            )
+    return scenarios
+
+
+def _append_uat_coverage_scenarios(
+    scenarios: list[dict[str, object]],
+    cards: list[object],
+) -> None:
+    typed_cards = [card for card in cards if isinstance(card, dict)]
+    three_ds_card = _first_matching_card(
+        typed_cards,
+        lambda card: bool(card["requires_3ds"]),
+    )
+    moto_card = _first_matching_card(
+        typed_cards,
+        lambda card: not bool(card["requires_3ds"]),
+    )
+    credit_card = _first_matching_card(
+        typed_cards,
+        lambda card: str(card["card_type"]) == "credit",
+    )
+
+    if three_ds_card is not None:
+        alias = str(three_ds_card["alias"])
+        scenarios.extend(
+            [
+                _scenario_payload(
+                    scenario_id=f"uat_{alias}_wrong_otp",
+                    title=f"UAT {alias} wrong OTP",
+                    card_alias=alias,
+                    amount="110.00",
+                    requires_3ds=True,
+                    expected_initialize_status="pending_3ds",
+                    expected_final_status="failed",
+                    installment_count=1,
+                    payment_channel="e_commerce",
+                    moto=False,
+                    tags=["credential", "uat", "three_ds", "negative", "wrong_otp"],
+                ),
+                _scenario_payload(
+                    scenario_id=f"uat_{alias}_payment_list",
+                    title=f"UAT {alias} PaymentList verification",
+                    card_alias=alias,
+                    amount="120.00",
+                    requires_3ds=True,
+                    expected_initialize_status="pending_3ds",
+                    expected_final_status="captured",
+                    installment_count=1,
+                    payment_channel="e_commerce",
+                    moto=False,
+                    tags=["credential", "uat", "three_ds", "payment_list"],
+                ),
+                _scenario_payload(
+                    scenario_id=f"uat_{alias}_expired_card",
+                    title=f"UAT {alias} expired card negative",
+                    card_alias=alias,
+                    amount="130.00",
+                    requires_3ds=True,
+                    expected_initialize_status="failed",
+                    expected_final_status="failed",
+                    installment_count=1,
+                    payment_channel="e_commerce",
+                    moto=False,
+                    tags=["credential", "uat", "negative", "expired_card"],
+                ),
+            ]
+        )
+
+    if moto_card is not None:
+        alias = str(moto_card["alias"])
         scenarios.append(
             _scenario_payload(
-                scenario_id=f"credential_{alias}_installment_3",
-                title=f"Credential {alias} 3 installment",
+                scenario_id=f"uat_{alias}_moto_declined",
+                title=f"UAT {alias} MoTo declined",
                 card_alias=alias,
-                amount="300.00",
-                requires_3ds=requires_3ds,
-                expected_initialize_status="pending_3ds" if requires_3ds else "authorized",
-                expected_final_status="captured" if requires_3ds else "authorized",
-                installment_count=3,
-                payment_channel="e_commerce" if requires_3ds else "moto",
-                moto=not requires_3ds,
-                tags=["credential", "local_mock", "installment", "credit"],
+                amount="140.00",
+                requires_3ds=False,
+                expected_initialize_status="failed",
+                expected_final_status="failed",
+                installment_count=1,
+                payment_channel="moto",
+                moto=True,
+                tags=["credential", "uat", "moto", "negative", "issuer_declined"],
             )
         )
-    return scenarios
+
+    if credit_card is not None:
+        _append_post_payment_scenarios(scenarios, credit_card)
+
+
+def _append_post_payment_scenarios(
+    scenarios: list[dict[str, object]],
+    card: dict[str, object],
+) -> None:
+    alias = str(card["alias"])
+    requires_3ds = bool(card["requires_3ds"])
+    for operation, amount, final_status in (
+        ("cancel", "150.00", "cancelled"),
+        ("refund", "160.00", "refunded"),
+    ):
+        scenarios.append(
+            _scenario_payload(
+                scenario_id=f"uat_{alias}_{operation}",
+                title=f"UAT {alias} {operation}",
+                card_alias=alias,
+                amount=amount,
+                requires_3ds=requires_3ds,
+                expected_initialize_status=(
+                    "pending_3ds" if requires_3ds else "authorized"
+                ),
+                expected_final_status=final_status,
+                installment_count=1,
+                payment_channel="e_commerce" if requires_3ds else "moto",
+                moto=not requires_3ds,
+                tags=["credential", "uat", operation],
+            )
+        )
+
+
+def _first_matching_card(
+    cards: list[dict[str, object]],
+    predicate: Callable[[dict[str, object]], bool],
+) -> dict[str, object] | None:
+    for card in cards:
+        if predicate(card):
+            return card
+    return None
 
 
 def _error_scenario(
@@ -320,11 +481,18 @@ def _error_scenario(
             "credential",
             "local_mock",
             "negative",
-            "invalid_cvv",
+            *_error_tags(error_code),
             "cvv_error",
             f"error_code_{error_code}",
         ],
     )
+
+
+def _error_tags(error_code: str) -> list[str]:
+    tags = ["invalid_cvv"]
+    if error_code == "51":
+        tags.append("insufficient_funds")
+    return tags
 
 
 def _first_card(cards: list[object]) -> dict[str, object]:
