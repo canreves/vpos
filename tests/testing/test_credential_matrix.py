@@ -89,6 +89,53 @@ def test_build_credential_matrix_json_serializes_payload(tmp_path: Path) -> None
     )
 
 
+def test_build_credential_matrix_payload_fills_to_total_card_count(
+    tmp_path: Path,
+) -> None:
+    paynkolay_cards = tmp_path / "paynkolay_merchants.csv"
+    paynkolay_cards.write_text(
+        "\ufeffBanka Adi,Kart Numarasi,Kart Semasi,Son Kullanma Tarihi,CVC Kodu,Sifre\n"
+        "DenizBank,5200190006338608,MasterCard,2030/01,410,123456\n",
+        encoding="utf-8",
+    )
+
+    payload = build_credential_matrix_payload(
+        paynkolay_cards_path=paynkolay_cards,
+        total_card_count=5,
+    )
+
+    summary = payload["summary"]
+    assert isinstance(summary, dict)
+    assert summary["card_count"] == 5
+    cards = payload["cards"]
+    assert isinstance(cards, list)
+    first_card = cards[0]
+    last_card = cards[-1]
+    assert isinstance(first_card, dict)
+    assert isinstance(last_card, dict)
+    assert first_card["alias"] == "denizbank_mastercard_8608"
+    assert last_card["alias"] == "synthetic_filler_0004"
+    assert last_card["requires_3ds"] is False
+    assert last_card["source"] == "synthetic_filler"
+
+
+def test_build_credential_matrix_rejects_total_smaller_than_real_cards(
+    tmp_path: Path,
+) -> None:
+    paynkolay_cards = tmp_path / "paynkolay_merchants.csv"
+    paynkolay_cards.write_text(
+        "\ufeffBanka Adi,Kart Numarasi,Kart Semasi,Son Kullanma Tarihi,CVC Kodu,Sifre\n"
+        "DenizBank,5200190006338608,MasterCard,2030/01,410,123456\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="total_card_count must be greater than zero"):
+        build_credential_matrix_payload(
+            paynkolay_cards_path=paynkolay_cards,
+            total_card_count=0,
+        )
+
+
 def test_build_credential_scenario_catalog_payload_validates(tmp_path: Path) -> None:
     param_cards = tmp_path / "param_merchants.csv"
     param_cards.write_text(
@@ -177,6 +224,38 @@ def test_build_credential_runtime_config_payload_matches_scenario_aliases(
     assert scenario_aliases <= configured_aliases
     assert settings.current.cards[0].alias == "is_bankasi_troy_1396"
     assert settings.current.cards[0].expected_otp is not None
+
+
+def test_build_credential_runtime_config_and_scenarios_share_synthetic_fillers(
+    tmp_path: Path,
+) -> None:
+    paynkolay_cards = tmp_path / "paynkolay_merchants.csv"
+    paynkolay_cards.write_text(
+        "\ufeffBanka Adi,Kart Numarasi,Kart Semasi,Son Kullanma Tarihi,CVC Kodu,Sifre\n"
+        "DenizBank,5200190006338608,MasterCard,2030/01,410,123456\n",
+        encoding="utf-8",
+    )
+
+    settings = RuntimeSettings.model_validate(
+        build_credential_runtime_config_payload(
+            paynkolay_cards_path=paynkolay_cards,
+            total_card_count=5,
+        )
+    )
+    catalog = PaymentScenarioCatalog.model_validate(
+        build_credential_scenario_catalog_payload(
+            paynkolay_cards_path=paynkolay_cards,
+            total_card_count=5,
+        )
+    )
+
+    configured_aliases = {card.alias for card in settings.current.cards}
+    scenario_aliases = {scenario.card_alias for scenario in catalog.scenarios}
+
+    assert len(settings.current.cards) == 5
+    assert "synthetic_filler_0004" in configured_aliases
+    assert scenario_aliases <= configured_aliases
+    assert "synthetic_filler_0004" in scenario_aliases
 
 
 def test_build_credential_runtime_config_json_serializes_valid_settings(tmp_path: Path) -> None:

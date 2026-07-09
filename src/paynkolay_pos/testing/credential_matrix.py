@@ -13,6 +13,10 @@ from pathlib import Path
 
 from paynkolay_pos.config import RuntimeSettings
 from paynkolay_pos.scenarios import PaymentScenarioCatalog
+from paynkolay_pos.testing.synthetic_cards import (
+    SyntheticCardProfile,
+    generate_synthetic_card_payloads,
+)
 
 
 @dataclass(frozen=True)
@@ -102,6 +106,7 @@ def build_credential_matrix_payload(
     param_cards_path: Path | None = None,
     paynkolay_cards_path: Path | None = None,
     error_codes_path: Path | None = None,
+    total_card_count: int | None = None,
 ) -> dict[str, object]:
     """Build a normalized matrix payload from available local credential files."""
 
@@ -110,6 +115,8 @@ def build_credential_matrix_payload(
         cards.extend(_read_param_cards(param_cards_path))
     if paynkolay_cards_path is not None and paynkolay_cards_path.is_file():
         cards.extend(_read_paynkolay_cards(paynkolay_cards_path))
+    if total_card_count is not None:
+        _append_synthetic_fillers(cards, total_card_count=total_card_count)
 
     errors: list[CredentialErrorMatrixItem] = []
     if error_codes_path is not None and error_codes_path.is_file():
@@ -134,6 +141,7 @@ def build_credential_matrix_json(
     param_cards_path: Path | None = None,
     paynkolay_cards_path: Path | None = None,
     error_codes_path: Path | None = None,
+    total_card_count: int | None = None,
 ) -> str:
     """Build pretty JSON for the local/mock credential matrix."""
 
@@ -141,6 +149,7 @@ def build_credential_matrix_json(
         param_cards_path=param_cards_path,
         paynkolay_cards_path=paynkolay_cards_path,
         error_codes_path=error_codes_path,
+        total_card_count=total_card_count,
     )
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
@@ -150,6 +159,7 @@ def build_credential_scenario_catalog_payload(
     param_cards_path: Path | None = None,
     paynkolay_cards_path: Path | None = None,
     error_codes_path: Path | None = None,
+    total_card_count: int | None = None,
 ) -> dict[str, object]:
     """Build executable local/mock scenarios from credential CSV files."""
 
@@ -157,6 +167,7 @@ def build_credential_scenario_catalog_payload(
         param_cards_path=param_cards_path,
         paynkolay_cards_path=paynkolay_cards_path,
         error_codes_path=error_codes_path,
+        total_card_count=total_card_count,
     )
     cards = matrix["cards"]
     errors = matrix["errors"]
@@ -187,6 +198,7 @@ def build_credential_scenario_catalog_json(
     param_cards_path: Path | None = None,
     paynkolay_cards_path: Path | None = None,
     error_codes_path: Path | None = None,
+    total_card_count: int | None = None,
 ) -> str:
     """Build pretty JSON for credential-driven local/mock scenarios."""
 
@@ -194,6 +206,7 @@ def build_credential_scenario_catalog_json(
         param_cards_path=param_cards_path,
         paynkolay_cards_path=paynkolay_cards_path,
         error_codes_path=error_codes_path,
+        total_card_count=total_card_count,
     )
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
@@ -202,6 +215,7 @@ def build_credential_runtime_config_payload(
     *,
     param_cards_path: Path | None = None,
     paynkolay_cards_path: Path | None = None,
+    total_card_count: int | None = None,
     postman_collection_path: Path | None = None,
     gateway_form_path: Path | None = None,
     active_environment: str = "dev",
@@ -224,6 +238,7 @@ def build_credential_runtime_config_payload(
     matrix = build_credential_matrix_payload(
         param_cards_path=param_cards_path,
         paynkolay_cards_path=paynkolay_cards_path,
+        total_card_count=total_card_count,
     )
     cards = matrix["cards"]
     if not isinstance(cards, list) or not cards:
@@ -272,6 +287,7 @@ def build_credential_runtime_config_json(
     *,
     param_cards_path: Path | None = None,
     paynkolay_cards_path: Path | None = None,
+    total_card_count: int | None = None,
     postman_collection_path: Path | None = None,
     gateway_form_path: Path | None = None,
     active_environment: str = "dev",
@@ -289,6 +305,7 @@ def build_credential_runtime_config_json(
     payload = build_credential_runtime_config_payload(
         param_cards_path=param_cards_path,
         paynkolay_cards_path=paynkolay_cards_path,
+        total_card_count=total_card_count,
         postman_collection_path=postman_collection_path,
         gateway_form_path=gateway_form_path,
         active_environment=active_environment,
@@ -329,6 +346,50 @@ def _read_param_cards(path: Path) -> list[CredentialCardMatrixItem]:
             )
         )
     return cards
+
+
+def _append_synthetic_fillers(
+    cards: list[CredentialCardMatrixItem],
+    *,
+    total_card_count: int,
+) -> None:
+    if total_card_count < 1:
+        raise ValueError("total_card_count must be greater than zero")
+    if total_card_count < len(cards):
+        raise ValueError(
+            f"total_card_count ({total_card_count}) is smaller than credential "
+            f"card count ({len(cards)})"
+        )
+
+    filler_count = total_card_count - len(cards)
+    if filler_count == 0:
+        return
+
+    for card in generate_synthetic_card_payloads(
+        filler_count,
+        alias_prefix="synthetic_filler",
+        profile=SyntheticCardProfile.MOTO,
+    ):
+        expiry_month = card["expiry_month"]
+        expiry_year = card["expiry_year"]
+        if not isinstance(expiry_month, int) or not isinstance(expiry_year, int):
+            raise TypeError("synthetic filler expiry values must be integers")
+        cards.append(
+            CredentialCardMatrixItem(
+                alias=str(card["alias"]),
+                source="synthetic_filler",
+                bank_name="Synthetic Filler",
+                brand=str(card["brand"]),
+                card_type="credit",
+                pan=str(card["pan"]),
+                expiry_month=expiry_month,
+                expiry_year=expiry_year,
+                cvv=str(card["cvv"]),
+                requires_3ds=False,
+                expected_otp=None,
+                recommended_scenarios=("moto_authorized", "credit_coverage"),
+            )
+        )
 
 
 def _runtime_card_payload(card: object) -> dict[str, object]:

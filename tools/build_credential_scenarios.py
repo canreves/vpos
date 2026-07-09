@@ -24,6 +24,12 @@ def main() -> None:
         required=True,
         help="Destination JSON file. Use a private path outside Git.",
     )
+    parser.add_argument(
+        "--total-card-count",
+        type=int,
+        default=None,
+        help="Optional total card count; fills missing cards with synthetic MoTo cards.",
+    )
     args = parser.parse_args()
 
     credentials_dir = args.credentials_dir
@@ -31,6 +37,7 @@ def main() -> None:
         param_cards_path=credentials_dir / "param_merchants.csv",
         paynkolay_cards_path=credentials_dir / "paynkolay_merchants.csv",
         error_codes_path=credentials_dir / "param_hata_kodlari.csv",
+        total_card_count=args.total_card_count,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(f"{body}\n", encoding="utf-8")

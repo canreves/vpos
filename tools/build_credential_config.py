@@ -31,6 +31,12 @@ def main() -> None:
         help="Environment name to generate. Defaults to dev for local/mock use.",
     )
     parser.add_argument(
+        "--total-card-count",
+        type=int,
+        default=None,
+        help="Optional total card count; fills missing cards with synthetic MoTo cards.",
+    )
+    parser.add_argument(
         "--base-url",
         default="https://local-mock.payments.invalid",
         help="Provider base URL. For UAT use https://paynkolaytest.nkolayislem.com.tr/Vpos.",
@@ -67,6 +73,7 @@ def main() -> None:
     body = build_credential_runtime_config_json(
         param_cards_path=credentials_dir / "param_merchants.csv",
         paynkolay_cards_path=credentials_dir / "paynkolay_merchants.csv",
+        total_card_count=args.total_card_count,
         postman_collection_path=args.postman_collection,
         gateway_form_path=args.gateway_form,
         active_environment=args.environment,
