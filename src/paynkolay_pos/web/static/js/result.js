@@ -14,6 +14,9 @@
     cardHolder: document.getElementById("result-card-holder"),
     installment: document.getElementById("result-installment"),
     providerRef: document.getElementById("result-provider-ref"),
+    paymentListStatus: document.getElementById("result-payment-list-status"),
+    paymentListRef: document.getElementById("result-payment-list-ref"),
+    paymentListAuth: document.getElementById("result-payment-list-auth"),
     failure: document.getElementById("result-failure"),
     updated: document.getElementById("result-updated"),
   };
@@ -48,6 +51,16 @@
     fields.cardHolder.textContent = payment.card_holder;
     fields.installment.textContent = String(payment.installment_count);
     fields.providerRef.textContent = payment.provider_transaction_id || "-";
+    if (payment.payment_list) {
+      fields.paymentListStatus.textContent =
+        payment.payment_list.status || payment.payment_list.error || "-";
+      fields.paymentListRef.textContent = payment.payment_list.provider_transaction_id || "-";
+      fields.paymentListAuth.textContent = payment.payment_list.authorization_code || "-";
+    } else {
+      fields.paymentListStatus.textContent = "-";
+      fields.paymentListRef.textContent = "-";
+      fields.paymentListAuth.textContent = "-";
+    }
     fields.failure.textContent = payment.failure_reason || "-";
     fields.updated.textContent = payment.updated_at;
 

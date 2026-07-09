@@ -11,6 +11,9 @@
     status: document.getElementById("result-status"),
     amount: document.getElementById("result-amount"),
     threeDs: document.getElementById("result-3ds"),
+    providerRef: document.getElementById("result-provider-ref"),
+    paymentListStatus: document.getElementById("result-payment-list-status"),
+    paymentListAuth: document.getElementById("result-payment-list-auth"),
   };
   const threeDsLink = document.getElementById("result-three-ds-link");
 
@@ -80,6 +83,15 @@
       resultFields.status.textContent = response.status;
       resultFields.amount.textContent = `${response.amount} ${response.currency}`;
       resultFields.threeDs.textContent = response.requires_3ds ? "Required" : "Not required";
+      resultFields.providerRef.textContent = response.provider_transaction_id || "-";
+      if (response.payment_list) {
+        resultFields.paymentListStatus.textContent =
+          response.payment_list.status || response.payment_list.error || "-";
+        resultFields.paymentListAuth.textContent = response.payment_list.authorization_code || "-";
+      } else {
+        resultFields.paymentListStatus.textContent = "-";
+        resultFields.paymentListAuth.textContent = "-";
+      }
       if (response.three_ds && response.three_ds.render_url) {
         threeDsLink.href = response.three_ds.render_url;
         threeDsLink.classList.remove("hidden");

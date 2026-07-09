@@ -7,18 +7,26 @@ import pytest
 
 from paynkolay_pos.api.payment_initializer import (
     PaymentProviderInitializationError,
+    PaymentProviderStatusVerificationError,
     PaynkolayPaymentInitializer,
 )
 from paynkolay_pos.api.schemas import PaymentFormRequest
 from paynkolay_pos.clients import PaynkolayClient
 from paynkolay_pos.config import PaymentEnvironment
-from paynkolay_pos.models import PaymentInitializeRequest, PaynkolayThreeDSInitializeResult
+from paynkolay_pos.models import (
+    Currency,
+    PaymentInitializeRequest,
+    PaymentStatus,
+    PaynkolayThreeDSInitializeResult,
+    TransactionStatusResponse,
+)
 
 
 class StubPaynkolayClient:
     def __init__(self, payload: dict[str, object]) -> None:
         self.payload = payload
         self.calls: list[dict[str, object]] = []
+        self.status_calls: list[dict[str, object]] = []
 
     async def initialize_payment_form(
         self,
@@ -44,6 +52,34 @@ class StubPaynkolayClient:
         )
         return self.payload
 
+    async def get_transaction_status_from_payment_list(
+        self,
+        order_id: str,
+        *,
+        start_date: str,
+        end_date: str,
+        currency: Currency = Currency.TRY,
+    ) -> TransactionStatusResponse:
+        self.status_calls.append(
+            {
+                "order_id": order_id,
+                "start_date": start_date,
+                "end_date": end_date,
+                "currency": currency,
+            }
+        )
+        return TransactionStatusResponse.model_validate(
+            {
+                "order_id": order_id,
+                "provider_transaction_id": "ref-status",
+                "status": PaymentStatus.CAPTURED,
+                "amount": "100.00",
+                "currency": currency,
+                "updated_at": "2026-07-07T12:00:00+00:00",
+                "authorization_code": "AUTHSTAT",
+            }
+        )
+
 
 class FailingPaynkolayClient:
     async def initialize_payment_form(
@@ -57,6 +93,16 @@ class FailingPaynkolayClient:
         customer_key: str = "",
         merchant_customer_no: str = "",
     ) -> dict[str, Any]:
+        raise httpx.ConnectError("provider unavailable")
+
+    async def get_transaction_status_from_payment_list(
+        self,
+        order_id: str,
+        *,
+        start_date: str,
+        end_date: str,
+        currency: Currency = Currency.TRY,
+    ) -> TransactionStatusResponse:
         raise httpx.ConnectError("provider unavailable")
 
 
@@ -174,4 +220,38 @@ async def test_paynkolay_payment_initializer_wraps_provider_errors() -> None:
             payment_form_request(),
             order_id="order-web-1001",
             card_holder_ip="185.125.190.58",
+        )
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_paynkolay_payment_initializer_verifies_payment_list_status() -> None:
+    client = StubPaynkolayClient({"BANK_REQUEST_MESSAGE": "<form>3DS</form>"})
+    initializer = PaynkolayPaymentInitializer(
+        environment=payment_environment(),
+        client=cast(PaynkolayClient, client),
+    )
+
+    response = await initializer.verify_transaction_status(
+        "order-web-1001",
+        currency=Currency.TRY,
+    )
+
+    assert response.status is PaymentStatus.CAPTURED
+    assert response.provider_transaction_id == "ref-status"
+    assert client.status_calls[0]["order_id"] == "order-web-1001"
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_paynkolay_payment_initializer_wraps_payment_list_errors() -> None:
+    initializer = PaynkolayPaymentInitializer(
+        environment=payment_environment(),
+        client=cast(PaynkolayClient, FailingPaynkolayClient()),
+    )
+
+    with pytest.raises(PaymentProviderStatusVerificationError):
+        await initializer.verify_transaction_status(
+            "order-web-1001",
+            currency=Currency.TRY,
         )

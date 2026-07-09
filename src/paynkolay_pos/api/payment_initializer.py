@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Protocol
 
 import httpx
@@ -11,16 +12,22 @@ from paynkolay_pos.api.schemas import PaymentFormRequest
 from paynkolay_pos.clients import PaynkolayClient
 from paynkolay_pos.config import EnvironmentName, PaymentEnvironment
 from paynkolay_pos.models import (
+    Currency,
     PaymentCardInput,
     PaymentInitializeRequest,
     PaynkolayPaymentResult,
     PaynkolayThreeDSInitializeResult,
+    TransactionStatusResponse,
     parse_paynkolay_payment_result,
 )
 
 
 class PaymentProviderInitializationError(RuntimeError):
     """Raised when provider payment initialization cannot be completed."""
+
+
+class PaymentProviderStatusVerificationError(RuntimeError):
+    """Raised when provider transaction status verification cannot be completed."""
 
 
 @dataclass(frozen=True)
@@ -44,6 +51,14 @@ class SupportsPaymentInitializer(Protocol):
         card_holder_ip: str,
     ) -> PaymentInitializationOutcome:
         """Initialize a payment through the configured provider."""
+
+    async def verify_transaction_status(
+        self,
+        order_id: str,
+        *,
+        currency: Currency,
+    ) -> TransactionStatusResponse:
+        """Verify a transaction through Paynkolay PaymentList."""
 
 
 class PaynkolayPaymentInitializer:
@@ -88,6 +103,29 @@ class PaynkolayPaymentInitializer:
             success_url=success_url,
             fail_url=fail_url,
         )
+
+    async def verify_transaction_status(
+        self,
+        order_id: str,
+        *,
+        currency: Currency,
+    ) -> TransactionStatusResponse:
+        """Verify a Paynkolay transaction through PaymentList."""
+
+        today = datetime.now()
+        start_date = (today - timedelta(days=1)).strftime("%d.%m.%Y")
+        end_date = (today + timedelta(days=1)).strftime("%d.%m.%Y")
+        try:
+            return await self._client.get_transaction_status_from_payment_list(
+                order_id,
+                start_date=start_date,
+                end_date=end_date,
+                currency=currency,
+            )
+        except (httpx.HTTPError, LookupError, RuntimeError, TypeError, ValueError) as exc:
+            raise PaymentProviderStatusVerificationError(
+                "provider payment status verification failed"
+            ) from exc
 
     def _payment_request(
         self,

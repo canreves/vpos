@@ -13,7 +13,7 @@ from paynkolay_pos.api.session_models import (
     mask_pan,
     utc_now,
 )
-from paynkolay_pos.models import Currency
+from paynkolay_pos.models import Currency, TransactionStatusResponse
 
 
 class PaymentSessionAlreadyExistsError(ValueError):
@@ -103,6 +103,59 @@ class PaymentSessionStore:
                     "failure_reason": failure_reason
                     if failure_reason is not None
                     else session.failure_reason,
+                    "updated_at": self._clock(),
+                }
+            )
+            self._sessions[order_id] = PaymentSession.model_validate(updated)
+            return self._sessions[order_id]
+
+    async def update_payment_list_status(
+        self,
+        order_id: str,
+        status_response: TransactionStatusResponse,
+    ) -> PaymentSession:
+        """Store a sanitized PaymentList verification result on a tracked session."""
+
+        async with self._lock:
+            session = self._sessions.get(order_id)
+            if session is None:
+                raise PaymentSessionNotFoundError(
+                    f"payment session does not exist for order_id={order_id!r}"
+                )
+
+            updated = session.model_copy(
+                update={
+                    "payment_list_status": status_response.status,
+                    "payment_list_provider_transaction_id": (
+                        status_response.provider_transaction_id
+                    ),
+                    "payment_list_authorization_code": status_response.authorization_code,
+                    "payment_list_failure_code": status_response.failure_code,
+                    "payment_list_updated_at": status_response.updated_at,
+                    "payment_list_error": None,
+                    "updated_at": self._clock(),
+                }
+            )
+            self._sessions[order_id] = PaymentSession.model_validate(updated)
+            return self._sessions[order_id]
+
+    async def update_payment_list_error(
+        self,
+        order_id: str,
+        error: str,
+    ) -> PaymentSession:
+        """Store a sanitized PaymentList verification error on a tracked session."""
+
+        async with self._lock:
+            session = self._sessions.get(order_id)
+            if session is None:
+                raise PaymentSessionNotFoundError(
+                    f"payment session does not exist for order_id={order_id!r}"
+                )
+
+            updated = session.model_copy(
+                update={
+                    "payment_list_error": error,
                     "updated_at": self._clock(),
                 }
             )

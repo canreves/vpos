@@ -159,6 +159,7 @@ class PaymentFormResponse(BaseModel):
     requires_3ds: bool
     provider_transaction_id: str | None = None
     failure_reason: str | None = None
+    payment_list: PaymentListStatusSummary | None = None
     three_ds: dict[str, str] | None = None
     message: str
     links: dict[str, str]
@@ -188,9 +189,40 @@ class PaymentFormResponse(BaseModel):
             requires_3ds=session.requires_3ds,
             provider_transaction_id=session.provider_transaction_id,
             failure_reason=session.failure_reason,
+            payment_list=PaymentListStatusSummary.from_session(session),
             three_ds=three_ds,
             message=message,
             links=links,
+        )
+
+
+class PaymentListStatusSummary(BaseModel):
+    """Sanitized PaymentList verification evidence shown in the browser."""
+
+    status: str | None = None
+    provider_transaction_id: str | None = None
+    authorization_code: str | None = None
+    failure_code: str | None = None
+    updated_at: str | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_session(cls, session: PaymentSession) -> PaymentListStatusSummary | None:
+        """Build PaymentList evidence from a session when verification was attempted."""
+
+        if session.payment_list_status is None and session.payment_list_error is None:
+            return None
+        return cls(
+            status=session.payment_list_status.value
+            if session.payment_list_status is not None
+            else None,
+            provider_transaction_id=session.payment_list_provider_transaction_id,
+            authorization_code=session.payment_list_authorization_code,
+            failure_code=session.payment_list_failure_code,
+            updated_at=session.payment_list_updated_at.isoformat()
+            if session.payment_list_updated_at is not None
+            else None,
+            error=session.payment_list_error,
         )
 
 
@@ -207,6 +239,7 @@ class PaymentLookupResponse(BaseModel):
     installment_count: int
     provider_transaction_id: str | None = None
     failure_reason: str | None = None
+    payment_list: PaymentListStatusSummary | None = None
     created_at: str
     updated_at: str
     links: dict[str, str]
@@ -234,6 +267,7 @@ class PaymentLookupResponse(BaseModel):
             installment_count=session.installment_count,
             provider_transaction_id=session.provider_transaction_id,
             failure_reason=session.failure_reason,
+            payment_list=PaymentListStatusSummary.from_session(session),
             created_at=session.created_at.isoformat(),
             updated_at=session.updated_at.isoformat(),
             links=links,

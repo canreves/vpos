@@ -15,6 +15,7 @@ from paynkolay_pos.api.dependencies import (
 )
 from paynkolay_pos.api.payment_initializer import (
     PaymentProviderInitializationError,
+    PaymentProviderStatusVerificationError,
     SupportsPaymentInitializer,
 )
 from paynkolay_pos.api.schemas import (
@@ -149,6 +150,13 @@ async def create_payment(
                 else None
             ),
         )
+        session = await _verify_payment_list_status(
+            order_id=order_id,
+            request=request,
+            session=session,
+            session_store=session_store,
+            initializer=initializer,
+        )
         await _log_payment_event(
             external_logger,
             PaymentLogEventType.PAYMENT_INITIALIZED,
@@ -184,6 +192,24 @@ def _client_host(request: Request) -> str:
     if request.client is None or not request.client.host.strip():
         return "127.0.0.1"
     return request.client.host
+
+
+async def _verify_payment_list_status(
+    *,
+    order_id: str,
+    request: PaymentFormRequest,
+    session: PaymentSession,
+    session_store: PaymentSessionStore,
+    initializer: SupportsPaymentInitializer,
+) -> PaymentSession:
+    try:
+        payment_list_status = await initializer.verify_transaction_status(
+            order_id,
+            currency=request.currency,
+        )
+    except PaymentProviderStatusVerificationError as exc:
+        return await session_store.update_payment_list_error(order_id, str(exc))
+    return await session_store.update_payment_list_status(order_id, payment_list_status)
 
 
 async def _log_payment_event(

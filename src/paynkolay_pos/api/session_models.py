@@ -8,7 +8,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator
 
-from paynkolay_pos.models import Currency
+from paynkolay_pos.models import Currency, PaymentStatus
 
 
 class PaymentSessionStatus(StrEnum):
@@ -39,6 +39,12 @@ class PaymentSession(BaseModel):
     installment_count: int = Field(ge=1, le=12)
     provider_transaction_id: str | None = Field(default=None, min_length=1)
     failure_reason: str | None = Field(default=None, min_length=1)
+    payment_list_status: PaymentStatus | None = None
+    payment_list_provider_transaction_id: str | None = Field(default=None, min_length=1)
+    payment_list_authorization_code: str | None = Field(default=None, min_length=1)
+    payment_list_failure_code: str | None = Field(default=None, min_length=1)
+    payment_list_updated_at: datetime | None = None
+    payment_list_error: str | None = Field(default=None, min_length=1)
     created_at: datetime
     updated_at: datetime
 
@@ -49,11 +55,13 @@ class PaymentSession(BaseModel):
 
         return amount.quantize(Decimal("0.01"))
 
-    @field_validator("created_at", "updated_at")
+    @field_validator("created_at", "updated_at", "payment_list_updated_at")
     @classmethod
-    def require_timezone(cls, timestamp: datetime) -> datetime:
+    def require_timezone(cls, timestamp: datetime | None) -> datetime | None:
         """Normalize stored timestamps to UTC."""
 
+        if timestamp is None:
+            return None
         if timestamp.tzinfo is None:
             raise ValueError("session timestamps must include timezone information")
         return timestamp.astimezone(UTC)
@@ -79,4 +87,3 @@ def mask_pan(pan: str) -> str:
     if len(pan) < 12 or len(pan) > 19:
         raise ValueError("PAN must be between 12 and 19 digits")
     return f"{pan[:6]}{'*' * (len(pan) - 10)}{pan[-4:]}"
-

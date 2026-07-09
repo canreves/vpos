@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
 
@@ -18,6 +20,7 @@ from paynkolay_pos.api.dependencies import (
 from paynkolay_pos.api.payment_initializer import (
     PaymentInitializationOutcome,
     PaymentProviderInitializationError,
+    PaymentProviderStatusVerificationError,
 )
 from paynkolay_pos.api.routes import reports
 from paynkolay_pos.api.schemas import PaymentFormRequest
@@ -26,8 +29,10 @@ from paynkolay_pos.models import (
     Currency,
     PaymentCardInput,
     PaymentInitializeRequest,
+    PaymentStatus,
     PaynkolayPaymentResult,
     PaynkolayThreeDSInitializeResult,
+    TransactionStatusResponse,
 )
 from paynkolay_pos.reporting import PaymentLogEvent
 from paynkolay_pos.scenarios import build_private_scenario_catalog_payload
@@ -72,13 +77,18 @@ class FakePaymentInitializer:
         self,
         *,
         provider_result: PaynkolayThreeDSInitializeResult | PaynkolayPaymentResult | None = None,
+        payment_list_status: TransactionStatusResponse | None = None,
         fails: bool = False,
+        status_fails: bool = False,
     ) -> None:
         self.provider_result = provider_result or PaynkolayThreeDSInitializeResult.model_validate(
             {"BANK_REQUEST_MESSAGE": "<form>3DS challenge</form>"}
         )
+        self.payment_list_status = payment_list_status
         self.fails = fails
+        self.status_fails = status_fails
         self.calls: list[tuple[str, str]] = []
+        self.status_calls: list[str] = []
 
     async def initialize(
         self,
@@ -95,6 +105,27 @@ class FakePaymentInitializer:
             provider_result=self.provider_result,
             success_url="https://merchant.example.test/payments/result/success",
             fail_url="https://merchant.example.test/payments/result/fail",
+        )
+
+    async def verify_transaction_status(
+        self,
+        order_id: str,
+        *,
+        currency: Currency,
+    ) -> TransactionStatusResponse:
+        self.status_calls.append(order_id)
+        if self.status_fails:
+            raise PaymentProviderStatusVerificationError(
+                "provider payment status verification failed"
+            )
+        return self.payment_list_status or TransactionStatusResponse(
+            order_id=order_id,
+            provider_transaction_id="list-ref-1001",
+            status=PaymentStatus.CAPTURED,
+            amount=Decimal("100.00"),
+            currency=currency,
+            updated_at=datetime(2026, 7, 7, 12, 0, tzinfo=UTC),
+            authorization_code="LISTAUTH",
         )
 
 
@@ -145,6 +176,7 @@ async def test_root_renders_payment_screen(client: httpx.AsyncClient) -> None:
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert 'id="payment-form"' in response.text
+    assert 'id="result-payment-list-status"' in response.text
 
 
 @pytest.mark.api
@@ -184,6 +216,7 @@ async def test_result_page_renders_dynamic_lookup_screen(client: httpx.AsyncClie
     assert "text/html" in response.headers["content-type"]
     assert 'id="result-lookup-form"' in response.text
     assert 'id="lookup-order-id"' in response.text
+    assert 'id="result-payment-list-status"' in response.text
     assert 'class="nav-link active" href="/"' in response.text
     assert "/static/js/result.js" in response.text
 
@@ -475,6 +508,7 @@ async def test_payment_form_initializes_provider_and_returns_3ds_state(
     assert payload["masked_pan"] == "411111******1111"
     assert payload["three_ds"] == {"render_url": f"/payments/{payload['order_id']}/three-ds"}
     assert fake_initializer.calls == [(payload["order_id"], "127.0.0.1")]
+    assert fake_initializer.status_calls == []
     assert "4111111111111111" not in str([event.model_dump() for event in fake_logger.events])
     assert "123" not in str([event.model_dump() for event in fake_logger.events])
     assert "4111111111111111" not in response.text
@@ -576,6 +610,14 @@ async def test_payment_lookup_returns_completed_session_for_result_screen() -> N
     payload = lookup_response.json()
     assert payload["status"] == "completed"
     assert payload["provider_transaction_id"] == "ref-lookup"
+    assert payload["payment_list"] == {
+        "status": "captured",
+        "provider_transaction_id": "list-ref-1001",
+        "authorization_code": "LISTAUTH",
+        "failure_code": None,
+        "updated_at": "2026-07-07T12:00:00+00:00",
+        "error": None,
+    }
     assert payload["failure_reason"] is None
     assert payload["links"] == {"result": "/result?order_id=order-result-lookup"}
     assert "4111111111111111" not in lookup_response.text
@@ -629,7 +671,73 @@ async def test_payment_form_records_final_provider_result() -> None:
     payload = response.json()
     assert payload["status"] == "completed"
     assert payload["provider_transaction_id"] == "ref-1001"
+    assert payload["payment_list"] == {
+        "status": "captured",
+        "provider_transaction_id": "list-ref-1001",
+        "authorization_code": "LISTAUTH",
+        "failure_code": None,
+        "updated_at": "2026-07-07T12:00:00+00:00",
+        "error": None,
+    }
     assert payload["three_ds"] is None
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_payment_form_keeps_final_result_when_payment_list_verification_fails() -> None:
+    final_result = PaynkolayPaymentResult.model_validate(
+        {
+            "RESPONSE_CODE": "2",
+            "RESPONSE_DATA": "Islem Basarili",
+            "USE_3D": "false",
+            "RND": "rnd-1001",
+            "MERCHANT_NO": "merchant-web",
+            "AUTH_CODE": "AUTH1001",
+            "REFERENCE_CODE": "ref-1001",
+            "CLIENT_REFERENCE_CODE": "order-web-final",
+            "TIMESTAMP": "2026-07-07T12:00:00+00:00",
+            "TRANSACTION_AMOUNT": "100.00",
+            "AUTHORIZATION_AMOUNT": "100.00",
+            "INSTALLMENT": 1,
+            "CURRENCY_CODE": Currency.TRY,
+            "hashDataV2": "hash",
+        }
+    )
+    app = create_app()
+    app.dependency_overrides[get_payment_initializer] = lambda: FakePaymentInitializer(
+        provider_result=final_result,
+        status_fails=True,
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/payments",
+            json={
+                "order_id": "order-web-final",
+                "amount": "100.00",
+                "currency": "TRY",
+                "card_number": "4111111111111111",
+                "card_holder": "PAYNKOLAY TEST",
+                "expiry_month": 12,
+                "expiry_year": 2030,
+                "cvv": "123",
+                "requires_3ds": False,
+                "installment_count": 1,
+            },
+        )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "completed"
+    assert payload["provider_transaction_id"] == "ref-1001"
+    assert payload["payment_list"] == {
+        "status": None,
+        "provider_transaction_id": None,
+        "authorization_code": None,
+        "failure_code": None,
+        "updated_at": None,
+        "error": "provider payment status verification failed",
+    }
 
 
 @pytest.mark.api
