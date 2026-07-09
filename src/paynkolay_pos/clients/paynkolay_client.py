@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal
@@ -91,10 +92,7 @@ class PaynkolayClient:
 
         response = await self._client.post(path, json=payload)
         response.raise_for_status()
-        decoded = response.json()
-        if not isinstance(decoded, dict):
-            raise TypeError("provider response must be a JSON object")
-        return decoded
+        return _decode_json_object(response.json())
 
     async def post_form(
         self,
@@ -109,20 +107,14 @@ class PaynkolayClient:
         }
         response = await self._client.post(path, files=files)
         response.raise_for_status()
-        decoded = response.json()
-        if not isinstance(decoded, dict):
-            raise TypeError("provider response must be a JSON object")
-        return decoded
+        return _decode_json_object(response.json())
 
     async def get_json(self, path: str) -> dict[str, Any]:
         """GET JSON from a provider endpoint and return the decoded object body."""
 
         response = await self._client.get(path)
         response.raise_for_status()
-        decoded = response.json()
-        if not isinstance(decoded, dict):
-            raise TypeError("provider response must be a JSON object")
-        return decoded
+        return _decode_json_object(response.json())
 
     async def initialize_payment(
         self,
@@ -469,3 +461,14 @@ def _secret_value(value: SecretStr | str) -> str:
     if isinstance(value, SecretStr):
         return value.get_secret_value()
     return value
+
+
+def _decode_json_object(decoded: Any) -> dict[str, Any]:
+    if isinstance(decoded, str):
+        try:
+            decoded = json.loads(decoded)
+        except json.JSONDecodeError as exc:
+            raise TypeError("provider response must be a JSON object") from exc
+    if not isinstance(decoded, dict):
+        raise TypeError("provider response must be a JSON object")
+    return decoded

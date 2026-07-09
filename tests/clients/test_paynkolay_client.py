@@ -95,6 +95,26 @@ async def test_client_rejects_non_object_json_response() -> None:
 
 @pytest.mark.api
 @pytest.mark.asyncio
+async def test_client_accepts_json_object_encoded_as_json_string() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code=200,
+            json=json.dumps({"id": "", "result": {"RESPONSE_CODE": "2"}}),
+        )
+
+    async with PaynkolayClient(
+        settings.current,
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        response = await client.post_form("/Payment/PaymentList", {"clientRefCode": "order-1001"})
+
+    assert response == {"id": "", "result": {"RESPONSE_CODE": "2"}}
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
 async def test_client_raises_for_provider_http_errors() -> None:
     settings = RuntimeSettings.model_validate(valid_settings_payload())
 
