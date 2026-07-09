@@ -26,6 +26,9 @@ UAT_LIST_SX ?= replace-with-uat-list-sx
 UAT_CANCEL_REFUND_SX ?= replace-with-uat-cancel-refund-sx
 UAT_SECRET_KEY ?= replace-with-uat-secret-key
 UAT_3DS_SCENARIO_ID ?= credential_yapikredi_visa_9085_3ds_success
+UAT_3DS_CARD_FILE ?= credentials/uat_3ds_card.json
+UAT_3DS_FORM_BASE_URL ?= https://vpostest.qnb.com.tr/PayforACSSimulator/
+UAT_3DS_BROWSER ?=
 SCENARIO_FILE ?=
 WEB_HOST ?= 127.0.0.1
 WEB_PORT ?= 8000
@@ -192,7 +195,7 @@ uat-inputs: uat-config uat-scenarios
 	@echo "  export PAYNKOLAY_ENV=uat"
 
 uat-3ds-smoke: uat-inputs
-	PAYNKOLAY_CONFIG_FILE=$(UAT_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) PAYNKOLAY_ENV=uat PAYNKOLAY_ENABLE_LIVE_E2E=1 poetry run python tools/run_uat_3ds_smoke.py --scenario-id $(UAT_3DS_SCENARIO_ID)
+	PAYNKOLAY_CONFIG_FILE=$(UAT_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) PAYNKOLAY_ENV=uat PAYNKOLAY_ENABLE_LIVE_E2E=1 poetry run python tools/run_uat_3ds_smoke.py --scenario-id $(UAT_3DS_SCENARIO_ID) --card-file $(UAT_3DS_CARD_FILE) --form-base-url $(UAT_3DS_FORM_BASE_URL) $(UAT_3DS_BROWSER)
 
 credential-scenario-test: credential-config credential-scenarios
 	PAYNKOLAY_CONFIG_FILE=$(CREDENTIAL_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) $(PYTEST) tests/e2e/test_data_driven_payment_scenarios.py

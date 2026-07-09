@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
+import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
@@ -29,7 +33,7 @@ from playwright.async_api import (
 from pydantic import SecretStr
 
 from paynkolay_pos.clients import PaynkolayClient
-from paynkolay_pos.config import PaymentEnvironment, TestCard, load_runtime_settings
+from paynkolay_pos.config import CardBrand, PaymentEnvironment, TestCard, load_runtime_settings
 from paynkolay_pos.models import PaymentInitializeRequest
 from paynkolay_pos.reporting import evidence_json
 from paynkolay_pos.scenarios import PaymentScenario, load_payment_scenario_catalog_from_env
@@ -56,6 +60,14 @@ SUBMIT_SELECTORS = (
     'button:has-text("Submit")',
     'button',
 )
+OTP_FROM_FORM_SENTINEL = "__from_form__"
+
+
+@dataclass(frozen=True)
+class UAT3DSCardOverride:
+    card: TestCard
+    amount: str | None = None
+    card_holder: str | None = None
 
 
 class FirstFormActionParser(HTMLParser):
@@ -91,6 +103,19 @@ def main() -> None:
         default="127.0.0.1",
         help="cardHolderIP value sent to Paynkolay.",
     )
+    parser.add_argument(
+        "--card-file",
+        default=os.getenv("PAYNKOLAY_UAT_3DS_CARD_FILE"),
+        help="Ignored JSON file containing a one-off UAT 3DS card override.",
+    )
+    parser.add_argument(
+        "--form-base-url",
+        default=os.getenv(
+            "PAYNKOLAY_UAT_3DS_FORM_BASE_URL",
+            "https://vpostest.qnb.com.tr/PayforACSSimulator/",
+        ),
+        help="Base URL used when a provider 3DS form has a relative action.",
+    )
     args = parser.parse_args()
 
     if os.getenv("PAYNKOLAY_ENABLE_LIVE_E2E") != "1":
@@ -101,6 +126,8 @@ def main() -> None:
             scenario_id=args.scenario_id,
             headed=args.headed,
             card_holder_ip=args.card_holder_ip,
+            card_file=args.card_file,
+            form_base_url=args.form_base_url,
         )
     )
 
@@ -110,6 +137,8 @@ async def _run_3ds_smoke(
     scenario_id: str | None,
     headed: bool,
     card_holder_ip: str,
+    card_file: str | None,
+    form_base_url: str,
 ) -> None:
     settings = load_runtime_settings()
     environment = settings.current
@@ -119,9 +148,16 @@ async def _run_3ds_smoke(
         if scenario_id is not None
         else _first_3ds_scenario(catalog.scenarios, environment)
     )
-    card = _card_for_alias(environment, scenario.card_alias)
-    if not scenario.requires_3ds or card.expected_otp is None:
-        raise SystemExit("Selected scenario must require 3DS and use a card with expected_otp.")
+    override = _override_card_from_file(card_file) if card_file is not None else None
+    card = (
+        override.card
+        if override is not None
+        else _card_for_alias(environment, scenario.card_alias)
+    )
+    if not scenario.requires_3ds:
+        raise SystemExit("Selected scenario must require 3DS.")
+    if card.expected_otp is None:
+        raise SystemExit("3DS card must define expected_otp.")
 
     order_id = f"uat-3ds-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
     request = _payment_request_for(
@@ -129,6 +165,8 @@ async def _run_3ds_smoke(
         scenario=scenario,
         card=card,
         order_id=order_id,
+        amount=override.amount if override is not None else None,
+        card_holder=override.card_holder if override is not None else None,
     )
     print(
         evidence_json(
@@ -137,7 +175,10 @@ async def _run_3ds_smoke(
                 "order_id": order_id,
                 "scenario_id": scenario.scenario_id,
                 "card_alias": card.alias,
-                "amount": scenario.canonical_amount,
+                "card_source": "override_file" if card_file is not None else "runtime_config",
+                "amount": override.amount
+                if override is not None and override.amount is not None
+                else scenario.canonical_amount,
                 "callback_url": environment.callback_base_url,
                 "provider_base_url": environment.base_url,
             }
@@ -185,6 +226,8 @@ async def _run_3ds_smoke(
             html=html,
             otp=card.expected_otp,
             headed=headed,
+            form_base_url=form_base_url,
+            callback_url=environment.callback_base_url,
         )
         print(
             evidence_json(
@@ -213,6 +256,8 @@ async def _complete_browser_challenge(
     html: str,
     otp: SecretStr,
     headed: bool,
+    form_base_url: str,
+    callback_url: str,
 ) -> dict[str, object]:
     async with async_playwright() as playwright:
         browser: Browser | None = None
@@ -221,9 +266,21 @@ async def _complete_browser_challenge(
             browser = await playwright.chromium.launch(headless=not headed)
             context = await browser.new_context(ignore_https_errors=True)
             page = await context.new_page()
-            await page.set_content(html, wait_until="domcontentloaded")
-            await _submit_gateway_form_if_present(page)
+            await page.set_content(
+                _html_with_base_url(html, form_base_url=form_base_url),
+                wait_until="domcontentloaded",
+            )
+            if not _has_auto_submit(html):
+                await _submit_gateway_form_if_present(page)
             await _wait_for_network_quiet(page)
+            if _same_origin_path(page.url, callback_url):
+                return {
+                    "completed": True,
+                    "returned_to_callback": True,
+                    "final_url": _safe_url(page.url),
+                    "title": await page.title(),
+                }
+
             otp_target = await _visible_selector_in_page_or_frames(page, OTP_SELECTORS)
             if otp_target is None:
                 return {
@@ -247,7 +304,19 @@ async def _complete_browser_challenge(
                     "frames": await _frame_metadata(page),
                 }
 
-            await otp_target.locator.fill(otp.get_secret_value())
+            otp_value = await _otp_value_for_page(page, otp)
+            if otp_value is None:
+                return {
+                    "completed": False,
+                    "reason": "otp_value_not_found_in_form",
+                    "final_url": _safe_url(page.url),
+                    "title": await page.title(),
+                    "otp_selector": otp_target.selector,
+                    "visible_fields": await _visible_field_metadata(page),
+                    "frames": await _frame_metadata(page),
+                }
+
+            await otp_target.locator.fill(otp_value)
             await submit_target.locator.click()
             await _wait_for_network_quiet(page)
             return {
@@ -446,29 +515,51 @@ def _card_for_alias(environment: PaymentEnvironment, alias: str) -> TestCard:
     raise LookupError(f"card alias not configured: {alias}")
 
 
+def _override_card_from_file(card_file: str) -> UAT3DSCardOverride:
+    payload = json.loads(Path(card_file).expanduser().read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise TypeError("UAT 3DS card override file must contain a JSON object")
+    amount = str(payload.pop("amount", "")).strip() or None
+    card_holder = str(payload.pop("card_holder", "")).strip() or None
+    payload.setdefault("alias", "uat_3ds_override")
+    payload.setdefault("brand", CardBrand.VISA.value)
+    payload.setdefault("requires_3ds", True)
+    if "expected_otp" not in payload:
+        payload["expected_otp"] = OTP_FROM_FORM_SENTINEL
+    return UAT3DSCardOverride(
+        card=TestCard.model_validate(payload),
+        amount=amount,
+        card_holder=card_holder,
+    )
+
+
 def _payment_request_for(
     *,
     environment: PaymentEnvironment,
     scenario: PaymentScenario,
     card: TestCard,
     order_id: str,
+    amount: str | None = None,
+    card_holder: str | None = None,
 ) -> PaymentInitializeRequest:
-    return PaymentInitializeRequest.model_validate(
-        scenario.payment_request_payload(
-            merchant_id=environment.merchant.merchant_id,
-            terminal_id=environment.merchant.terminal_id,
-            callback_url=environment.callback_base_url,
-            card={
-                "brand": card.brand.value,
-                "pan": card.pan.get_secret_value(),
-                "expiry_month": card.expiry_month,
-                "expiry_year": card.expiry_year,
-                "cvv": card.cvv.get_secret_value(),
-            },
-            order_id=order_id,
-            correlation_id=f"uat-3ds-{uuid4().hex}",
-        )
+    payload = scenario.payment_request_payload(
+        merchant_id=environment.merchant.merchant_id,
+        terminal_id=environment.merchant.terminal_id,
+        callback_url=environment.callback_base_url,
+        card={
+            "brand": card.brand.value,
+            "pan": card.pan.get_secret_value(),
+            "expiry_month": card.expiry_month,
+            "expiry_year": card.expiry_year,
+            "cvv": card.cvv.get_secret_value(),
+            "card_holder": card_holder or "PAYNKOLAY TEST",
+        },
+        order_id=order_id,
+        correlation_id=f"uat-3ds-{uuid4().hex}",
     )
+    if amount is not None:
+        payload["amount"] = amount
+    return PaymentInitializeRequest.model_validate(payload)
 
 
 def _response_summary(response_payload: dict[str, Any]) -> dict[str, object]:
@@ -497,6 +588,53 @@ def _safe_url(url: str | None) -> str | None:
         return None
     parts = urlsplit(url)
     return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
+
+def _same_origin_path(left: str | None, right: str | None) -> bool:
+    if not left or not right:
+        return False
+    left_parts = urlsplit(left)
+    right_parts = urlsplit(right)
+    return (
+        left_parts.scheme == right_parts.scheme
+        and left_parts.netloc == right_parts.netloc
+        and left_parts.path.rstrip("/") == right_parts.path.rstrip("/")
+    )
+
+
+def _html_with_base_url(html: str, *, form_base_url: str) -> str:
+    if not form_base_url.strip() or "<base" in html.lower():
+        return html
+    if 'action="./' not in html and "action='./" not in html:
+        return html
+    base_tag = f'<base href="{form_base_url.rstrip("/")}/">'
+    lowered = html.lower()
+    head_index = lowered.find("<head>")
+    if head_index >= 0:
+        insert_at = head_index + len("<head>")
+        return f"{html[:insert_at]}{base_tag}{html[insert_at:]}"
+    return f"<head>{base_tag}</head>{html}"
+
+
+def _has_auto_submit(html: str) -> bool:
+    lowered = html.lower()
+    return "onload" in lowered and ".submit(" in lowered
+
+
+async def _otp_value_for_page(page: Page, otp: SecretStr) -> str | None:
+    configured = otp.get_secret_value()
+    if configured != OTP_FROM_FORM_SENTINEL:
+        return configured
+    texts: list[str] = []
+    for frame in page.frames:
+        try:
+            texts.append(await frame.locator("body").inner_text(timeout=1_000))
+        except PlaywrightError:
+            continue
+    combined = "\n".join(texts)
+    for match in re.finditer(r"(?<!\d)(\d{6})(?!\d)", combined):
+        return match.group(1)
+    return None
 
 
 if __name__ == "__main__":
