@@ -1,4 +1,4 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs credential-matrix credential-config credential-scenarios uat-scenarios credential-inputs uat-config uat-inputs credential-scenario-test credential-scenario-report synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web uat-web web-test web-check allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs credential-matrix credential-config credential-scenarios uat-scenarios credential-inputs uat-config uat-inputs uat-3ds-smoke credential-scenario-test credential-scenario-report synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web uat-web web-test web-check allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
@@ -25,6 +25,7 @@ UAT_PAYMENT_SX ?= replace-with-uat-payment-sx
 UAT_LIST_SX ?= replace-with-uat-list-sx
 UAT_CANCEL_REFUND_SX ?= replace-with-uat-cancel-refund-sx
 UAT_SECRET_KEY ?= replace-with-uat-secret-key
+UAT_3DS_SCENARIO_ID ?= credential_yapikredi_visa_9085_3ds_success
 SCENARIO_FILE ?=
 WEB_HOST ?= 127.0.0.1
 WEB_PORT ?= 8000
@@ -64,6 +65,7 @@ help:
 	@echo "  make credential-inputs Build local/mock config and scenarios"
 	@echo "  make uat-config      Build UAT config from ignored credentials and provided merchant values"
 	@echo "  make uat-inputs      Build UAT config and credential scenario catalogue"
+	@echo "  make uat-3ds-smoke   Run one guarded live UAT 3DS browser smoke"
 	@echo "  make credential-scenario-test Run scenario tests from credential scenarios"
 	@echo "  make credential-scenario-report Generate Allure report for credential scenarios"
 	@echo "  make synthetic-cards Generate a synthetic cards JSON array"
@@ -188,6 +190,9 @@ uat-inputs: uat-config uat-scenarios
 	@echo "  export PAYNKOLAY_CONFIG_FILE=$(UAT_CONFIG_OUT)"
 	@echo "  export PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT)"
 	@echo "  export PAYNKOLAY_ENV=uat"
+
+uat-3ds-smoke: uat-inputs
+	PAYNKOLAY_CONFIG_FILE=$(UAT_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) PAYNKOLAY_ENV=uat PAYNKOLAY_ENABLE_LIVE_E2E=1 poetry run python tools/run_uat_3ds_smoke.py --scenario-id $(UAT_3DS_SCENARIO_ID)
 
 credential-scenario-test: credential-config credential-scenarios
 	PAYNKOLAY_CONFIG_FILE=$(CREDENTIAL_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) $(PYTEST) tests/e2e/test_data_driven_payment_scenarios.py
