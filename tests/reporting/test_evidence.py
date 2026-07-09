@@ -15,6 +15,7 @@ def test_sanitize_evidence_redacts_sensitive_payment_fields() -> None:
     payload: dict[str, object] = {
         "merchant_id": "merchant-dev",
         "api_key": "api-key-dev",
+        "list_api_key": "list-api-key-dev",
         "cancel_refund_api_key": "cancel-refund-api-key-dev",
         "secret_key": SecretStr("secret-dev"),
         "signature": "abc123",
@@ -31,6 +32,7 @@ def test_sanitize_evidence_redacts_sensitive_payment_fields() -> None:
     assert sanitized == {
         "merchant_id": "merchant-dev",
         "api_key": "<redacted>",
+        "list_api_key": "<redacted>",
         "cancel_refund_api_key": "<redacted>",
         "secret_key": "<redacted>",
         "signature": "<redacted>",

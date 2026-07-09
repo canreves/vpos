@@ -105,6 +105,7 @@ async def get_config_overview() -> ConfigOverviewResponse:
         merchant=ConfigMerchantSummary(
             merchant_id=_mask_value(current.merchant.merchant_id),
             terminal_id=_mask_value(current.merchant.terminal_id),
+            has_list_key=current.merchant.list_api_key is not None,
             has_cancel_refund_key=current.merchant.cancel_refund_api_key is not None,
         ),
         card_count=len(current.cards),

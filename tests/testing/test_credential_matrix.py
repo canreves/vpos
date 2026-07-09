@@ -211,6 +211,7 @@ def test_build_credential_runtime_config_can_target_uat(tmp_path: Path) -> None:
             merchant_id="uat-merchant",
             terminal_id="uat-terminal",
             api_key="uat-payment-sx",
+            list_api_key="uat-list-sx",
             cancel_refund_api_key="uat-cancel-sx",
             secret_key="uat-secret",
         )
@@ -221,6 +222,8 @@ def test_build_credential_runtime_config_can_target_uat(tmp_path: Path) -> None:
     assert settings.current.base_url == "https://paynkolaytest.nkolayislem.com.tr/Vpos"
     assert settings.current.callback_base_url == "https://internal.example.com/paynkolay"
     assert settings.current.merchant.api_key.get_secret_value() == "uat-payment-sx"
+    assert settings.current.merchant.list_api_key is not None
+    assert settings.current.merchant.list_api_key.get_secret_value() == "uat-list-sx"
     assert settings.current.merchant.cancel_refund_api_key is not None
     assert (
         settings.current.merchant.cancel_refund_api_key.get_secret_value()

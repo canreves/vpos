@@ -21,6 +21,7 @@ _SENSITIVE_KEYS = frozenset(
         "cvv",
         "hashdata",
         "hashdatav2",
+        "list_api_key",
         "otp",
         "password",
         "raw_3ds_html",

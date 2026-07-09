@@ -22,6 +22,7 @@ def valid_settings_payload() -> dict[str, object]:
                     "merchant_id": "merchant-dev",
                     "terminal_id": "terminal-dev",
                     "api_key": "api-key-dev",
+                    "list_api_key": "list-api-key-dev",
                     "cancel_refund_api_key": "cancel-refund-api-key-dev",
                     "secret_key": "secret-dev",
                 },
@@ -46,6 +47,7 @@ def valid_settings_payload() -> dict[str, object]:
                     "merchant_id": "merchant-uat",
                     "terminal_id": "terminal-uat",
                     "api_key": "api-key-uat",
+                    "list_api_key": "list-api-key-uat",
                     "secret_key": "secret-uat",
                 },
                 "cards": [
@@ -72,6 +74,8 @@ def test_runtime_settings_selects_active_environment() -> None:
     assert settings.current.name is EnvironmentName.DEV
     assert settings.current.merchant.merchant_id == "merchant-dev"
     assert settings.current.merchant.cancel_refund_api_key is not None
+    assert settings.current.merchant.list_api_key is not None
+    assert settings.current.merchant.list_api_key.get_secret_value() == "list-api-key-dev"
     assert (
         settings.current.merchant.cancel_refund_api_key.get_secret_value()
         == "cancel-refund-api-key-dev"

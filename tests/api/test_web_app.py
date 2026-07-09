@@ -398,6 +398,7 @@ async def test_config_overview_exposes_safe_runtime_metadata(
             "merchant_id": "merchant-1001",
             "terminal_id": "terminal-1001",
             "api_key": "payment-api-key-1001",
+            "list_api_key": "list-api-key-1001",
             "cancel_refund_api_key": "refund-api-key-1001",
             "secret_key": "merchant-secret-1001",
         }
@@ -417,8 +418,10 @@ async def test_config_overview_exposes_safe_runtime_metadata(
     assert payload["runtime_configured"] is True
     assert payload["active_environment"] == "dev"
     assert payload["merchant"]["merchant_id"].startswith("me")
+    assert payload["merchant"]["has_list_key"] is True
     assert "merchant-1001" not in response.text
     assert "payment-api-key-1001" not in response.text
+    assert "list-api-key-1001" not in response.text
     assert "merchant-secret-1001" not in response.text
     assert payload["card_count"] == 100
     assert payload["scenarios"]["scenario_count"] == 109

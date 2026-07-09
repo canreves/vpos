@@ -43,6 +43,7 @@ def main() -> None:
     parser.add_argument("--merchant-id", default="local-mock-merchant")
     parser.add_argument("--terminal-id", default="local-mock-terminal")
     parser.add_argument("--api-key", default="local-mock-payment-key")
+    parser.add_argument("--list-api-key", default="local-mock-list-key")
     parser.add_argument("--cancel-refund-api-key", default="local-mock-cancel-refund-key")
     parser.add_argument("--secret-key", default="local-mock-secret-key")
     args = parser.parse_args()
@@ -57,6 +58,7 @@ def main() -> None:
         merchant_id=args.merchant_id,
         terminal_id=args.terminal_id,
         api_key=args.api_key,
+        list_api_key=args.list_api_key,
         cancel_refund_api_key=args.cancel_refund_api_key,
         secret_key=args.secret_key,
     )

@@ -18,6 +18,16 @@ from paynkolay_pos.models.payments import (
 from paynkolay_pos.security import generate_payment_response_hash
 
 
+class PaynkolayProviderModel(StrictPaymentModel):
+    """Base model for provider payloads that may include undocumented extra fields."""
+
+    model_config = {
+        "extra": "ignore",
+        "str_strip_whitespace": True,
+        "use_enum_values": False,
+    }
+
+
 class PaynkolayProviderStatus(StrEnum):
     """Transaction status values returned by Paynkolay verification responses."""
 
@@ -33,7 +43,7 @@ class PaynkolayCancelRefundType(StrEnum):
     REFUND = "refund"
 
 
-class PaynkolayThreeDSInitializeResult(StrictPaymentModel):
+class PaynkolayThreeDSInitializeResult(PaynkolayProviderModel):
     """Provider response containing an HTML form for a 3DS challenge."""
 
     bank_request_message: str = Field(alias="BANK_REQUEST_MESSAGE", min_length=1)
@@ -45,7 +55,7 @@ class PaynkolayThreeDSInitializeResult(StrictPaymentModel):
         return PaymentStatus.PENDING_3DS
 
 
-class PaynkolayPaymentResult(StrictPaymentModel):
+class PaynkolayPaymentResult(PaynkolayProviderModel):
     """Success/fail URL payment result payload sent by Paynkolay."""
 
     response_code: str = Field(alias="RESPONSE_CODE", min_length=1)
@@ -166,7 +176,7 @@ def parse_paynkolay_payment_result(
     return PaynkolayPaymentResult.model_validate(payload)
 
 
-class PaynkolayPaymentListRow(StrictPaymentModel):
+class PaynkolayPaymentListRow(PaynkolayProviderModel):
     """One transaction row returned by Paynkolay's PaymentList service."""
 
     reference_code: str = Field(alias="REFERENCE_CODE", min_length=1)
@@ -234,7 +244,7 @@ class PaynkolayPaymentListRow(StrictPaymentModel):
         return parsed.replace(tzinfo=source_timezone)
 
 
-class PaynkolayPaymentListResult(StrictPaymentModel):
+class PaynkolayPaymentListResult(PaynkolayProviderModel):
     """Inner ``result`` object returned by Paynkolay's PaymentList service."""
 
     response_code: str = Field(alias="RESPONSE_CODE", min_length=1)
@@ -255,7 +265,7 @@ class PaynkolayPaymentListResult(StrictPaymentModel):
         return self.response_code == "2"
 
 
-class PaynkolayPaymentListResponse(StrictPaymentModel):
+class PaynkolayPaymentListResponse(PaynkolayProviderModel):
     """Typed response returned by Paynkolay's PaymentList verification service."""
 
     id: str | None = None
@@ -269,7 +279,7 @@ class PaynkolayPaymentListResponse(StrictPaymentModel):
         )
 
 
-class PaynkolayCancelRefundResult(StrictPaymentModel):
+class PaynkolayCancelRefundResult(PaynkolayProviderModel):
     """Typed response returned by Paynkolay's cancel/refund service."""
 
     response_code: str = Field(

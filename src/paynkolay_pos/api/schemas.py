@@ -46,6 +46,7 @@ class ConfigMerchantSummary(BaseModel):
 
     merchant_id: str
     terminal_id: str
+    has_list_key: bool
     has_cancel_refund_key: bool
 
 

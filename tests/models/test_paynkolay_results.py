@@ -192,6 +192,27 @@ def test_payment_list_row_maps_success_to_transaction_status_response() -> None:
 
 
 @pytest.mark.api
+def test_payment_list_row_ignores_documented_extra_provider_fields() -> None:
+    row = PaynkolayPaymentListRow.model_validate(
+        payment_list_row_payload(
+            CORE_TRX_ID_RESERVED="E74D",
+            COMMISION="0.0100",
+            CARD_BANK_CODE="010",
+            USER_EMAIL="hayalevi",
+            OID="0769CE1-31C607C",
+            POS_TYPE="Sanal POS",
+            TERMINAL_NAME="ZIRAATBANK",
+            CARD_BANK_NAME="T.C.ZIRAAT BANKASI",
+            MERCHANT_COMMISSION_AMOUNT="0.00",
+            VALOR_DATE="20241226",
+        )
+    )
+
+    assert row.reference_code == "IKSIRPF102168"
+    assert row.payment_status is PaymentStatus.CAPTURED
+
+
+@pytest.mark.api
 def test_payment_list_row_accepts_iso_transaction_date() -> None:
     row = PaynkolayPaymentListRow.model_validate(
         payment_list_row_payload(TRX_DATE="2026-07-03T09:45:00+03:00")

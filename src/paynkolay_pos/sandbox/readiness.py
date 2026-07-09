@@ -54,6 +54,11 @@ def check_sandbox_readiness(
         "merchant_id": environment.merchant.merchant_id,
         "terminal_id": environment.merchant.terminal_id,
         "api_key": environment.merchant.api_key.get_secret_value(),
+        "list_api_key": (
+            environment.merchant.list_api_key.get_secret_value()
+            if environment.merchant.list_api_key is not None
+            else ""
+        ),
         "secret_key": environment.merchant.secret_key.get_secret_value(),
         "base_url": environment.base_url,
         "callback_base_url": environment.callback_base_url,

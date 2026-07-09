@@ -154,6 +154,7 @@ def build_credential_runtime_config_payload(
     merchant_id: str = "local-mock-merchant",
     terminal_id: str = "local-mock-terminal",
     api_key: str = "local-mock-payment-key",
+    list_api_key: str = "local-mock-list-key",
     cancel_refund_api_key: str = "local-mock-cancel-refund-key",
     secret_key: str = "local-mock-secret-key",
 ) -> dict[str, object]:
@@ -184,6 +185,7 @@ def build_credential_runtime_config_payload(
                     "merchant_id": merchant_id,
                     "terminal_id": terminal_id,
                     "api_key": api_key,
+                    "list_api_key": list_api_key,
                     "cancel_refund_api_key": cancel_refund_api_key,
                     "secret_key": secret_key,
                 },
@@ -205,6 +207,7 @@ def build_credential_runtime_config_json(
     merchant_id: str = "local-mock-merchant",
     terminal_id: str = "local-mock-terminal",
     api_key: str = "local-mock-payment-key",
+    list_api_key: str = "local-mock-list-key",
     cancel_refund_api_key: str = "local-mock-cancel-refund-key",
     secret_key: str = "local-mock-secret-key",
 ) -> str:
@@ -219,6 +222,7 @@ def build_credential_runtime_config_json(
         merchant_id=merchant_id,
         terminal_id=terminal_id,
         api_key=api_key,
+        list_api_key=list_api_key,
         cancel_refund_api_key=cancel_refund_api_key,
         secret_key=secret_key,
     )
