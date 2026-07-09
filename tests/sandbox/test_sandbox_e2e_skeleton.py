@@ -7,10 +7,7 @@ from uuid import uuid4
 import pytest
 
 from paynkolay_pos.clients import PaynkolayClient
-from paynkolay_pos.config import (
-    PaymentEnvironment,
-    load_runtime_settings,
-)
+from paynkolay_pos.config import EnvironmentName, PaymentEnvironment, load_runtime_settings
 from paynkolay_pos.config import (
     TestCard as ConfigTestCard,
 )
@@ -79,10 +76,15 @@ def test_sandbox_payment_form_payload_can_be_built_without_network() -> None:
     request = _payment_request_for(environment, scenario, card)
 
     client = PaynkolayClient(environment)
+    success_url = environment.callback_base_url
+    fail_url = environment.callback_base_url
+    if environment.name is not EnvironmentName.UAT:
+        success_url = f"{environment.callback_base_url}/paynkolay/success"
+        fail_url = f"{environment.callback_base_url}/paynkolay/fail"
     payload = client.payment_form_payload(
         request,
-        success_url=f"{environment.callback_base_url}/paynkolay/success",
-        fail_url=f"{environment.callback_base_url}/paynkolay/fail",
+        success_url=success_url,
+        fail_url=fail_url,
         card_holder_ip="127.0.0.1",
         rnd=datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
     )
@@ -134,7 +136,11 @@ def _payment_request_for(
         scenario.payment_request_payload(
             merchant_id=environment.merchant.merchant_id,
             terminal_id=environment.merchant.terminal_id,
-            callback_url=f"{environment.callback_base_url}/callbacks/paynkolay",
+            callback_url=(
+                environment.callback_base_url
+                if environment.name is EnvironmentName.UAT
+                else f"{environment.callback_base_url}/callbacks/paynkolay"
+            ),
             card={
                 "brand": card.brand.value,
                 "pan": card.pan.get_secret_value(),

@@ -9,7 +9,7 @@ import httpx
 
 from paynkolay_pos.api.schemas import PaymentFormRequest
 from paynkolay_pos.clients import PaynkolayClient
-from paynkolay_pos.config import PaymentEnvironment
+from paynkolay_pos.config import EnvironmentName, PaymentEnvironment
 from paynkolay_pos.models import (
     PaymentCardInput,
     PaymentInitializeRequest,
@@ -68,14 +68,7 @@ class PaynkolayPaymentInitializer:
         """Initialize a Paynkolay form payment using the existing provider client."""
 
         payment_request = self._payment_request(request, order_id=order_id)
-        success_url = _provider_url(
-            self._environment.callback_base_url,
-            "/payments/result/success",
-        )
-        fail_url = _provider_url(
-            self._environment.callback_base_url,
-            "/payments/result/fail",
-        )
+        success_url, fail_url = self._result_urls()
         try:
             provider_payload = await self._client.initialize_payment_form(
                 payment_request,
@@ -102,10 +95,7 @@ class PaynkolayPaymentInitializer:
         *,
         order_id: str,
     ) -> PaymentInitializeRequest:
-        callback_url = _provider_url(
-            self._environment.callback_base_url,
-            "/callbacks/paynkolay",
-        )
+        callback_url = self._callback_url()
         return PaymentInitializeRequest(
             merchant_id=self._environment.merchant.merchant_id,
             terminal_id=self._environment.merchant.terminal_id,
@@ -126,7 +116,17 @@ class PaynkolayPaymentInitializer:
             correlation_id=f"web-{order_id}",
         )
 
+    def _result_urls(self) -> tuple[str, str]:
+        if self._environment.name is EnvironmentName.UAT:
+            final_url = self._environment.callback_base_url
+            return final_url, final_url
+        base_url = self._environment.callback_base_url.rstrip("/")
+        return (
+            f"{base_url}/payments/result/success",
+            f"{base_url}/payments/result/fail",
+        )
 
-def _provider_url(base_url: str, path: str) -> str:
-    return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
-
+    def _callback_url(self) -> str:
+        if self._environment.name is EnvironmentName.UAT:
+            return self._environment.callback_base_url
+        return f"{self._environment.callback_base_url.rstrip('/')}/callbacks/paynkolay"

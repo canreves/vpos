@@ -39,8 +39,8 @@ def main() -> None:
         "--callback-base-url",
         default="https://local-mock.callbacks.invalid",
         help=(
-            "Merchant callback/result base URL. For UAT this must be the "
-            "deployed internal app URL."
+            "Merchant callback/result URL. For UAT this is the final callback "
+            "endpoint reachable by Paynkolay."
         ),
     )
     parser.add_argument(

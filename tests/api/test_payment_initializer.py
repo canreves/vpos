@@ -136,6 +136,33 @@ async def test_paynkolay_payment_initializer_builds_form_request() -> None:
 
 @pytest.mark.api
 @pytest.mark.asyncio
+async def test_paynkolay_payment_initializer_uses_final_callback_endpoint_for_uat() -> None:
+    environment_payload = payment_environment().model_dump()
+    environment_payload["name"] = "uat"
+    environment_payload["callback_base_url"] = "https://paynkolay.com.tr/test/callback"
+    environment = PaymentEnvironment.model_validate(environment_payload)
+    client = StubPaynkolayClient({"BANK_REQUEST_MESSAGE": "<form>3DS</form>"})
+    initializer = PaynkolayPaymentInitializer(
+        environment=environment,
+        client=cast(PaynkolayClient, client),
+    )
+
+    outcome = await initializer.initialize(
+        payment_form_request(),
+        order_id="order-uat-1001",
+        card_holder_ip="185.125.190.58",
+    )
+
+    assert outcome.success_url == "https://paynkolay.com.tr/test/callback"
+    assert outcome.fail_url == "https://paynkolay.com.tr/test/callback"
+    call = client.calls[0]
+    sent_request = call["request"]
+    assert isinstance(sent_request, PaymentInitializeRequest)
+    assert sent_request.callback_url == "https://paynkolay.com.tr/test/callback"
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
 async def test_paynkolay_payment_initializer_wraps_provider_errors() -> None:
     initializer = PaynkolayPaymentInitializer(
         environment=payment_environment(),
@@ -148,4 +175,3 @@ async def test_paynkolay_payment_initializer_wraps_provider_errors() -> None:
             order_id="order-web-1001",
             card_holder_ip="185.125.190.58",
         )
-

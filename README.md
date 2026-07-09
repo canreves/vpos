@@ -555,8 +555,8 @@ For UAT, `tools/build_credential_config.py` auto-fills placeholder values from:
   terminal/client id candidate.
 
 Explicit `UAT_*` values still take precedence when provided. The callback base URL is not
-auto-filled because it must be the deployed/internal application URL that Paynkolay can
-reach for result handling.
+auto-filled because in UAT it is treated as the final callback endpoint that Paynkolay
+can reach for result handling.
 
 ## External Details Needed For Real Sandbox E2E
 
