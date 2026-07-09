@@ -50,7 +50,8 @@ def main() -> None:
         encoding="utf-8",
     )
     real = sum(1 for c in cards if "real" in str(c["alias"]))
-    print(f"Wrote {len(cards)} cards ({real} real + {len(cards) - real} synthetic) to {args.output}")
+    synthetic = len(cards) - real
+    print(f"Wrote {len(cards)} cards ({real} real + {synthetic} synthetic) to {args.output}")
 
 
 if __name__ == "__main__":
