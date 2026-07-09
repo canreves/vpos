@@ -9,6 +9,7 @@ from paynkolay_pos.flows.error_interceptor import (
     MockErrorInterceptor,
 )
 from paynkolay_pos.models import (
+    PaymentInitializeRequest,
     PaymentInitializeResponse,
     PaymentStatus,
     TransactionStatusResponse,
@@ -23,7 +24,9 @@ class RecordingInner:
     def __init__(self) -> None:
         self.initialize_calls = 0
 
-    async def initialize_payment(self, request):
+    async def initialize_payment(
+        self, request: PaymentInitializeRequest
+    ) -> PaymentInitializeResponse:
         self.initialize_calls += 1
         return PaymentInitializeResponse.model_validate(
             {
@@ -39,7 +42,7 @@ class RecordingInner:
         raise AssertionError("get_transaction_status should not be called here")
 
 
-def _request_with_cvv(cvv: str):
+def _request_with_cvv(cvv: str) -> PaymentInitializeRequest:
     return payment_initialize_request(
         card={
             "brand": "visa",
