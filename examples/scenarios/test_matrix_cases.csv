@@ -1,0 +1,10 @@
+scenario,input_condition,expected_status,expected_error_code,expected_error_message,notes
+wrong_otp,3DS adiminda hatali OTP girilmesi,failed,ERR_101,3D Secure dogrulamasi basarisiz: hatali OTP,Madde 1 - OTP hatalari
+expired_card,Son kullanma tarihi gecmis kart ile odeme,failed,ERR_201,Kartin son kullanma tarihi gecmis,Madde 2 - kart kontrolleri
+insufficient_funds,Kartta yetersiz bakiye,failed,ERR_301,Yetersiz bakiye,Madde 3 - bakiye/limit
+duplicate_order_id,Ayni order_id ile mukerrer istek,failed,ERR_401,Mukerrer siparis numarasi,Madde 4 - idempotency
+signature_mismatch,Yanit imzasinin uyusmamasi,failed,ERR_501,Imza dogrulama basarisiz,Madde 5 - guvenlik/timeout
+refund_already_refunded,Zaten iade edilmis islemin tekrar iadesi,failed,ERR_601,Islem zaten iade edilmis,Madde 6 - iptal/iade durumu
+unsupported_installment,Desteklenmeyen taksit sayisi denemesi,failed,ERR_701,Desteklenmeyen taksit sayisi,Madde 7 - taksit kontrolu
+limit_exceeded,Kart limitinin asilmasi,failed,ERR_302,Kart limiti asildi,Madde 3 - bakiye/limit
+expired_otp,3DS OTP suresinin dolmasi,failed,ERR_102,3D Secure OTP suresi doldu,Madde 1 - OTP hatalari
