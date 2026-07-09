@@ -1,4 +1,4 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs credential-matrix credential-config credential-scenarios uat-scenarios credential-inputs uat-config uat-inputs credential-scenario-test credential-scenario-report synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web web-test web-check allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs credential-matrix credential-config credential-scenarios uat-scenarios credential-inputs uat-config uat-inputs credential-scenario-test credential-scenario-report synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web uat-web web-test web-check allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
@@ -73,6 +73,7 @@ help:
 	@echo ""
 	@echo "Web UI:"
 	@echo "  make web             Run the FastAPI web UI"
+	@echo "  make uat-web         Build UAT inputs and run the FastAPI web UI against UAT"
 	@echo "  make web-test        Run web/API tests"
 	@echo "  make web-check       Run lint, type checks, and web/API tests"
 	@echo ""
@@ -215,6 +216,9 @@ scale-demo-parallel:
 
 web:
 	$(UVICORN) paynkolay_pos.api.app:create_app --factory $(WEB_RELOAD) --host $(WEB_HOST) --port $(WEB_PORT)
+
+uat-web: uat-inputs
+	PAYNKOLAY_CONFIG_FILE=$(UAT_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) PAYNKOLAY_ENV=uat $(UVICORN) paynkolay_pos.api.app:create_app --factory $(WEB_RELOAD) --host $(WEB_HOST) --port $(WEB_PORT)
 
 web-test:
 	$(PYTEST) tests/api
