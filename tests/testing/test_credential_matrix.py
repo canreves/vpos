@@ -14,6 +14,7 @@ from paynkolay_pos.testing import (
     build_credential_runtime_config_payload,
     build_credential_scenario_catalog_json,
     build_credential_scenario_catalog_payload,
+    extract_paynkolay_uat_values,
 )
 
 
@@ -229,6 +230,168 @@ def test_build_credential_runtime_config_can_target_uat(tmp_path: Path) -> None:
         settings.current.merchant.cancel_refund_api_key.get_secret_value()
         == "uat-cancel-sx"
     )
+
+
+def test_extract_paynkolay_uat_values_reads_postman_and_gateway_form(
+    tmp_path: Path,
+) -> None:
+    postman = tmp_path / "paynkolay.postman_collection.json"
+    postman.write_text(
+        json.dumps(
+            {
+                "event": [
+                    {
+                        "script": {
+                            "exec": [
+                                'pm.collectionVariables.set("sx", "payment-sx");',
+                                'pm.collectionVariables.set("sx-list", "list-sx");',
+                                'pm.collectionVariables.set("sx-cancel", "cancel-sx");',
+                                'pm.collectionVariables.set("merchantSecretKey", "secret");',
+                            ]
+                        }
+                    }
+                ],
+                "variable": [{"key": "sx", "value": ""}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    gateway_form = tmp_path / "base64.md"
+    gateway_form.write_text(
+        """
+        <input name="clientid" type="hidden" value="190000300" />
+        <input name="SUBMERCHANTID" type="hidden" value="6420371466" />
+        """,
+        encoding="utf-8",
+    )
+
+    values = extract_paynkolay_uat_values(
+        postman_collection_path=postman,
+        gateway_form_path=gateway_form,
+    )
+
+    assert values.payment_sx == "payment-sx"
+    assert values.list_sx == "list-sx"
+    assert values.cancel_refund_sx == "cancel-sx"
+    assert values.secret_key == "secret"
+    assert values.merchant_id == "6420371466"
+    assert values.terminal_id == "190000300"
+
+
+def test_build_credential_runtime_config_auto_fills_uat_placeholders(
+    tmp_path: Path,
+) -> None:
+    paynkolay_cards = tmp_path / "paynkolay_merchants.csv"
+    paynkolay_cards.write_text(
+        "\ufeffBanka Adi,Kart Numarasi,Kart Semasi,Son Kullanma Tarihi,CVC Kodu,Sifre\n"
+        "DenizBank,5200190006338608,MasterCard,2030/01,410,123456\n",
+        encoding="utf-8",
+    )
+    postman = tmp_path / "paynkolay.postman_collection.json"
+    postman.write_text(
+        json.dumps(
+            {
+                "event": [
+                    {
+                        "script": {
+                            "exec": [
+                                'pm.collectionVariables.set("sx", "payment-sx");',
+                                'pm.collectionVariables.set("sx-list", "list-sx");',
+                                'pm.collectionVariables.set("sx-cancel", "cancel-sx");',
+                                'pm.collectionVariables.set("merchantSecretKey", "secret");',
+                            ]
+                        }
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    gateway_form = tmp_path / "base64.md"
+    gateway_form.write_text(
+        """
+        <input name="clientid" type="hidden" value="190000300" />
+        <input name="SUBMERCHANTID" type="hidden" value="6420371466" />
+        """,
+        encoding="utf-8",
+    )
+
+    settings = RuntimeSettings.model_validate(
+        build_credential_runtime_config_payload(
+            paynkolay_cards_path=paynkolay_cards,
+            postman_collection_path=postman,
+            gateway_form_path=gateway_form,
+            active_environment="uat",
+            base_url="https://paynkolaytest.nkolayislem.com.tr/Vpos",
+            callback_base_url="https://internal.example.com/paynkolay",
+            merchant_id="replace-with-uat-merchant-id",
+            terminal_id="replace-with-uat-terminal-id",
+            api_key="replace-with-uat-payment-sx",
+            list_api_key="replace-with-uat-list-sx",
+            cancel_refund_api_key="replace-with-uat-cancel-refund-sx",
+            secret_key="replace-with-uat-secret-key",
+        )
+    )
+
+    assert settings.current.merchant.merchant_id == "6420371466"
+    assert settings.current.merchant.terminal_id == "190000300"
+    assert settings.current.merchant.api_key.get_secret_value() == "payment-sx"
+    assert settings.current.merchant.list_api_key is not None
+    assert settings.current.merchant.list_api_key.get_secret_value() == "list-sx"
+    assert settings.current.merchant.cancel_refund_api_key is not None
+    assert (
+        settings.current.merchant.cancel_refund_api_key.get_secret_value()
+        == "cancel-sx"
+    )
+    assert settings.current.merchant.secret_key.get_secret_value() == "secret"
+
+
+def test_build_credential_runtime_config_keeps_explicit_uat_values(
+    tmp_path: Path,
+) -> None:
+    paynkolay_cards = tmp_path / "paynkolay_merchants.csv"
+    paynkolay_cards.write_text(
+        "\ufeffBanka Adi,Kart Numarasi,Kart Semasi,Son Kullanma Tarihi,CVC Kodu,Sifre\n"
+        "DenizBank,5200190006338608,MasterCard,2030/01,410,123456\n",
+        encoding="utf-8",
+    )
+    postman = tmp_path / "paynkolay.postman_collection.json"
+    postman.write_text(
+        json.dumps(
+            {
+                "event": [
+                    {
+                        "script": {
+                            "exec": [
+                                'pm.collectionVariables.set("sx", "payment-sx");',
+                                'pm.collectionVariables.set("merchantSecretKey", "secret");',
+                            ]
+                        }
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settings = RuntimeSettings.model_validate(
+        build_credential_runtime_config_payload(
+            paynkolay_cards_path=paynkolay_cards,
+            postman_collection_path=postman,
+            active_environment="uat",
+            base_url="https://paynkolaytest.nkolayislem.com.tr/Vpos",
+            callback_base_url="https://internal.example.com/paynkolay",
+            merchant_id="explicit-merchant",
+            terminal_id="explicit-terminal",
+            api_key="explicit-payment-sx",
+            secret_key="explicit-secret",
+        )
+    )
+
+    assert settings.current.merchant.merchant_id == "explicit-merchant"
+    assert settings.current.merchant.terminal_id == "explicit-terminal"
+    assert settings.current.merchant.api_key.get_secret_value() == "explicit-payment-sx"
+    assert settings.current.merchant.secret_key.get_secret_value() == "explicit-secret"
 
 
 def test_build_credential_runtime_config_rejects_empty_card_set() -> None:

@@ -38,7 +38,22 @@ def main() -> None:
     parser.add_argument(
         "--callback-base-url",
         default="https://local-mock.callbacks.invalid",
-        help="Merchant callback/result base URL.",
+        help=(
+            "Merchant callback/result base URL. For UAT this must be the "
+            "deployed internal app URL."
+        ),
+    )
+    parser.add_argument(
+        "--postman-collection",
+        type=Path,
+        default=Path("credentials/paynkolay.postman_collection.json"),
+        help="Ignored Postman collection used to auto-fill UAT sx/secret placeholders.",
+    )
+    parser.add_argument(
+        "--gateway-form",
+        type=Path,
+        default=Path("credentials/base64.md"),
+        help="Ignored 3DS gateway form sample used to auto-fill UAT merchant/client id candidates.",
     )
     parser.add_argument("--merchant-id", default="local-mock-merchant")
     parser.add_argument("--terminal-id", default="local-mock-terminal")
@@ -52,6 +67,8 @@ def main() -> None:
     body = build_credential_runtime_config_json(
         param_cards_path=credentials_dir / "param_merchants.csv",
         paynkolay_cards_path=credentials_dir / "paynkolay_merchants.csv",
+        postman_collection_path=args.postman_collection,
+        gateway_form_path=args.gateway_form,
         active_environment=args.environment,
         base_url=args.base_url,
         callback_base_url=args.callback_base_url,

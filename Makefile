@@ -168,7 +168,7 @@ credential-config:
 	poetry run python tools/build_credential_config.py --output $(CREDENTIAL_CONFIG_OUT)
 
 uat-config:
-	poetry run python tools/build_credential_config.py --environment uat --base-url https://paynkolaytest.nkolayislem.com.tr/Vpos --callback-base-url $(UAT_CALLBACK_BASE_URL) --merchant-id $(UAT_MERCHANT_ID) --terminal-id $(UAT_TERMINAL_ID) --api-key $(UAT_PAYMENT_SX) --list-api-key $(UAT_LIST_SX) --cancel-refund-api-key $(UAT_CANCEL_REFUND_SX) --secret-key $(UAT_SECRET_KEY) --output $(UAT_CONFIG_OUT)
+	poetry run python tools/build_credential_config.py --environment uat --base-url https://paynkolaytest.nkolayislem.com.tr/Vpos --callback-base-url $(UAT_CALLBACK_BASE_URL) --merchant-id $(UAT_MERCHANT_ID) --terminal-id $(UAT_TERMINAL_ID) --api-key $(UAT_PAYMENT_SX) --list-api-key $(UAT_LIST_SX) --cancel-refund-api-key $(UAT_CANCEL_REFUND_SX) --secret-key $(UAT_SECRET_KEY) --postman-collection credentials/paynkolay.postman_collection.json --gateway-form credentials/base64.md --output $(UAT_CONFIG_OUT)
 
 credential-scenarios:
 	poetry run python tools/build_credential_scenarios.py --output $(CREDENTIAL_SCENARIO_OUT)

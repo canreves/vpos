@@ -531,47 +531,51 @@ src/paynkolay_pos/
   three_ds/    3D Secure browser challenge helper
 ```
 
-## What Is Mocked Today
+## Current UAT State
 
-The framework is intentionally ready before real Paynkolay sandbox details are available.
-Current tests use:
+The framework now has a UAT config path for the Paynkolay test endpoint and still keeps
+mocked tests for repeatable CI coverage. Current automated tests use:
 
 - `httpx.MockTransport` for provider API responses.
 - Local/fake callback payloads with real HMAC verification.
 - Fake and local Playwright-style 3DS challenge pages.
 - Example scenario data in `examples/scenarios/payment_scenarios.json`.
-- Placeholder endpoint paths:
-  - `POST /payments/initialize`
-  - `GET /payments/{order_id}/status`
-- Paynkolay API v1 form endpoint calls are mocked locally until private sandbox
-  credentials are available.
+
+Ignored credential artifacts under `credentials/` can generate a private UAT config:
+
+```bash
+make uat-inputs UAT_CALLBACK_BASE_URL=https://deployed-internal-app.example.com
+```
+
+For UAT, `tools/build_credential_config.py` auto-fills placeholder values from:
+
+- `credentials/paynkolay.postman_collection.json`: payment `sx`, PaymentList `sx`,
+  cancel/refund `sx`, and `merchantSecretKey`.
+- `credentials/base64.md`: `SUBMERCHANTID` as merchant id candidate and `clientid` as
+  terminal/client id candidate.
+
+Explicit `UAT_*` values still take precedence when provided. The callback base URL is not
+auto-filled because it must be the deployed/internal application URL that Paynkolay can
+reach for result handling.
 
 ## External Details Needed For Real Sandbox E2E
 
-To switch from framework validation to real Paynkolay sandbox validation, collect:
+To run real Paynkolay sandbox validation end to end, collect:
 
-- Sandbox base URL.
-- Sales `sx`.
-- PaymentList `sx`, if different.
-- Cancel/refund `sx`, if different.
-- Merchant ID, terminal ID, and secret/hash key.
-- HTTPS success URL reachable by Paynkolay.
-- HTTPS fail URL reachable by Paynkolay.
-- Callback URL and callback payload sample, if callback delivery is separate from
-  success/fail redirects.
-- Callback signature algorithm and field order.
+- Deployed/internal `UAT_CALLBACK_BASE_URL` reachable by Paynkolay.
 - Test card catalogue, expected statuses, card types, banks, and 3DS OTP values.
 - 3DS sandbox page selectors or documented challenge flow.
 - Installment, MoTo, currency, capture, and detailed sandbox business rules.
-- Confirmation that `RESPONSE_CODE=2` maps to `captured` or `authorized` for the selected
-  Paynkolay flow.
 - Cancel/refund timing and amount rules.
+- Enough real/UAT cards to satisfy the 100+ card project target.
 
 Before real calls, validate the private inputs:
 
 ```bash
-export PAYNKOLAY_CONFIG_FILE=/path/outside/git/paynkolay-settings.json
-export PAYNKOLAY_SCENARIO_CATALOG=/path/outside/git/sandbox-scenarios.json
+make uat-inputs UAT_CALLBACK_BASE_URL=https://deployed-internal-app.example.com
+export PAYNKOLAY_CONFIG_FILE=/tmp/paynkolay-uat-settings.json
+export PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-credential-scenarios.json
+export PAYNKOLAY_ENV=uat
 make sandbox-ready
 ```
 

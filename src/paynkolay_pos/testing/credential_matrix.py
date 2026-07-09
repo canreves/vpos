@@ -8,6 +8,7 @@ import re
 import unicodedata
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from html.parser import HTMLParser
 from pathlib import Path
 
 from paynkolay_pos.config import RuntimeSettings
@@ -41,6 +42,59 @@ class CredentialErrorMatrixItem:
     expected_error_code: str
     expected_error_message: str
     input_condition: str
+
+
+@dataclass(frozen=True)
+class PaynkolayUATCredentialValues:
+    """UAT credential values extracted from ignored Paynkolay artifacts."""
+
+    payment_sx: str | None = None
+    list_sx: str | None = None
+    cancel_refund_sx: str | None = None
+    secret_key: str | None = None
+    merchant_id: str | None = None
+    terminal_id: str | None = None
+
+
+class _HiddenInputParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.inputs: dict[str, str] = {}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() != "input":
+            return
+        attributes = {key.lower(): value or "" for key, value in attrs}
+        name = attributes.get("name") or attributes.get("id")
+        if name:
+            self.inputs[name] = attributes.get("value", "")
+
+
+def extract_paynkolay_uat_values(
+    *,
+    postman_collection_path: Path | None = None,
+    gateway_form_path: Path | None = None,
+) -> PaynkolayUATCredentialValues:
+    """Extract UAT credential defaults from ignored Paynkolay/Postman files."""
+
+    postman_values = (
+        _read_postman_collection_variables(postman_collection_path)
+        if postman_collection_path is not None and postman_collection_path.is_file()
+        else {}
+    )
+    gateway_values = (
+        _read_gateway_form_inputs(gateway_form_path)
+        if gateway_form_path is not None and gateway_form_path.is_file()
+        else {}
+    )
+    return PaynkolayUATCredentialValues(
+        payment_sx=_non_empty(postman_values.get("sx")),
+        list_sx=_non_empty(postman_values.get("sx-list")),
+        cancel_refund_sx=_non_empty(postman_values.get("sx-cancel")),
+        secret_key=_non_empty(postman_values.get("merchantSecretKey")),
+        merchant_id=_non_empty(gateway_values.get("SUBMERCHANTID")),
+        terminal_id=_non_empty(gateway_values.get("clientid")),
+    )
 
 
 def build_credential_matrix_payload(
@@ -148,6 +202,8 @@ def build_credential_runtime_config_payload(
     *,
     param_cards_path: Path | None = None,
     paynkolay_cards_path: Path | None = None,
+    postman_collection_path: Path | None = None,
+    gateway_form_path: Path | None = None,
     active_environment: str = "dev",
     base_url: str = "https://local-mock.payments.invalid",
     callback_base_url: str = "https://local-mock.callbacks.invalid",
@@ -174,6 +230,21 @@ def build_credential_runtime_config_payload(
         raise ValueError("at least one credential card is required to build runtime config")
 
     normalized_environment = active_environment.strip().lower()
+    if normalized_environment == "uat":
+        uat_values = extract_paynkolay_uat_values(
+            postman_collection_path=postman_collection_path,
+            gateway_form_path=gateway_form_path,
+        )
+        merchant_id = _fallback_placeholder(merchant_id, uat_values.merchant_id)
+        terminal_id = _fallback_placeholder(terminal_id, uat_values.terminal_id)
+        api_key = _fallback_placeholder(api_key, uat_values.payment_sx)
+        list_api_key = _fallback_placeholder(list_api_key, uat_values.list_sx)
+        cancel_refund_api_key = _fallback_placeholder(
+            cancel_refund_api_key,
+            uat_values.cancel_refund_sx,
+        )
+        secret_key = _fallback_placeholder(secret_key, uat_values.secret_key)
+
     payload: dict[str, object] = {
         "active_environment": normalized_environment,
         "environments": {
@@ -201,6 +272,8 @@ def build_credential_runtime_config_json(
     *,
     param_cards_path: Path | None = None,
     paynkolay_cards_path: Path | None = None,
+    postman_collection_path: Path | None = None,
+    gateway_form_path: Path | None = None,
     active_environment: str = "dev",
     base_url: str = "https://local-mock.payments.invalid",
     callback_base_url: str = "https://local-mock.callbacks.invalid",
@@ -216,6 +289,8 @@ def build_credential_runtime_config_json(
     payload = build_credential_runtime_config_payload(
         param_cards_path=param_cards_path,
         paynkolay_cards_path=paynkolay_cards_path,
+        postman_collection_path=postman_collection_path,
+        gateway_form_path=gateway_form_path,
         active_environment=active_environment,
         base_url=base_url,
         callback_base_url=callback_base_url,
@@ -635,6 +710,70 @@ def _recommended_scenarios(*, card_type: str, requires_3ds: bool) -> tuple[str, 
 def _read_csv(path: Path) -> list[dict[str, str]]:
     with path.open(encoding="utf-8-sig", newline="") as handle:
         return list(csv.DictReader(handle))
+
+
+def _read_postman_collection_variables(path: Path) -> dict[str, str]:
+    collection = json.loads(path.read_text(encoding="utf-8"))
+    values: dict[str, str] = {}
+
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            key = value.get("key")
+            item_value = value.get("value")
+            if isinstance(key, str) and isinstance(item_value, str):
+                values.setdefault(key, item_value)
+
+            exec_lines = value.get("exec")
+            if isinstance(exec_lines, list):
+                for line in exec_lines:
+                    if isinstance(line, str):
+                        _collect_postman_setters(line, values)
+
+            for child in value.values():
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    walk(collection)
+    return values
+
+
+def _collect_postman_setters(line: str, values: dict[str, str]) -> None:
+    pattern = re.compile(
+        r"pm\.collectionVariables\.set\(\s*"
+        r"(?P<quote>['\"])(?P<key>[^'\"]+)(?P=quote)\s*,\s*"
+        r"(?P<value_quote>['\"])(?P<value>.*?)(?P=value_quote)\s*"
+        r"\)"
+    )
+    for match in pattern.finditer(line):
+        values[match.group("key")] = match.group("value")
+
+
+def _read_gateway_form_inputs(path: Path) -> dict[str, str]:
+    parser = _HiddenInputParser()
+    parser.feed(path.read_text(encoding="utf-8"))
+    return parser.inputs
+
+
+def _fallback_placeholder(current: str, extracted: str | None) -> str:
+    if extracted is None:
+        return current
+    normalized = current.strip().lower()
+    if (
+        normalized.startswith("replace-with-")
+        or normalized.startswith("local-mock-")
+        or normalized == ""
+    ):
+        return extracted
+    return current
+
+
+def _non_empty(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 def _value(row: dict[str, str], key: str) -> str:
