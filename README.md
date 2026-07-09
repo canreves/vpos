@@ -544,7 +544,7 @@ mocked tests for repeatable CI coverage. Current automated tests use:
 Ignored credential artifacts under `credentials/` can generate a private UAT config:
 
 ```bash
-make uat-inputs UAT_CALLBACK_BASE_URL=https://deployed-internal-app.example.com
+make uat-inputs UAT_CALLBACK_BASE_URL=https://paynkolay.com.tr/test/callback
 ```
 
 For UAT, `tools/build_credential_config.py` auto-fills placeholder values from:
@@ -554,15 +554,14 @@ For UAT, `tools/build_credential_config.py` auto-fills placeholder values from:
 - `credentials/base64.md`: `SUBMERCHANTID` as merchant id candidate and `clientid` as
   terminal/client id candidate.
 
-Explicit `UAT_*` values still take precedence when provided. The callback base URL is not
-auto-filled because in UAT it is treated as the final callback endpoint that Paynkolay
-can reach for result handling.
+Explicit `UAT_*` values still take precedence when provided. The callback URL is treated
+as the final Paynkolay callback endpoint, so the framework does not append any suffixes.
 
 ## External Details Needed For Real Sandbox E2E
 
 To run real Paynkolay sandbox validation end to end, collect:
 
-- Deployed/internal `UAT_CALLBACK_BASE_URL` reachable by Paynkolay.
+- Final `UAT_CALLBACK_BASE_URL` callback endpoint reachable by Paynkolay.
 - Test card catalogue, expected statuses, card types, banks, and 3DS OTP values.
 - 3DS sandbox page selectors or documented challenge flow.
 - Installment, MoTo, currency, capture, and detailed sandbox business rules.
@@ -572,7 +571,7 @@ To run real Paynkolay sandbox validation end to end, collect:
 Before real calls, validate the private inputs:
 
 ```bash
-make uat-inputs UAT_CALLBACK_BASE_URL=https://deployed-internal-app.example.com
+make uat-inputs UAT_CALLBACK_BASE_URL=https://paynkolay.com.tr/test/callback
 export PAYNKOLAY_CONFIG_FILE=/tmp/paynkolay-uat-settings.json
 export PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-credential-scenarios.json
 export PAYNKOLAY_ENV=uat
