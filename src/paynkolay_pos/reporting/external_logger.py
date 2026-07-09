@@ -22,6 +22,7 @@ class PaymentLogEventType(StrEnum):
     THREE_DS_RENDERED = "three_ds_rendered"
     PAYMENT_SUCCESS_RETURNED = "payment_success_returned"
     PAYMENT_FAIL_RETURNED = "payment_fail_returned"
+    CALLBACK_RECEIVED = "callback_received"
 
 
 class PaymentLogEvent(BaseModel):
@@ -131,4 +132,3 @@ def external_logger_from_env() -> SupportsExternalPaymentLogger:
         endpoint_url=endpoint_url,
         timeout_seconds=timeout_seconds,
     )
-
