@@ -119,3 +119,37 @@ def build_combined_card_dataset(
 
     return combined
 
+
+
+def build_moto_scenarios_for_cards(
+    cards: list[dict[str, object]],
+    *,
+    amount: str = "50.00",
+) -> dict[str, object]:
+    """Build one simple MoTo authorized-payment scenario per card.
+
+    Each card becomes a MoTo scenario referencing the card by its alias. This is
+    the first simple pass; richer scenario mixes (refund, cancel, negative) can
+    be layered on later. All scenarios are MoTo so no 3DS/OTP is required.
+    """
+
+    scenarios: list[dict[str, object]] = []
+    for card in cards:
+        alias = str(card["alias"])
+        scenarios.append(
+            {
+                "scenario_id": f"{alias}_moto_sale",
+                "title": f"MoTo authorized payment for {alias}",
+                "card_alias": alias,
+                "amount": amount,
+                "currency": "TRY",
+                "requires_3ds": False,
+                "expected_initialize_status": "authorized",
+                "expected_final_status": "authorized",
+                "installment_count": 1,
+                "payment_channel": "moto",
+                "moto": True,
+                "tags": ["real_card", "moto"],
+            }
+        )
+    return {"scenarios": scenarios}
