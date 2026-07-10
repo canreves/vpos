@@ -17,6 +17,7 @@ dependencies = [
 packages = [{ include = "paynkolay_pos", from = "src" }]
 include = [
     { path = "src/paynkolay_pos/web/templates/*.html", format = ["sdist", "wheel"] },
+    { path = "src/paynkolay_pos/web/static/*.svg", format = ["sdist", "wheel"] },
     { path = "src/paynkolay_pos/web/static/css/*.css", format = ["sdist", "wheel"] },
     { path = "src/paynkolay_pos/web/static/js/*.js", format = ["sdist", "wheel"] },
 ]

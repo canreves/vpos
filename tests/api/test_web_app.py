@@ -176,6 +176,14 @@ async def test_root_renders_payment_screen(client: httpx.AsyncClient) -> None:
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert 'id="payment-form"' in response.text
+    assert 'rel="icon" href="/static/favicon.svg"' in response.text
+    assert 'id="card-list-button"' in response.text
+    assert 'id="card-list-body"' in response.text
+    assert 'id="card-list-search"' in response.text
+    assert 'id="card-list-flow-filter"' in response.text
+    assert 'id="card-add-toggle"' in response.text
+    assert 'id="card-add-form"' in response.text
+    assert 'id="installment-status"' in response.text
     assert 'id="result-payment-list-status"' in response.text
 
 
@@ -191,6 +199,15 @@ async def test_reports_page_renders_dynamic_report_screen(client: httpx.AsyncCli
     assert 'id="credential-run-button"' in response.text
     assert "make credential-scenario-report" in response.text
     assert "/static/js/reports.js" in response.text
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_favicon_redirects_to_static_svg(client: httpx.AsyncClient) -> None:
+    response = await client.get("/favicon.ico", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/static/favicon.svg"
 
 
 @pytest.mark.api
@@ -391,6 +408,277 @@ async def test_config_route_exposes_safe_defaults_without_runtime_settings(
     assert payload["supported_card_brands"] == ["visa", "mastercard", "troy"]
     assert payload["payment_channels"] == ["e_commerce", "moto"]
     assert payload["card_aliases"] == []
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_cards_route_requires_runtime_settings(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PAYNKOLAY_CONFIG_FILE", raising=False)
+
+    response = await client.get("/api/cards")
+
+    assert response.status_code == 503
+    assert "runtime payment configuration is unavailable" in response.json()["detail"]
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_cards_route_returns_form_fill_test_cards(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "settings.json"
+    config_payload = build_private_runtime_config_payload(card_count=10)
+    environments = cast(dict[str, Any], config_payload["environments"])
+    dev = cast(dict[str, Any], environments["dev"])
+    cards = cast(list[dict[str, Any]], dev["cards"])
+    cards[0].update(
+        {
+            "alias": "ui_card_3ds",
+            "brand": "visa",
+            "pan": "4111111111111111",
+            "expiry_month": 1,
+            "expiry_year": 2030,
+            "cvv": "123",
+            "requires_3ds": True,
+            "expected_otp": "123456",
+        }
+    )
+    cards[1].update(
+        {
+            "alias": "ui_card_moto",
+            "brand": "mastercard",
+            "pan": "5555555555554444",
+            "expiry_month": 12,
+            "expiry_year": 2031,
+            "cvv": "999",
+            "requires_3ds": False,
+            "expected_otp": None,
+        }
+    )
+    config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+    monkeypatch.setenv("PAYNKOLAY_CONFIG_FILE", str(config_path))
+
+    response = await client.get("/api/cards")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["environment"] == "dev"
+    assert payload["cards"][0] == {
+        "alias": "ui_card_3ds",
+        "brand": "visa",
+        "flow_type": "secure",
+        "card_number": "4111111111111111",
+        "cvv": "123",
+        "expiry_month": 1,
+        "expiry_year": 2030,
+        "card_holder": "PAYNKOLAY TEST",
+        "requires_3ds": True,
+        "has_expected_otp": True,
+    }
+    assert payload["cards"][1]["alias"] == "ui_card_moto"
+    assert payload["cards"][1]["flow_type"] == "moto"
+    assert payload["cards"][1]["requires_3ds"] is False
+    assert payload["cards"][1]["has_expected_otp"] is False
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_cards_route_appends_new_moto_card_to_runtime_config(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "settings.json"
+    config_payload = build_private_runtime_config_payload(card_count=10)
+    config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+    monkeypatch.setenv("PAYNKOLAY_CONFIG_FILE", str(config_path))
+
+    response = await client.post(
+        "/api/cards",
+        json={
+            "alias": "manual_moto_card",
+            "brand": "visa",
+            "card_number": "4111111111111234",
+            "expiry_month": 10,
+            "expiry_year": 2030,
+            "cvv": "321",
+            "flow_type": "moto",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["alias"] == "manual_moto_card"
+    assert payload["flow_type"] == "moto"
+    updated = json.loads(config_path.read_text(encoding="utf-8"))
+    cards = updated["environments"]["dev"]["cards"]
+    assert cards[-1] == {
+        "alias": "manual_moto_card",
+        "brand": "visa",
+        "pan": "4111111111111234",
+        "expiry_month": 10,
+        "expiry_year": 2030,
+        "cvv": "321",
+        "requires_3ds": False,
+    }
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_cards_route_appends_new_3ds_card_with_otp(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "settings.json"
+    config_payload = build_private_runtime_config_payload(card_count=10)
+    config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+    monkeypatch.setenv("PAYNKOLAY_CONFIG_FILE", str(config_path))
+
+    response = await client.post(
+        "/api/cards",
+        json={
+            "alias": "manual_3ds_card",
+            "brand": "mastercard",
+            "card_number": "5555555555554444",
+            "expiry_month": 11,
+            "expiry_year": 2031,
+            "cvv": "999",
+            "flow_type": "secure",
+            "expected_otp": "123456",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["alias"] == "manual_3ds_card"
+    assert payload["flow_type"] == "secure"
+    assert payload["requires_3ds"] is True
+    updated = json.loads(config_path.read_text(encoding="utf-8"))
+    cards = updated["environments"]["dev"]["cards"]
+    assert cards[-1]["expected_otp"] == "123456"
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_cards_route_rejects_duplicate_alias(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "settings.json"
+    config_payload = build_private_runtime_config_payload(card_count=10)
+    environments = cast(dict[str, Any], config_payload["environments"])
+    dev = cast(dict[str, Any], environments["dev"])
+    cards = cast(list[dict[str, Any]], dev["cards"])
+    duplicate_alias = str(cards[0]["alias"])
+    config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+    monkeypatch.setenv("PAYNKOLAY_CONFIG_FILE", str(config_path))
+
+    response = await client.post(
+        "/api/cards",
+        json={
+            "alias": duplicate_alias,
+            "brand": "visa",
+            "card_number": "4111111111111234",
+            "expiry_month": 10,
+            "expiry_year": 2030,
+            "cvv": "321",
+            "flow_type": "moto",
+        },
+    )
+
+    assert response.status_code == 409
+    assert "card alias already exists" in response.json()["detail"]
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_cards_route_requires_otp_for_3ds_card(client: httpx.AsyncClient) -> None:
+    response = await client.post(
+        "/api/cards",
+        json={
+            "alias": "manual_3ds_without_otp",
+            "brand": "visa",
+            "card_number": "4111111111111234",
+            "expiry_month": 10,
+            "expiry_year": 2030,
+            "cvv": "321",
+            "flow_type": "secure",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "expected_otp is required" in response.text
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_installment_options_returns_local_stub_options_for_try(
+    client: httpx.AsyncClient,
+) -> None:
+    response = await client.post(
+        "/api/installments/options",
+        json={
+            "amount": "500.00",
+            "currency": "TRY",
+            "card_brand": "visa",
+            "card_number": "4111111111111111",
+            "requires_3ds": True,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "local_stub"
+    assert payload["default_installment"] == 1
+    assert [option["installment_count"] for option in payload["options"]] == [
+        1,
+        2,
+        3,
+        6,
+        9,
+        12,
+    ]
+    assert payload["options"][0]["label"] == "Tek cekim"
+    assert payload["options"][1]["monthly_amount"] == "250.00"
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_installment_options_returns_single_payment_for_small_or_foreign_amount(
+    client: httpx.AsyncClient,
+) -> None:
+    small_response = await client.post(
+        "/api/installments/options",
+        json={
+            "amount": "20.00",
+            "currency": "TRY",
+            "card_brand": "visa",
+            "card_number": "4111111111111111",
+            "requires_3ds": False,
+        },
+    )
+    foreign_response = await client.post(
+        "/api/installments/options",
+        json={
+            "amount": "500.00",
+            "currency": "USD",
+            "card_brand": "visa",
+            "card_number": "4111111111111111",
+            "requires_3ds": False,
+        },
+    )
+
+    assert small_response.status_code == 200
+    assert foreign_response.status_code == 200
+    assert [option["installment_count"] for option in small_response.json()["options"]] == [1]
+    assert [option["installment_count"] for option in foreign_response.json()["options"]] == [1]
 
 
 @pytest.mark.api

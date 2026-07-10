@@ -3,12 +3,22 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, Request
-from fastapi.responses import Response
+from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from paynkolay_pos.api.dependencies import static_dir, templates_dir
-from paynkolay_pos.api.routes import callbacks, config, health, payments, reports, results, three_ds
+from paynkolay_pos.api.routes import (
+    callbacks,
+    cards,
+    config,
+    health,
+    installments,
+    payments,
+    reports,
+    results,
+    three_ds,
+)
 from paynkolay_pos.api.session_store import PaymentSessionStore
 from paynkolay_pos.api.three_ds_store import ThreeDSFormStore
 
@@ -27,6 +37,10 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=static_dir()), name="static")
 
     templates = Jinja2Templates(directory=templates_dir())
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon() -> RedirectResponse:
+        return RedirectResponse("/static/favicon.svg")
 
     @app.get("/", include_in_schema=False)
     async def payment_page(request: Request) -> Response:
@@ -62,6 +76,8 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(config.router)
+    app.include_router(cards.router)
+    app.include_router(installments.router)
     app.include_router(payments.router)
     app.include_router(three_ds.router)
     app.include_router(results.router)

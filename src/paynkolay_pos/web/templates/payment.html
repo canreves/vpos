@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Paynkolay POS</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/css/app.css">
     <script src="/static/js/api-client.js" defer></script>
     <script src="/static/js/payment-form.js" defer></script>
@@ -26,8 +27,96 @@
         <section class="panel payment-panel" aria-labelledby="payment-title">
           <div class="panel-heading">
             <h2 id="payment-title">Payment</h2>
-            <span class="status-pill" id="config-status">Config</span>
+            <div class="heading-actions">
+              <button id="card-list-button" class="secondary-action" type="button">List</button>
+              <span class="status-pill" id="config-status">Config</span>
+            </div>
           </div>
+
+          <section id="card-list-panel" class="card-list-panel hidden" aria-labelledby="card-list-title">
+            <div class="panel-heading panel-heading-compact">
+              <h3 id="card-list-title">Test Cards</h3>
+              <div class="heading-actions">
+                <button id="card-add-toggle" class="secondary-action icon-action" type="button" aria-label="Add card">+</button>
+                <button id="card-list-close" class="secondary-action" type="button">Close</button>
+              </div>
+            </div>
+            <form id="card-add-form" class="card-add-form hidden" autocomplete="off">
+              <label class="field">
+                <span>Alias</span>
+                <input id="new-card-alias" name="alias" maxlength="80" required>
+              </label>
+              <label class="field">
+                <span>Brand</span>
+                <select id="new-card-brand" name="brand" required>
+                  <option value="visa">VISA</option>
+                  <option value="mastercard">MASTERCARD</option>
+                  <option value="troy">TROY</option>
+                </select>
+              </label>
+              <label class="field field-wide">
+                <span>Card</span>
+                <input id="new-card-number" name="card_number" inputmode="numeric" minlength="12" maxlength="19" required>
+              </label>
+              <label class="field">
+                <span>Month</span>
+                <input id="new-card-expiry-month" name="expiry_month" type="number" min="1" max="12" required>
+              </label>
+              <label class="field">
+                <span>Year</span>
+                <input id="new-card-expiry-year" name="expiry_year" type="number" min="2026" max="2100" required>
+              </label>
+              <label class="field">
+                <span>CVV</span>
+                <input id="new-card-cvv" name="cvv" inputmode="numeric" minlength="3" maxlength="4" required>
+              </label>
+              <fieldset class="flow-toggle">
+                <legend>Flow</legend>
+                <button id="new-card-flow-moto" class="flow-option active" type="button" data-flow="moto">MoTo</button>
+                <button id="new-card-flow-secure" class="flow-option" type="button" data-flow="secure">3D</button>
+              </fieldset>
+              <label id="new-card-otp-field" class="field hidden">
+                <span>Expected OTP</span>
+                <input id="new-card-otp" name="expected_otp" inputmode="numeric" maxlength="12">
+              </label>
+              <div class="actions card-add-actions">
+                <button id="card-add-submit" type="submit">Save card</button>
+              </div>
+            </form>
+            <div class="card-list-controls">
+              <label class="field">
+                <span>Search</span>
+                <input id="card-list-search" type="search" placeholder="Alias or card">
+              </label>
+              <label class="field">
+                <span>Flow</span>
+                <select id="card-list-flow-filter">
+                  <option value="all">All</option>
+                  <option value="secure">3D Secure</option>
+                  <option value="moto">MoTo</option>
+                </select>
+              </label>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table card-table">
+                <thead>
+                  <tr>
+                    <th>Alias</th>
+                    <th>Brand</th>
+                    <th>Card</th>
+                    <th>Expiry</th>
+                    <th>Flow</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="card-list-body">
+                  <tr>
+                    <td colspan="6">Cards are not loaded.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
 
           <form id="payment-form" class="payment-form" autocomplete="off">
             <label class="field field-wide">
@@ -83,7 +172,10 @@
 
             <label class="field">
               <span>Installment</span>
-              <input id="installment-count" name="installment_count" type="number" min="1" max="12" value="1" required>
+              <select id="installment-count" name="installment_count" required>
+                <option value="1">Tek cekim</option>
+              </select>
+              <small id="installment-status" class="field-hint">Default: Tek cekim</small>
             </label>
 
             <label class="check-field">

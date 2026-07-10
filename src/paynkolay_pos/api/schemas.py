@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
 from paynkolay_pos.api.session_models import PaymentSession, PaymentSessionStatus
 from paynkolay_pos.config import CardBrand
@@ -30,6 +30,110 @@ class ConfigResponse(BaseModel):
     payment_channels: list[str]
     card_aliases: list[str] = Field(default_factory=list)
     message: str | None = None
+
+
+class TestCardFormFill(BaseModel):
+    """Local tester UI card data used to prefill the payment form."""
+
+    alias: str
+    brand: str
+    flow_type: Literal["secure", "moto"]
+    card_number: str
+    cvv: str
+    expiry_month: int
+    expiry_year: int
+    card_holder: str = "PAYNKOLAY TEST"
+    requires_3ds: bool
+    has_expected_otp: bool
+
+
+class TestCardListResponse(BaseModel):
+    """Runtime test cards available for browser form-fill selection."""
+
+    environment: str
+    cards: list[TestCardFormFill]
+
+
+class TestCardCreateRequest(BaseModel):
+    """Browser payload for adding a local runtime test card."""
+
+    alias: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    brand: CardBrand
+    card_number: SecretStr = Field(min_length=12, max_length=19)
+    cvv: SecretStr = Field(min_length=3, max_length=4)
+    expiry_month: int = Field(ge=1, le=12)
+    expiry_year: int = Field(ge=2026, le=2100)
+    flow_type: Literal["secure", "moto"]
+    expected_otp: SecretStr | None = Field(default=None, min_length=1, max_length=12)
+
+    @model_validator(mode="after")
+    def validate_card_data(self) -> TestCardCreateRequest:
+        """Keep UI-created card data compatible with runtime TestCard validation."""
+
+        card_number = self.card_number.get_secret_value()
+        if not card_number.isdigit():
+            raise ValueError("card_number must contain digits only")
+
+        cvv = self.cvv.get_secret_value()
+        if not cvv.isdigit():
+            raise ValueError("cvv must contain digits only")
+
+        if self.flow_type == "secure":
+            otp = self.expected_otp.get_secret_value() if self.expected_otp is not None else ""
+            if not otp:
+                raise ValueError("expected_otp is required for 3D Secure cards")
+            if not otp.isdigit():
+                raise ValueError("expected_otp must contain digits only")
+        if self.flow_type == "moto" and self.expected_otp is not None:
+            raise ValueError("MoTo cards must not define expected_otp")
+        return self
+
+
+class InstallmentOptionsRequest(BaseModel):
+    """Browser request for available installment options."""
+
+    amount: Decimal = Field(gt=Decimal("0"), max_digits=12, decimal_places=2)
+    currency: Currency = Currency.TRY
+    card_brand: CardBrand
+    card_number: SecretStr = Field(min_length=12, max_length=19)
+    requires_3ds: bool
+
+    @field_validator("amount")
+    @classmethod
+    def normalize_amount(cls, amount: Decimal) -> Decimal:
+        """Keep installment amount calculations deterministic."""
+
+        return amount.quantize(Decimal("0.01"))
+
+    def model_post_init(self, __context: object) -> None:
+        """Validate sensitive numeric fields after SecretStr parsing."""
+
+        card_number = self.card_number.get_secret_value()
+        if not card_number.isdigit():
+            raise ValueError("card_number must contain digits only")
+
+    @property
+    def canonical_amount(self) -> str:
+        """Return the exact amount string shown in installment options."""
+
+        return f"{self.amount:.2f}"
+
+
+class InstallmentOption(BaseModel):
+    """One selectable installment option returned to the browser."""
+
+    installment_count: int = Field(ge=1, le=12)
+    label: str
+    total_amount: str
+    monthly_amount: str
+
+
+class InstallmentOptionsResponse(BaseModel):
+    """Installment options for a card/amount pair."""
+
+    default_installment: int = 1
+    source: Literal["local_stub"]
+    options: list[InstallmentOption]
 
 
 class ConfigCardSummary(BaseModel):

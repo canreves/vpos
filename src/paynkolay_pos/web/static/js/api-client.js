@@ -24,6 +24,21 @@
     getConfigOverview() {
       return requestJson("/api/config/overview");
     },
+    getCards() {
+      return requestJson("/api/cards");
+    },
+    createCard(payload) {
+      return requestJson("/api/cards", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    getInstallmentOptions(payload) {
+      return requestJson("/api/installments/options", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
     getLatestReport() {
       return requestJson("/api/reports/latest");
     },
