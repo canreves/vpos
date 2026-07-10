@@ -71,10 +71,35 @@ Run the standard validation set:
 make check
 ```
 
+`make check` is the local quality gate. Run it from a clean shell without exported
+`PAYNKOLAY_*` variables when you want repeatable mock/local validation:
+
+```bash
+unset PAYNKOLAY_CONFIG_FILE
+unset PAYNKOLAY_SCENARIO_CATALOG
+unset PAYNKOLAY_ENV
+unset PAYNKOLAY_ENABLE_LIVE_E2E
+make check
+```
+
 Run the browser-based FastAPI web UI:
 
 ```bash
 make web
+```
+
+Run the UAT tester UI with generated private inputs:
+
+```bash
+make uat-web
+```
+
+Run guarded live UAT smoke checks:
+
+```bash
+make uat-3ds-smoke
+make uat-3ds-smoke UAT_3DS_BROWSER=--headed
+make uat-cancel-smoke
 ```
 
 By default the UI is served at `http://127.0.0.1:8000`. Override the bind address with
@@ -533,8 +558,8 @@ src/paynkolay_pos/
 
 ## Current UAT State
 
-The framework now has a UAT config path for the Paynkolay test endpoint and still keeps
-mocked tests for repeatable CI coverage. Current automated tests use:
+The framework has a working UAT config path for Paynkolay's test endpoint while keeping
+mocked tests for repeatable CI/local coverage. Normal automated tests still use:
 
 - `httpx.MockTransport` for provider API responses.
 - Local/fake callback payloads with real HMAC verification.
@@ -557,16 +582,81 @@ For UAT, `tools/build_credential_config.py` auto-fills placeholder values from:
 Explicit `UAT_*` values still take precedence when provided. The callback URL is treated
 as the final Paynkolay callback endpoint, so the framework does not append any suffixes.
 
-## External Details Needed For Real Sandbox E2E
+### Confirmed Live UAT Flows
 
-To run real Paynkolay sandbox validation end to end, collect:
+MoTo happy path is confirmed through the web UI and terminal smoke:
 
-- Final `UAT_CALLBACK_BASE_URL` callback endpoint reachable by Paynkolay.
-- Test card catalogue, expected statuses, card types, banks, and 3DS OTP values.
-- 3DS sandbox page selectors or documented challenge flow.
-- Installment, MoTo, currency, capture, and detailed sandbox business rules.
-- Cancel/refund timing and amount rules.
-- Enough real/UAT cards to satisfy the 100+ card project target.
+- Paynkolay `/v1/Payment` returns success.
+- Bank response is approved.
+- `/Payment/PaymentList` returns final `captured` status.
+- The web UI displays the provider reference, PaymentList status, and auth code.
+
+3D Secure initialization is confirmed:
+
+- Paynkolay returns `BANK_REQUEST_MESSAGE`.
+- The UI renders the bank/ACS form at `/payments/{order_id}/three-ds`.
+- The provided UAT 3DS override card is kept in ignored
+  `credentials/uat_3ds_card.json`.
+- Manual browser 3DS can be exercised with `make uat-web`.
+- Terminal smoke can be run with `make uat-3ds-smoke`; use
+  `UAT_3DS_BROWSER=--headed` when ACS behavior differs in headless Chromium.
+
+Same-day cancel is confirmed through `make uat-cancel-smoke`:
+
+- A fresh MoTo UAT payment is created.
+- PaymentList confirms the sales transaction.
+- `/v1/CancelRefundPayment` returns `response_code=2`.
+- PaymentList may still show the original sales row as `captured`; treat the cancel
+  endpoint response as cancel evidence unless Paynkolay provides a separate cancelled-row
+  reporting rule.
+
+### UAT Demo Commands
+
+Quality gate:
+
+```bash
+make check
+```
+
+Manual UAT demo:
+
+```bash
+make uat-web
+```
+
+Open:
+
+```text
+http://127.0.0.1:8000
+```
+
+If the port is busy:
+
+```bash
+make uat-web WEB_PORT=8001
+```
+
+Terminal UAT smoke checks:
+
+```bash
+make uat-cancel-smoke
+make uat-3ds-smoke UAT_3DS_BROWSER=--headed
+```
+
+### Known UAT Limitations
+
+- UAT 3DS ACS/simulator behavior can differ between manual browser, headed Chromium,
+  and headless Chromium.
+- OTP belongs to the bank/ACS form, not to the merchant UI. The framework renders the
+  provider form and records sanitized evidence; it does not intercept OTP delivery.
+- Random card/CVV values may be accepted by the UAT simulator. Use official Paynkolay
+  negative test data for reliable invalid-card, invalid-CVV, declined, or wrong-OTP
+  assertions.
+- PaymentList can keep returning the original sales row after a successful cancel
+  endpoint response. Use the cancel endpoint response as the primary cancel evidence
+  until Paynkolay confirms the reporting semantics.
+
+### UAT Readiness
 
 Before real calls, validate the private inputs:
 
