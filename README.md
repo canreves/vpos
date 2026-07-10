@@ -1,46 +1,169 @@
 # Paynkolay Sanal POS Automation
 
-Python test automation framework for Paynkolay Sanal POS payment flows.
+Paynkolay Sanal POS Automation is a test automation and validation framework for
+Paynkolay virtual POS payment flows. The project supports local/mock validation,
+data-driven scenario execution, browser-based 3D Secure handling, UAT smoke testing,
+transaction verification, cancel/refund checks, and sanitized reporting.
 
-The framework currently provides a provider-ready foundation with mocked/local validation
-for Paynkolay form payments, transaction verification, cancel/refund operations,
-callback verification, 3D Secure challenge automation, data-driven scenarios, reporting
-evidence sanitization, and CI.
+The system is designed for integration testing and QA workflows. It is not a production
+payment gateway.
 
-## Current Capabilities
+## Project Purpose
 
-- Strict runtime configuration for environments, merchants, and test cards.
-- Typed payment request, response, status, and callback models.
-- HMAC signature generation plus Paynkolay SHA-512/Base64 hash helpers.
-- Async HTTP client for payment initialization, transaction status, and cancel/refund
-  form endpoints.
-- Business-level payment flow orchestration.
-- Callback signature verification and in-memory callback matching.
-- 3D Secure challenge helper with fake-page and local Playwright browser tests.
-- Test data factories for reusable payment, status, and callback payloads.
-- Scenario catalogue models for data-driven payment cases.
-- Sanitized reporting evidence helpers for Allure attachments.
-- GitHub Actions validation workflow, including a browser-backed 3DS job.
+The framework was built to automate and observe the lifecycle of Sanal POS transactions
+across different cards, payment flows, environments, and expected outcomes. It provides a
+tester-facing web UI and a repeatable test suite so payment scenarios can be executed,
+verified, and reported without changing application code.
 
-Implemented Paynkolay form endpoints:
+Main objectives:
+
+- Validate Paynkolay payment initialization through configured environments.
+- Support MoTo and 3D Secure payment flows.
+- Verify final transaction state through PaymentList.
+- Exercise cancel/refund endpoint behavior.
+- Manage test cards and scenarios from external configuration.
+- Produce sanitized test evidence and Allure reports.
+- Keep private merchant credentials, PAN, CVV, OTP, and secrets outside the repository.
+
+## High-Level Architecture
+
+```text
+Browser UI / Test Runner
+        |
+        v
+FastAPI Web/API Layer
+        |
+        v
+Payment Initializer / Flow Orchestration
+        |
+        v
+Paynkolay Client
+        |
+        v
+Paynkolay UAT / Mock Provider Responses
+```
+
+Core modules:
+
+- `api/` exposes the tester UI, payment routes, result pages, card management, report
+  endpoints, and 3D Secure rendering.
+- `clients/` contains the Paynkolay HTTP boundary for payment, PaymentList, and
+  cancel/refund form endpoints.
+- `models/` defines typed payment, provider result, callback, and status objects.
+- `security/` implements Paynkolay SHA-512/Base64 hash helpers and generic signature
+  verification utilities.
+- `config/` loads runtime environment, merchant, callback, and card settings.
+- `scenarios/` defines data-driven payment scenario metadata.
+- `three_ds/` renders provider 3D Secure forms and supports browser automation helpers.
+- `reporting/` sanitizes evidence before terminal output or Allure reporting.
+
+## Payment Lifecycle
+
+A payment starts from the browser UI or an automated test. The request is validated,
+mapped to a typed payment model, signed according to the Paynkolay form contract, and
+sent to the selected provider environment.
+
+For MoTo payments, Paynkolay returns a final provider result. The framework parses the
+response, evaluates the payment status, stores sanitized session state, and verifies the
+transaction through PaymentList.
+
+For 3D Secure payments, Paynkolay returns `BANK_REQUEST_MESSAGE`. The framework stores
+that provider form transiently and exposes it through the browser so the bank/ACS
+challenge can be completed. After the provider return, the result payload is verified with
+`hashDataV2`, then the session is marked as completed or failed.
+
+## Supported Paynkolay Services
+
+The implementation is aligned with these Paynkolay form endpoints:
 
 - `POST /v1/Payment`
 - `POST /Payment/PaymentList`
 - `POST /v1/CancelRefundPayment`
 
-## Tech Stack
+Request hash generation and response hash verification are implemented with the documented
+field order and SHA-512/Base64 format.
 
-- Python 3.11+
-- Poetry
-- Pytest and pytest-asyncio
-- HTTPX async client
-- Pydantic v2
-- Playwright Python
-- Allure Pytest
-- Ruff
-- Mypy strict mode
+## Tester UI
 
-## Setup
+The web UI provides a practical payment test dashboard:
+
+- payment form for MoTo and 3D Secure flows,
+- runtime card list with alias, brand, card, expiry, flow, and action columns,
+- test card addition from the UI,
+- secure/MoTo filtering and search,
+- automatic form-fill from selected test cards,
+- local installment option stub until the real installment service is available,
+- result panel with provider reference, PaymentList status, and authorization code,
+- 3D Secure render link when Paynkolay returns a browser challenge,
+- report page for generated Allure output.
+
+The card list intentionally exposes test PAN/CVV to the local tester UI. It should only be
+used with private UAT/test card data.
+
+## Runtime Configuration
+
+Runtime configuration is externalized through JSON and environment variables. The active
+config supplies:
+
+- provider base URL,
+- callback/final return URL,
+- merchant identifiers,
+- Paynkolay `sx` values,
+- merchant secret key,
+- test card catalogue,
+- selected environment: `dev`, `uat`, or `test`.
+
+Private files are expected to live outside Git or under ignored local paths such as
+`credentials/` and `/tmp`.
+
+Typical runtime variables:
+
+```bash
+PAYNKOLAY_CONFIG_FILE=/tmp/paynkolay-uat-settings.json
+PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-credential-scenarios.json
+PAYNKOLAY_ENV=uat
+```
+
+## UAT Status
+
+The framework has been exercised against the Paynkolay UAT/test environment.
+
+Confirmed flows:
+
+- MoTo payment initialization and approval.
+- PaymentList verification after successful payment.
+- 3D Secure initialization through `BANK_REQUEST_MESSAGE`.
+- Manual browser 3D Secure completion through the tester UI.
+- Same-day cancel request through `/v1/CancelRefundPayment`.
+
+Known UAT notes:
+
+- 3D Secure ACS behavior may differ between manual browser, headed Chromium, and headless
+  Chromium.
+- Reliable negative UAT testing requires official invalid card/CVV/OTP data from the
+  provider.
+- PaymentList may continue to show the original sales row after cancel; the cancel service
+  response is currently treated as the primary cancel evidence.
+
+## Reporting
+
+The project supports Allure reporting for local and credential-driven validation. Evidence
+is sanitized before being attached or printed. Sensitive fields such as PAN, CVV, OTP,
+merchant secrets, hashes, signatures, and raw 3D Secure HTML are redacted.
+
+Generate a report:
+
+```bash
+make report
+```
+
+Open the generated report:
+
+```bash
+allure open allure-report
+```
+
+## Common Commands
 
 Install dependencies:
 
@@ -48,633 +171,91 @@ Install dependencies:
 make install
 ```
 
-The direct Poetry equivalent is:
-
-```bash
-poetry install --no-interaction
-```
-
-## One-Click Commands
-
-The project exposes common setup, validation, execution, reporting, and cleanup commands
-through `make`.
-
-Show the available commands:
-
-```bash
-make help
-```
-
-Run the standard validation set:
+Run the local quality gate:
 
 ```bash
 make check
 ```
 
-`make check` is the local quality gate. Run it from a clean shell without exported
-`PAYNKOLAY_*` variables when you want repeatable mock/local validation:
-
-```bash
-unset PAYNKOLAY_CONFIG_FILE
-unset PAYNKOLAY_SCENARIO_CATALOG
-unset PAYNKOLAY_ENV
-unset PAYNKOLAY_ENABLE_LIVE_E2E
-make check
-```
-
-Run the browser-based FastAPI web UI:
+Start the local web UI:
 
 ```bash
 make web
 ```
 
-Run the UAT tester UI with generated private inputs:
+Start the UAT tester UI:
 
 ```bash
 make uat-web
 ```
 
-Run guarded live UAT smoke checks:
+Run guarded UAT smoke checks:
 
 ```bash
 make uat-3ds-smoke
-make uat-3ds-smoke UAT_3DS_BROWSER=--headed
 make uat-cancel-smoke
 ```
 
-By default the UI is served at `http://127.0.0.1:8000`. Override the bind address with
-`WEB_HOST` and `WEB_PORT`; pass `WEB_RELOAD=--reload` during local development when file
-watching is available.
-
-The web UI can load without private runtime configuration, but payment submission requires
-`PAYNKOLAY_CONFIG_FILE` so the backend can build Paynkolay form requests with merchant,
-callback, success, and fail URL settings.
-
-When Paynkolay returns a 3D Secure form, the web API stores the provider form transiently
-and serves it at `/payments/{order_id}/three-ds`. The payload may be raw HTML or base64
-HTML; OTP entry remains on the bank/ACS form, not on the merchant UI.
-
-Paynkolay success/fail returns are handled by `/payments/result/success` and
-`/payments/result/fail`. These endpoints accept GET query parameters or POST form fields,
-verify `hashDataV2` with the active merchant secret key, update the payment session, and
-render a sanitized result page.
-
-External payment event logging is disabled by default. Set `PAYNKOLAY_EXTERNAL_LOG_URL`
-to send sanitized event payloads to an external HTTP endpoint. Optional
-`PAYNKOLAY_EXTERNAL_LOG_TIMEOUT_SECONDS` controls the request timeout. External logs never
-include full PAN, CVV, OTP, merchant secrets, API keys, hashes, or raw 3DS HTML.
-
-Run the full test suite only:
+Generate credential scenario report:
 
 ```bash
-make test
-```
-
-Run tests in parallel with `pytest-xdist`:
-
-```bash
-make parallel
-```
-
-Run only 3D Secure tests:
-
-```bash
-make three-ds
-```
-
-Run focused test groups:
-
-```bash
-make smoke
-make api
-make callback
-make scenarios
-make scenarios-file SCENARIO_FILE=/tmp/paynkolay-synthetic-scenarios.json
-make negative
-```
-
-Validate private sandbox readiness without running payments:
-
-```bash
-export PAYNKOLAY_CONFIG_FILE=/path/outside/git/paynkolay-settings.json
-export PAYNKOLAY_SCENARIO_CATALOG=/path/outside/git/sandbox-scenarios.json
-make sandbox-ready
-```
-
-Generate a synthetic 100-card JSON array for a private config:
-
-```bash
-make synthetic-cards
-```
-
-Generate a synthetic 1000-scenario catalogue:
-
-```bash
-make synthetic-scenarios
-```
-
-Generate and run a 100-card / 1000-scenario scale demo:
-
-```bash
-make scale-demo
-make scale-demo-parallel
-```
-
-Generate Allure result files:
-
-```bash
-make allure-results
-```
-
-Generate an Allure HTML report:
-
-```bash
-make report
-```
-
-`make report` requires the Allure command-line tool. On macOS, install it with:
-
-```bash
-brew install allure
-```
-
-The generated HTML report is written to `allure-report/`. The raw pytest Allure files
-are written to `allure-results/`.
-
-The `/reports` page calls `/api/reports/latest` and reports whether
-`allure-report/index.html` exists. Override the report directory for local experiments
-with:
-
-```bash
-export PAYNKOLAY_ALLURE_REPORT_DIR=/path/to/allure-report
-```
-
-Remove generated local artifacts:
-
-```bash
-make clean
-```
-
-The browser-backed 3DS test requires Chromium binaries:
-
-```bash
-poetry run playwright install chromium
-```
-
-Without browser binaries, that specific browser test skips locally. CI installs Chromium in
-the dedicated 3DS browser job.
-
-## Tester UI Workflow
-
-The web UI is the tester-facing entry point. It is useful for manual browser checks and
-private sandbox validation once credentials are available.
-
-Start the UI:
-
-```bash
-make web
-```
-
-Open:
-
-```text
-http://127.0.0.1:8000
-```
-
-If port `8000` is already in use, choose another port:
-
-```bash
-make web WEB_PORT=8001
-```
-
-Main tester pages:
-
-- `/` - payment form.
-- `/payments/{order_id}/three-ds` - transient provider 3DS form when Paynkolay returns
-  `BANK_REQUEST_MESSAGE`.
-- `/result?order_id={order_id}` - sanitized payment status lookup.
-- `/reports` - local Allure report status.
-
-Typical manual flow:
-
-1. Start the web UI with `make web`.
-2. Open `/` and submit card/payment fields.
-3. If the response requires 3DS, open the 3DS link and complete the bank/ACS form.
-4. After provider return, inspect `/result?order_id={order_id}`.
-5. Use `/result` to manually look up any existing in-memory order ID.
-6. Run `make report`, then open `/reports` to confirm local report availability.
-
-Payment submission requires `PAYNKOLAY_CONFIG_FILE` because the backend must know the
-selected merchant, Paynkolay base URL, success URL, fail URL, callback base URL, and
-merchant secret. The UI can render without private config, but provider initialization
-returns `503` until runtime config is available.
-
-The result and report pages only show sanitized state. They must not display full PAN,
-CVV, OTP, merchant secrets, API keys, `sx`, hashes, signatures, or raw 3DS HTML.
-
-## Mock Vs Sandbox Execution
-
-The default suite is safe for local development and CI. It uses mocked provider responses,
-fake callback payloads, and local 3DS pages:
-
-```bash
-make test
-make scale-demo
-make report
-```
-
-Sandbox commands are reserved for private Paynkolay inputs. They require
-`PAYNKOLAY_CONFIG_FILE`; most real provider calls also require `PAYNKOLAY_SCENARIO_CATALOG`
-and an externally reachable callback URL:
-
-```bash
-make sandbox-ready
-make sandbox
-make sandbox-report
-```
-
-`make sandbox-ready` performs only offline checks. It validates that the selected private
-config and scenario catalogue are internally consistent before any payment is attempted.
-The live provider gate remains closed unless explicitly enabled:
-
-```bash
-export PAYNKOLAY_ENABLE_LIVE_E2E=1
-make sandbox
-```
-
-Run the local callback receiver when the sandbox callback URL is tunneled or otherwise
-reachable from Paynkolay:
-
-```bash
-export PAYNKOLAY_CALLBACK_SECRET=/replace/with/private/secret
-python -m paynkolay_pos.callbacks.receiver --host 127.0.0.1 --port 8081 --path /callbacks/paynkolay
-```
-
-Do not commit private runtime configs, real PAN/CVV/OTP values, merchant credentials,
-callback URLs, or generated reports containing real transaction evidence.
-
-## Config And Data Strategy
-
-Runtime settings and test data are intentionally kept outside test code. The framework
-loads merchant, endpoint, callback, and card data from JSON, then uses scenario metadata
-to decide which card and flow should run.
-
-Create a private runtime config from the synthetic template:
-
-```bash
-cp examples/config/paynkolay-settings.example.json /path/outside/git/paynkolay-settings.json
-export PAYNKOLAY_CONFIG_FILE=/path/outside/git/paynkolay-settings.json
-```
-
-Or generate a local-only skeleton with 100 cards per environment:
-
-```bash
-make private-config CONFIG_OUT=/tmp/paynkolay-private-settings.json
-export PAYNKOLAY_CONFIG_FILE=/tmp/paynkolay-private-settings.json
-```
-
-Generate a matching local-only sandbox scenario catalogue:
-
-```bash
-make private-scenarios PRIVATE_SCENARIO_OUT=/tmp/paynkolay-private-scenarios.json
-export PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-private-scenarios.json
-```
-
-Create both files with one command:
-
-```bash
-make private-inputs \
-  CONFIG_OUT=/tmp/paynkolay-private-settings.json \
-  PRIVATE_SCENARIO_OUT=/tmp/paynkolay-private-scenarios.json \
-  PRIVATE_ENV=dev
-```
-
-The generated private skeleton keeps the scenario-critical aliases such as
-`visa_3ds_success`, `visa_installment_success`, `visa_moto_success`,
-`visa_invalid_cvv`, `visa_debit_3ds_success`, and `visa_credit_3ds_success`, then
-fills the remaining card slots with synthetic cards. Replace the placeholder merchant
-credentials, callback URLs, PAN, CVV, expiry, and OTP values with Paynkolay sandbox data
-before live sandbox execution.
-
-The generated private scenario catalogue keeps the checked-in payment plan, adds the
-`sandbox` tag required by readiness checks, and creates filler smoke scenarios so every
-generated card alias is exercised.
-
-Build a local/mock matrix from ignored credential CSV files:
-
-```bash
-make credential-matrix MATRIX_OUT=/tmp/paynkolay-credential-matrix.json
-```
-
-This reads local files under `credentials/`, normalizes test cards and CVV-driven error
-codes, then writes a private JSON matrix for local/mock scenario planning. The generated
-matrix may include PAN/CVV/OTP values and must stay outside Git.
-
-Generate executable local/mock scenarios from the same credential files:
-
-```bash
-make credential-config CREDENTIAL_CONFIG_OUT=/tmp/paynkolay-credential-settings.json
-make credential-scenarios CREDENTIAL_SCENARIO_OUT=/tmp/paynkolay-credential-scenarios.json
-make credential-inputs \
-  CREDENTIAL_CONFIG_OUT=/tmp/paynkolay-credential-settings.json \
-  CREDENTIAL_SCENARIO_OUT=/tmp/paynkolay-credential-scenarios.json
-make credential-scenario-test CREDENTIAL_SCENARIO_OUT=/tmp/paynkolay-credential-scenarios.json
-make credential-scenario-report CREDENTIAL_SCENARIO_OUT=/tmp/paynkolay-credential-scenarios.json
-```
-
-Credential scenarios cover 3DS cards, MoTo candidates, credit/debit coverage, installment
-candidates, and CVV-driven negative cases from `param_hata_kodlari.csv`.
-`make credential-scenario-test` builds credential config plus scenarios, then executes the
-generated catalogue against the mocked payment flow.
-`make credential-scenario-report` runs the same mocked flow and generates an Allure HTML
-report under `allure-report/`.
-Export the generated config and scenario files before opening `/settings` when you want
-the tester UI to display local/mock card and readiness metadata:
-
-```bash
-export PAYNKOLAY_CONFIG_FILE=/tmp/paynkolay-credential-settings.json
-export PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-credential-scenarios.json
-```
-
-Local/mock tester handoff:
-
-```bash
-make credential-inputs
-export PAYNKOLAY_CONFIG_FILE=/tmp/paynkolay-credential-settings.json
-export PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-credential-scenarios.json
 make credential-scenario-report
-make web
 ```
 
-Then open `/settings` to inspect the loaded credential cards and scenarios, and `/reports`
-to confirm the generated Allure report.
+## Validation
 
-Select an environment without editing the JSON file:
+The standard local validation suite covers API routes, models, provider client behavior,
+hash generation, callback handling, scenario catalogues, mocked end-to-end flows, reporting
+sanitization, and 3D Secure helpers.
 
-```bash
-export PAYNKOLAY_ENV=uat
-```
-
-If `PAYNKOLAY_ENV` is not set, the file's `active_environment` value is used. Supported
-environment names are `dev`, `uat`, and `test`.
-
-The example config is schema-valid but synthetic. It demonstrates:
-
-- separate `dev`, `uat`, and `test` environment blocks
-- environment-specific merchant credentials
-- environment-specific provider and callback URLs
-- reusable test card aliases
-- 3DS cards with `expected_otp`
-- MoTo/non-3DS cards without OTP values
-
-Each scenario in `examples/scenarios/payment_scenarios.json` references a card by
-`card_alias`. That alias must exist in the selected environment's `cards` list. For
-example:
-
-```json
-{
-  "scenario_id": "visa_3ds_capture",
-  "card_alias": "visa_3ds_success"
-}
-```
-
-The selected runtime config must include a matching card:
-
-```json
-{
-  "alias": "visa_3ds_success",
-  "requires_3ds": true,
-  "expected_otp": "000000"
-}
-```
-
-For a real 100+ card catalogue, extend the private config file's `cards` array. Do not
-commit real PAN, CVV, OTP, merchant tokens, API keys, secret keys, or callback URLs.
-Local config copies under `examples/config/*.json` are ignored except checked-in
-`*.example.json` templates.
-
-Generate a synthetic private card dataset:
-
-```bash
-make synthetic-cards COUNT=100 OUT=/tmp/paynkolay-synthetic-cards.json
-```
-
-The output is a JSON array that can be copied into the selected environment's `cards`
-field in a private `PAYNKOLAY_CONFIG_FILE`. The generator supports these profiles:
-
-```bash
-poetry run python tools/generate_synthetic_cards.py --count 100 --profile mixed --output /tmp/cards.json
-poetry run python tools/generate_synthetic_cards.py --count 100 --profile three_ds --output /tmp/three-ds-cards.json
-poetry run python tools/generate_synthetic_cards.py --count 100 --profile moto --output /tmp/moto-cards.json
-```
-
-Generate a matching large private scenario catalogue:
-
-```bash
-make synthetic-scenarios SCENARIO_COUNT=1000 SCENARIO_OUT=/tmp/paynkolay-synthetic-scenarios.json
-```
-
-The scenario generator writes a full catalogue object with a top-level `scenarios` array.
-Generated scenario `card_alias` values rotate across generated card aliases, so pair
-`SCENARIO_COUNT=1000` with `COUNT=100` by using `--card-count 100` when you want 100
-cards to back 1000 scenarios:
-
-```bash
-poetry run python tools/generate_synthetic_scenarios.py --count 1000 --card-count 100 --output /tmp/scenarios.json
-```
-
-Supported scenario profiles are:
-
-```bash
-poetry run python tools/generate_synthetic_scenarios.py --count 1000 --profile mixed --output /tmp/scenarios.json
-poetry run python tools/generate_synthetic_scenarios.py --count 1000 --profile three_ds --output /tmp/three-ds-scenarios.json
-poetry run python tools/generate_synthetic_scenarios.py --count 1000 --profile moto --output /tmp/moto-scenarios.json
-poetry run python tools/generate_synthetic_scenarios.py --count 1000 --profile negative --output /tmp/negative-scenarios.json
-```
-
-Run a generated or private scenario catalogue:
-
-```bash
-make scenarios-file SCENARIO_FILE=/tmp/paynkolay-synthetic-scenarios.json
-```
-
-This sets `PAYNKOLAY_SCENARIO_CATALOG` for the pytest process and runs the `scenario`
-test group. Use `make parallel` for the default checked-in suite; for a private scenario
-file, run the equivalent command directly with `pytest-xdist`:
-
-```bash
-PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-synthetic-scenarios.json poetry run pytest -m scenario -n auto
-```
-
-Run the full generated-data demo with one command:
-
-```bash
-make scale-demo
-```
-
-This generates:
-
-- `/tmp/paynkolay-synthetic-cards.json`
-- `/tmp/paynkolay-synthetic-scenarios.json`
-
-Then it executes the generated scenario catalogue through the mocked scenario flow. For
-parallel execution, use:
-
-```bash
-make scale-demo-parallel
-```
-
-Both commands accept overrides:
-
-```bash
-make scale-demo COUNT=100 SCENARIO_COUNT=1000
-make scale-demo-parallel COUNT=100 SCENARIO_COUNT=1000
-```
-
-Load the example payment scenario catalogue:
-
-```python
-from paynkolay_pos.scenarios import load_payment_scenario_catalog
-
-catalog = load_payment_scenario_catalog("examples/scenarios/payment_scenarios.json")
-print(catalog.ids())
-```
-
-## Project Layout
+Current validation status:
 
 ```text
-src/paynkolay_pos/
-  callbacks/   Callback signature verification and callback store
-  clients/     Async provider HTTP client
-  config/      Runtime environment, merchant, and card settings
-  flows/       Business-level payment flow orchestration
-  models/      Payment and callback Pydantic models
-  reporting/   Sanitized evidence helpers for reports
-  scenarios/   Data-driven payment scenario metadata
-  security/    Canonicalization, HMAC, and Paynkolay hash helpers
-  testing/     Reusable test data factories
-  three_ds/    3D Secure browser challenge helper
+ruff check        passed
+mypy             passed
+pytest           251 passed, 5 skipped
 ```
 
-## Current UAT State
+Skipped tests are live/sandbox-gated tests that require private runtime configuration and
+explicit live execution flags.
 
-The framework has a working UAT config path for Paynkolay's test endpoint while keeping
-mocked tests for repeatable CI/local coverage. Normal automated tests still use:
+## Security And Data Handling
 
-- `httpx.MockTransport` for provider API responses.
-- Local/fake callback payloads with real HMAC verification.
-- Fake and local Playwright-style 3DS challenge pages.
-- Example scenario data in `examples/scenarios/payment_scenarios.json`.
+- Private credentials and card data are not committed.
+- `credentials/` is ignored by Git.
+- PAN, CVV, OTP, secrets, hashes, signatures, and raw 3DS HTML are sanitized in evidence.
+- Runtime card data is loaded from external configuration.
+- UAT/live tests are guarded to avoid accidental provider calls.
 
-Ignored credential artifacts under `credentials/` can generate a private UAT config:
+## Technology Stack
 
-```bash
-make uat-inputs UAT_CALLBACK_BASE_URL=https://paynkolay.com.tr/test/callback
-```
+- Python 3.11+
+- FastAPI
+- HTTPX
+- Pydantic v2
+- Pytest
+- Playwright
+- Allure Pytest
+- Ruff
+- Mypy
+- Poetry
 
-For UAT, `tools/build_credential_config.py` auto-fills placeholder values from:
+## Current Scope
 
-- `credentials/paynkolay.postman_collection.json`: payment `sx`, PaymentList `sx`,
-  cancel/refund `sx`, and `merchantSecretKey`.
-- `credentials/base64.md`: `SUBMERCHANTID` as merchant id candidate and `clientid` as
-  terminal/client id candidate.
+The project is presentation-ready for:
 
-Explicit `UAT_*` values still take precedence when provided. The callback URL is treated
-as the final Paynkolay callback endpoint, so the framework does not append any suffixes.
+- local/mock validation,
+- UAT payment demo through the web UI,
+- MoTo payment and PaymentList verification,
+- 3D Secure initialization and manual browser completion,
+- same-day cancel smoke checks,
+- card-list based tester workflows,
+- local installment option stubbing,
+- sanitized Allure reporting.
 
-### Confirmed Live UAT Flows
+Remaining work is primarily provider-dependent:
 
-MoTo happy path is confirmed through the web UI and terminal smoke:
-
-- Paynkolay `/v1/Payment` returns success.
-- Bank response is approved.
-- `/Payment/PaymentList` returns final `captured` status.
-- The web UI displays the provider reference, PaymentList status, and auth code.
-
-3D Secure initialization is confirmed:
-
-- Paynkolay returns `BANK_REQUEST_MESSAGE`.
-- The UI renders the bank/ACS form at `/payments/{order_id}/three-ds`.
-- The provided UAT 3DS override card is kept in ignored
-  `credentials/uat_3ds_card.json`.
-- Manual browser 3DS can be exercised with `make uat-web`.
-- Terminal smoke can be run with `make uat-3ds-smoke`; use
-  `UAT_3DS_BROWSER=--headed` when ACS behavior differs in headless Chromium.
-
-Same-day cancel is confirmed through `make uat-cancel-smoke`:
-
-- A fresh MoTo UAT payment is created.
-- PaymentList confirms the sales transaction.
-- `/v1/CancelRefundPayment` returns `response_code=2`.
-- PaymentList may still show the original sales row as `captured`; treat the cancel
-  endpoint response as cancel evidence unless Paynkolay provides a separate cancelled-row
-  reporting rule.
-
-### UAT Demo Commands
-
-Quality gate:
-
-```bash
-make check
-```
-
-Manual UAT demo:
-
-```bash
-make uat-web
-```
-
-Open:
-
-```text
-http://127.0.0.1:8000
-```
-
-If the port is busy:
-
-```bash
-make uat-web WEB_PORT=8001
-```
-
-Terminal UAT smoke checks:
-
-```bash
-make uat-cancel-smoke
-make uat-3ds-smoke UAT_3DS_BROWSER=--headed
-```
-
-### Known UAT Limitations
-
-- UAT 3DS ACS/simulator behavior can differ between manual browser, headed Chromium,
-  and headless Chromium.
-- OTP belongs to the bank/ACS form, not to the merchant UI. The framework renders the
-  provider form and records sanitized evidence; it does not intercept OTP delivery.
-- Random card/CVV values may be accepted by the UAT simulator. Use official Paynkolay
-  negative test data for reliable invalid-card, invalid-CVV, declined, or wrong-OTP
-  assertions.
-- PaymentList can keep returning the original sales row after a successful cancel
-  endpoint response. Use the cancel endpoint response as the primary cancel evidence
-  until Paynkolay confirms the reporting semantics.
-
-### UAT Readiness
-
-Before real calls, validate the private inputs:
-
-```bash
-make uat-inputs UAT_CALLBACK_BASE_URL=https://paynkolay.com.tr/test/callback
-export PAYNKOLAY_CONFIG_FILE=/tmp/paynkolay-uat-settings.json
-export PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-credential-scenarios.json
-export PAYNKOLAY_ENV=uat
-make sandbox-ready
-```
-
-The readiness check expects the private catalogue to cover successful and negative 3DS,
-MoTo success/failure, wrong OTP, invalid CVV, expired card, insufficient funds, debit,
-credit, PaymentList verification, cancel/refund, and installment counts `2`, `3`, `6`,
-`9`, and `12`.
-
-## Safety Rules
-
-Do not expose full PAN, CVV, OTP, API keys, secret keys, signatures, or tokens in logs or
-reports. Use `paynkolay_pos.reporting.sanitize_evidence()` or
-`attach_json_evidence()` before attaching payloads to Allure.
+- connect the real installment service,
+- obtain reliable negative UAT test data,
+- finalize fully automated parallel 3D Secure OTP handling,
+- clarify final cancel reporting semantics with Paynkolay if needed.
