@@ -88,12 +88,13 @@ class ScenarioMockProvider:
         self.status_calls = 0
 
     async def __call__(self, request: httpx.Request) -> httpx.Response:
-        if request.method == "POST" and request.url.path == "/payments/initialize":
+        path = provider_path(request.url.path)
+        if request.method == "POST" and path == "/payments/initialize":
             self.initialize_payload = json.loads(request.content)
             return httpx.Response(status_code=200, json=self._initialize_response())
 
         expected_status_path = f"/payments/{quote(self._order_id, safe='')}/status"
-        if request.method == "GET" and request.url.path == expected_status_path:
+        if request.method == "GET" and path == expected_status_path:
             self.status_calls += 1
             return httpx.Response(status_code=200, json=self._status_response())
 
@@ -189,6 +190,14 @@ async def test_catalog_scenario_executes_against_mocked_provider(
 def order_id_for(scenario: PaymentScenario) -> str:
     digest = sha1(scenario.scenario_id.encode("utf-8")).hexdigest()[:12]
     return f"order-{digest}"
+
+
+def provider_path(path: str) -> str:
+    """Return the logical provider path regardless of a configured base path."""
+
+    if path.startswith("/Vpos/"):
+        return path.removeprefix("/Vpos")
+    return path
 
 
 def failure_code_for(scenario: PaymentScenario) -> str:
