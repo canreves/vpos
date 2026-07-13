@@ -13,7 +13,23 @@ import httpx
 
 from paynkolay_pos.clients import PaynkolayClient
 from paynkolay_pos.config import PaymentEnvironment, TestCard, load_runtime_settings
-from paynkolay_pos.models import PaymentInitializeRequest
+from paynkolay_pos.diagnostics import (
+    AcsObservation,
+    AcsScreenClassification,
+    InitObservation,
+    InitOutcome,
+    PaymentListObservation,
+    PaymentListOutcome,
+    ResultMatrixEntry,
+    ResultMatrixFlow,
+)
+from paynkolay_pos.models import (
+    PaymentInitializeRequest,
+    PaynkolayPaymentResult,
+    PaynkolayThreeDSInitializeResult,
+    TransactionStatusResponse,
+    parse_paynkolay_payment_result,
+)
 from paynkolay_pos.reporting import evidence_json
 from paynkolay_pos.scenarios import (
     PaymentScenario,
@@ -105,9 +121,32 @@ async def _run_smoke(
             )
         except httpx.HTTPStatusError as exc:
             _print_http_failure(exc)
+            print(
+                _result_matrix_event(
+                    _matrix_entry_for_error(
+                        scenario=scenario,
+                        card=card,
+                        order_id=order_id,
+                        outcome=InitOutcome.PROVIDER_HTTP_ERROR,
+                        http_status=exc.response.status_code,
+                        error_reason=exc.response.text[:500],
+                    )
+                )
+            )
             raise SystemExit(1) from exc
         except httpx.HTTPError as exc:
             print(evidence_json({"event": "uat_payment_smoke_http_error", "error": str(exc)}))
+            print(
+                _result_matrix_event(
+                    _matrix_entry_for_error(
+                        scenario=scenario,
+                        card=card,
+                        order_id=order_id,
+                        outcome=InitOutcome.FRAMEWORK_ERROR,
+                        error_reason=str(exc),
+                    )
+                )
+            )
             raise SystemExit(1) from exc
 
     safe_response = _response_summary(response_payload)
@@ -130,6 +169,17 @@ async def _run_smoke(
                 }
             )
         )
+    print(
+        _result_matrix_event(
+            _matrix_entry_for_response(
+                scenario=scenario,
+                card=card,
+                order_id=order_id,
+                response_payload=response_payload,
+                final_status=final_status,
+            )
+        )
+    )
 
 
 async def _query_payment_list_with_retry(
@@ -219,6 +269,122 @@ def _response_summary(response_payload: dict[str, Any]) -> dict[str, object]:
         else:
             summary[key] = value
     return summary
+
+
+def _matrix_entry_for_response(
+    *,
+    scenario: PaymentScenario,
+    card: TestCard,
+    order_id: str,
+    response_payload: dict[str, Any],
+    final_status: TransactionStatusResponse | None,
+) -> ResultMatrixEntry:
+    try:
+        provider_result = parse_paynkolay_payment_result(response_payload)
+    except (TypeError, ValueError) as exc:
+        init = InitObservation(
+            outcome=InitOutcome.PARSER_ERROR,
+            parsed_result_type=None,
+            error_reason=str(exc),
+        )
+    else:
+        if isinstance(provider_result, PaynkolayThreeDSInitializeResult):
+            init = InitObservation(
+                outcome=InitOutcome.THREE_DS_INITIALIZED,
+                parsed_result_type=type(provider_result).__name__,
+                bank_request_message_present=True,
+            )
+        elif isinstance(provider_result, PaynkolayPaymentResult):
+            init = InitObservation(
+                outcome=(
+                    InitOutcome.FINAL_SUCCESS
+                    if provider_result.successful
+                    else InitOutcome.FINAL_FAILED
+                ),
+                parsed_result_type=type(provider_result).__name__,
+                provider_response_code=provider_result.response_code,
+                provider_response_data=provider_result.response_data,
+                bank_request_message_present=False,
+            )
+        else:
+            init = InitObservation(
+                outcome=InitOutcome.FRAMEWORK_ERROR,
+                parsed_result_type=type(provider_result).__name__,
+                error_reason="unexpected provider result type",
+            )
+
+    return ResultMatrixEntry(
+        card_alias=card.alias,
+        brand=card.brand,
+        flow=ResultMatrixFlow.THREE_DS if scenario.requires_3ds else ResultMatrixFlow.MOTO,
+        requires_3ds=scenario.requires_3ds,
+        scenario_id=scenario.scenario_id,
+        order_id=order_id,
+        init=init,
+        acs=AcsObservation(
+            classification=(
+                AcsScreenClassification.NOT_REACHED
+                if scenario.requires_3ds
+                else AcsScreenClassification.NOT_APPLICABLE
+            )
+        ),
+        payment_list=_payment_list_observation(final_status),
+    )
+
+
+def _matrix_entry_for_error(
+    *,
+    scenario: PaymentScenario,
+    card: TestCard,
+    order_id: str,
+    outcome: InitOutcome,
+    http_status: int | None = None,
+    error_reason: str | None = None,
+) -> ResultMatrixEntry:
+    return ResultMatrixEntry(
+        card_alias=card.alias,
+        brand=card.brand,
+        flow=ResultMatrixFlow.THREE_DS if scenario.requires_3ds else ResultMatrixFlow.MOTO,
+        requires_3ds=scenario.requires_3ds,
+        scenario_id=scenario.scenario_id,
+        order_id=order_id,
+        init=InitObservation(
+            outcome=outcome,
+            http_status=http_status,
+            error_reason=error_reason,
+        ),
+        acs=AcsObservation(
+            classification=(
+                AcsScreenClassification.NOT_REACHED
+                if scenario.requires_3ds
+                else AcsScreenClassification.NOT_APPLICABLE
+            )
+        ),
+        payment_list=PaymentListObservation(outcome=PaymentListOutcome.NOT_QUERIED),
+    )
+
+
+def _payment_list_observation(
+    final_status: TransactionStatusResponse | None,
+) -> PaymentListObservation:
+    if final_status is None:
+        return PaymentListObservation(outcome=PaymentListOutcome.NOT_QUERIED)
+    return PaymentListObservation(
+        outcome=PaymentListOutcome.FOUND,
+        status=final_status.status,
+        provider_transaction_id_present=bool(final_status.provider_transaction_id.strip()),
+        authorization_code_present=final_status.authorization_code is not None,
+        failure_code=final_status.failure_code,
+    )
+
+
+def _result_matrix_event(entry: ResultMatrixEntry) -> str:
+    return evidence_json(
+        {
+            "event": "uat_payment_smoke_result_matrix",
+            "result_matrix": entry.summary_row(),
+        }
+    )
 
 
 def _print_http_failure(exc: httpx.HTTPStatusError) -> None:

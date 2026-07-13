@@ -34,7 +34,23 @@ from pydantic import SecretStr
 
 from paynkolay_pos.clients import PaynkolayClient
 from paynkolay_pos.config import CardBrand, PaymentEnvironment, TestCard, load_runtime_settings
-from paynkolay_pos.models import PaymentInitializeRequest
+from paynkolay_pos.diagnostics import (
+    AcsObservation,
+    AcsScreenClassification,
+    InitObservation,
+    InitOutcome,
+    PaymentListObservation,
+    PaymentListOutcome,
+    ResultMatrixEntry,
+    ResultMatrixFlow,
+)
+from paynkolay_pos.models import (
+    PaymentInitializeRequest,
+    PaynkolayPaymentResult,
+    PaynkolayThreeDSInitializeResult,
+    TransactionStatusResponse,
+    parse_paynkolay_payment_result,
+)
 from paynkolay_pos.reporting import evidence_json
 from paynkolay_pos.scenarios import PaymentScenario, load_payment_scenario_catalog_from_env
 
@@ -196,6 +212,16 @@ async def _run_3ds_smoke(
             )
         except httpx.HTTPError as exc:
             print(evidence_json({"event": "uat_3ds_smoke_http_error", "error": str(exc)}))
+            print(
+                _result_matrix_event(
+                    _matrix_entry_for_error(
+                        scenario=scenario,
+                        card=card,
+                        order_id=order_id,
+                        error_reason=str(exc),
+                    )
+                )
+            )
             raise SystemExit(1) from exc
 
         html = str(response_payload.get("BANK_REQUEST_MESSAGE") or "")
@@ -207,6 +233,16 @@ async def _run_3ds_smoke(
                         "order_id": order_id,
                         "response": _response_summary(response_payload),
                     }
+                )
+            )
+            print(
+                _result_matrix_event(
+                    _matrix_entry_for_missing_form(
+                        scenario=scenario,
+                        card=card,
+                        order_id=order_id,
+                        response_payload=response_payload,
+                    )
                 )
             )
             raise SystemExit(1)
@@ -247,6 +283,18 @@ async def _run_3ds_smoke(
                     "order_id": order_id,
                     "status": final_status.model_dump(mode="json"),
                 }
+            )
+        )
+        print(
+            _result_matrix_event(
+                _matrix_entry_for_challenge(
+                    scenario=scenario,
+                    card=card,
+                    order_id=order_id,
+                    response_payload=response_payload,
+                    challenge_result=challenge_result,
+                    final_status=final_status,
+                )
             )
         )
 
@@ -572,6 +620,197 @@ def _response_summary(response_payload: dict[str, Any]) -> dict[str, object]:
         else:
             summary[key] = value
     return summary
+
+
+def _matrix_entry_for_challenge(
+    *,
+    scenario: PaymentScenario,
+    card: TestCard,
+    order_id: str,
+    response_payload: dict[str, Any],
+    challenge_result: dict[str, object],
+    final_status: TransactionStatusResponse,
+) -> ResultMatrixEntry:
+    return ResultMatrixEntry(
+        card_alias=card.alias,
+        brand=card.brand,
+        flow=ResultMatrixFlow.THREE_DS,
+        requires_3ds=True,
+        scenario_id=scenario.scenario_id,
+        order_id=order_id,
+        init=_init_observation_for_payload(response_payload),
+        acs=_acs_observation_for_challenge(
+            challenge_result,
+            expected_otp_from_page=_expected_otp_from_page(card),
+        ),
+        payment_list=_payment_list_observation(final_status),
+    )
+
+
+def _matrix_entry_for_missing_form(
+    *,
+    scenario: PaymentScenario,
+    card: TestCard,
+    order_id: str,
+    response_payload: dict[str, Any],
+) -> ResultMatrixEntry:
+    return ResultMatrixEntry(
+        card_alias=card.alias,
+        brand=card.brand,
+        flow=ResultMatrixFlow.THREE_DS,
+        requires_3ds=True,
+        scenario_id=scenario.scenario_id,
+        order_id=order_id,
+        init=_init_observation_for_payload(response_payload),
+        acs=AcsObservation(
+            classification=AcsScreenClassification.NOT_REACHED,
+            reason="provider did not return BANK_REQUEST_MESSAGE",
+        ),
+        payment_list=PaymentListObservation(outcome=PaymentListOutcome.NOT_QUERIED),
+    )
+
+
+def _matrix_entry_for_error(
+    *,
+    scenario: PaymentScenario,
+    card: TestCard,
+    order_id: str,
+    error_reason: str,
+) -> ResultMatrixEntry:
+    return ResultMatrixEntry(
+        card_alias=card.alias,
+        brand=card.brand,
+        flow=ResultMatrixFlow.THREE_DS,
+        requires_3ds=True,
+        scenario_id=scenario.scenario_id,
+        order_id=order_id,
+        init=InitObservation(
+            outcome=InitOutcome.FRAMEWORK_ERROR,
+            error_reason=error_reason,
+        ),
+        acs=AcsObservation(classification=AcsScreenClassification.NOT_REACHED),
+        payment_list=PaymentListObservation(outcome=PaymentListOutcome.NOT_QUERIED),
+    )
+
+
+def _init_observation_for_payload(response_payload: dict[str, Any]) -> InitObservation:
+    try:
+        provider_result = parse_paynkolay_payment_result(response_payload)
+    except (TypeError, ValueError) as exc:
+        return InitObservation(outcome=InitOutcome.PARSER_ERROR, error_reason=str(exc))
+
+    if isinstance(provider_result, PaynkolayThreeDSInitializeResult):
+        return InitObservation(
+            outcome=InitOutcome.THREE_DS_INITIALIZED,
+            parsed_result_type=type(provider_result).__name__,
+            bank_request_message_present=True,
+            three_ds_form_action=_optional_text(
+                _form_summary(provider_result.bank_request_message).get("action")
+            ),
+        )
+    if isinstance(provider_result, PaynkolayPaymentResult):
+        return InitObservation(
+            outcome=(
+                InitOutcome.FINAL_SUCCESS
+                if provider_result.successful
+                else InitOutcome.FINAL_FAILED
+            ),
+            parsed_result_type=type(provider_result).__name__,
+            provider_response_code=provider_result.response_code,
+            provider_response_data=provider_result.response_data,
+        )
+    return InitObservation(
+        outcome=InitOutcome.FRAMEWORK_ERROR,
+        parsed_result_type=type(provider_result).__name__,
+        error_reason="unexpected provider result type",
+    )
+
+
+def _acs_observation_for_challenge(
+    challenge_result: dict[str, object],
+    *,
+    expected_otp_from_page: bool,
+) -> AcsObservation:
+    completed = bool(challenge_result.get("completed"))
+    returned_to_callback = bool(challenge_result.get("returned_to_callback"))
+    reason = _optional_text(challenge_result.get("reason"))
+    final_url = _optional_text(challenge_result.get("final_url"))
+    title = _optional_text(challenge_result.get("title"))
+
+    if completed:
+        return AcsObservation(
+            classification=(
+                AcsScreenClassification.VISIBLE_OTP_CODE
+                if expected_otp_from_page
+                else AcsScreenClassification.STATIC_CONFIG_OTP
+            ),
+            page_title=title,
+            safe_url=final_url,
+            reason=reason,
+            otp_input_found=challenge_result.get("otp_selector") is not None,
+            submit_control_found=challenge_result.get("submit_selector") is not None,
+            returned_to_callback=returned_to_callback,
+        )
+
+    if _looks_like_blank_or_redirect_error(final_url, reason):
+        classification = AcsScreenClassification.BLANK_OR_REDIRECT_ERROR
+    elif reason == "otp_value_not_found_in_form":
+        classification = AcsScreenClassification.SMS_MANUAL_REQUIRED
+    elif reason in {"otp_selector_not_found", "submit_selector_not_found"}:
+        classification = AcsScreenClassification.UNSUPPORTED
+    else:
+        classification = AcsScreenClassification.UNKNOWN
+
+    return AcsObservation(
+        classification=classification,
+        page_title=title,
+        safe_url=final_url,
+        reason=reason,
+        otp_input_found=challenge_result.get("otp_selector") is not None,
+        submit_control_found=challenge_result.get("submit_selector") is not None,
+        returned_to_callback=returned_to_callback,
+    )
+
+
+def _payment_list_observation(final_status: TransactionStatusResponse) -> PaymentListObservation:
+    return PaymentListObservation(
+        outcome=PaymentListOutcome.FOUND,
+        status=final_status.status,
+        provider_transaction_id_present=bool(final_status.provider_transaction_id.strip()),
+        authorization_code_present=final_status.authorization_code is not None,
+        failure_code=final_status.failure_code,
+    )
+
+
+def _result_matrix_event(entry: ResultMatrixEntry) -> str:
+    return evidence_json(
+        {
+            "event": "uat_3ds_smoke_result_matrix",
+            "result_matrix": entry.summary_row(),
+        }
+    )
+
+
+def _expected_otp_from_page(card: TestCard) -> bool:
+    return (
+        card.expected_otp is not None
+        and card.expected_otp.get_secret_value() == OTP_FROM_FORM_SENTINEL
+    )
+
+
+def _optional_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _looks_like_blank_or_redirect_error(final_url: str | None, reason: str | None) -> bool:
+    if reason == "playwright_error":
+        return True
+    if final_url is None:
+        return False
+    return final_url.startswith("chrome-error://") or final_url == "about:blank"
 
 
 def _form_summary(html: str) -> dict[str, object]:
