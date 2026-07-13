@@ -19,3 +19,4 @@ examples/config/*.json
 credentials
 examples/cards/
 .DS_Store
+cardTests
