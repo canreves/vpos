@@ -142,7 +142,7 @@ async def _run_smoke(
                         scenario=scenario,
                         card=card,
                         order_id=order_id,
-                        outcome=InitOutcome.FRAMEWORK_ERROR,
+                        outcome=InitOutcome.NETWORK_ERROR,
                         error_reason=str(exc),
                     )
                 )

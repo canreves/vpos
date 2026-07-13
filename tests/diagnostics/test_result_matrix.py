@@ -137,6 +137,20 @@ def test_result_matrix_classifies_framework_parse_error() -> None:
 
 
 @pytest.mark.api
+def test_result_matrix_classifies_network_error_separately() -> None:
+    entry = result_entry(
+        init=InitObservation(
+            outcome=InitOutcome.NETWORK_ERROR,
+            error_reason="nodename nor servname provided",
+        ),
+        payment_list=PaymentListObservation(outcome=PaymentListOutcome.NOT_QUERIED),
+    )
+
+    assert entry.classification is DiagnosticClassification.NETWORK_ERROR
+    assert entry.summary_row()["classification"] == "network_error"
+
+
+@pytest.mark.api
 def test_result_matrix_json_uses_stable_sanitized_rows() -> None:
     body = result_matrix_json([result_entry(notes=("moto baseline",))])
     decoded = json.loads(body)

@@ -36,6 +36,7 @@ class InitOutcome(StrEnum):
     FINAL_SUCCESS = "final_success"
     FINAL_FAILED = "final_failed"
     PROVIDER_HTTP_ERROR = "provider_http_error"
+    NETWORK_ERROR = "network_error"
     PARSER_ERROR = "parser_error"
     FRAMEWORK_ERROR = "framework_error"
 
@@ -69,6 +70,7 @@ class DiagnosticClassification(StrEnum):
 
     COMPLETED = "completed"
     PROVIDER_FAILED = "provider_failed"
+    NETWORK_ERROR = "network_error"
     FRAMEWORK_ERROR = "framework_error"
     ACS_MANUAL_REQUIRED = "acs_manual_required"
     ACS_ERROR = "acs_error"
@@ -167,10 +169,10 @@ class ResultMatrixEntry(StrictDiagnosticModel):
     def classification(self) -> DiagnosticClassification:
         """Classify the row into the next actionable bucket."""
 
-        if self.init.outcome in {
-            InitOutcome.PARSER_ERROR,
-            InitOutcome.FRAMEWORK_ERROR,
-        }:
+        if self.init.outcome is InitOutcome.NETWORK_ERROR:
+            return DiagnosticClassification.NETWORK_ERROR
+
+        if self.init.outcome in {InitOutcome.PARSER_ERROR, InitOutcome.FRAMEWORK_ERROR}:
             return DiagnosticClassification.FRAMEWORK_ERROR
 
         if self.init.outcome in {

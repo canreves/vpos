@@ -688,7 +688,7 @@ def _matrix_entry_for_error(
         scenario_id=scenario.scenario_id,
         order_id=order_id,
         init=InitObservation(
-            outcome=InitOutcome.FRAMEWORK_ERROR,
+            outcome=InitOutcome.NETWORK_ERROR,
             error_reason=error_reason,
         ),
         acs=AcsObservation(classification=AcsScreenClassification.NOT_REACHED),
