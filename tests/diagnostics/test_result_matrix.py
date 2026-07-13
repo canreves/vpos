@@ -12,6 +12,9 @@ from paynkolay_pos.diagnostics import (
     DiagnosticClassification,
     InitObservation,
     InitOutcome,
+    OtpResolutionObservation,
+    OtpResolutionStatus,
+    OtpSourceType,
     PaymentListObservation,
     PaymentListOutcome,
     ResultMatrixEntry,
@@ -69,6 +72,10 @@ def test_result_matrix_classifies_completed_moto_payment() -> None:
         "acs_classification": "not_applicable",
         "acs_reason": None,
         "callback_returned": False,
+        "otp_resolution_status": None,
+        "otp_source_type": None,
+        "otp_present": None,
+        "should_auto_submit": None,
         "payment_list_outcome": "found",
         "payment_list_status": "captured",
         "classification": "completed",
@@ -120,6 +127,41 @@ def test_result_matrix_classifies_acs_manual_dependency() -> None:
     )
 
     assert entry.classification is DiagnosticClassification.ACS_MANUAL_REQUIRED
+
+
+@pytest.mark.api
+def test_result_matrix_includes_otp_resolution_columns() -> None:
+    entry = result_entry(
+        card_alias="credential_visa_3ds",
+        flow=ResultMatrixFlow.THREE_DS,
+        requires_3ds=True,
+        init=InitObservation(
+            outcome=InitOutcome.THREE_DS_INITIALIZED,
+            parsed_result_type="PaynkolayThreeDSInitializeResult",
+            bank_request_message_present=True,
+        ),
+        acs=AcsObservation(
+            classification=AcsScreenClassification.STATIC_CONFIG_OTP,
+            otp_input_found=True,
+            submit_control_found=True,
+        ),
+        otp_resolution=OtpResolutionObservation(
+            status=OtpResolutionStatus.READY,
+            source_type=OtpSourceType.STATIC_CONFIG,
+            otp_present=True,
+            should_auto_submit=True,
+            reason="resolved OTP from configured test card metadata",
+        ),
+        payment_list=PaymentListObservation(outcome=PaymentListOutcome.NOT_QUERIED),
+    )
+
+    row = entry.summary_row()
+
+    assert row["otp_resolution_status"] == "ready"
+    assert row["otp_source_type"] == "static_config"
+    assert row["otp_present"] is True
+    assert row["should_auto_submit"] is True
+    assert "654321" not in json.dumps(row)
 
 
 @pytest.mark.api

@@ -38,10 +38,17 @@ from paynkolay_pos.diagnostics import (
     AcsScreenClassification,
     InitObservation,
     InitOutcome,
+    OtpResolutionObservation,
     PaymentListObservation,
     PaymentListOutcome,
     ResultMatrixEntry,
     ResultMatrixFlow,
+)
+from paynkolay_pos.diagnostics import (
+    OtpResolutionStatus as MatrixOtpResolutionStatus,
+)
+from paynkolay_pos.diagnostics import (
+    OtpSourceType as MatrixOtpSourceType,
 )
 from paynkolay_pos.models import (
     PaymentInitializeRequest,
@@ -674,6 +681,7 @@ def _matrix_entry_for_challenge(
             brand=card.brand,
             expected_otp_from_page=_expected_otp_from_page(card),
         ),
+        otp_resolution=_otp_resolution_observation(challenge_result),
         payment_list=_payment_list_observation(final_status),
     )
 
@@ -805,6 +813,27 @@ def _acs_observation_for_challenge(
         otp_input_found=profile.otp_input_found,
         submit_control_found=profile.submit_control_found,
         returned_to_callback=returned_to_callback,
+    )
+
+
+def _otp_resolution_observation(
+    challenge_result: dict[str, object],
+) -> OtpResolutionObservation | None:
+    payload = challenge_result.get("otp_resolution")
+    if not isinstance(payload, dict):
+        return None
+
+    status = _optional_text(payload.get("status"))
+    if status is None:
+        return None
+
+    source_type = _optional_text(payload.get("source_type"))
+    return OtpResolutionObservation(
+        status=MatrixOtpResolutionStatus(status),
+        source_type=MatrixOtpSourceType(source_type) if source_type is not None else None,
+        otp_present=bool(payload.get("otp_present")),
+        should_auto_submit=bool(payload.get("should_auto_submit")),
+        reason=_optional_text(payload.get("reason")) or "OTP resolver returned no reason",
     )
 
 

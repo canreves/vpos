@@ -65,6 +65,23 @@ class PaymentListOutcome(StrEnum):
     QUERY_ERROR = "query_error"
 
 
+class OtpResolutionStatus(StrEnum):
+    """Sanitized OTP resolver status for matrix reporting."""
+
+    READY = "ready"
+    MANUAL_REQUIRED = "manual_required"
+    NOT_APPLICABLE = "not_applicable"
+    UNSUPPORTED = "unsupported"
+    MISSING_SOURCE = "missing_source"
+
+
+class OtpSourceType(StrEnum):
+    """Sanitized OTP source type for matrix reporting."""
+
+    VISIBLE_PAGE = "visible_page"
+    STATIC_CONFIG = "static_config"
+
+
 class DiagnosticClassification(StrEnum):
     """Final class used to separate provider, framework, and ACS issues."""
 
@@ -134,6 +151,16 @@ class PaymentListObservation(StrictDiagnosticModel):
         return self
 
 
+class OtpResolutionObservation(StrictDiagnosticModel):
+    """Sanitized OTP resolver decision attached to a matrix row."""
+
+    status: OtpResolutionStatus
+    source_type: OtpSourceType | None = None
+    otp_present: bool = False
+    should_auto_submit: bool = False
+    reason: str = Field(min_length=1, max_length=500)
+
+
 class ResultMatrixEntry(StrictDiagnosticModel):
     """One standardized diagnostic row for a card/scenario execution."""
 
@@ -145,6 +172,7 @@ class ResultMatrixEntry(StrictDiagnosticModel):
     order_id: str | None = Field(default=None, min_length=1, max_length=120)
     init: InitObservation
     acs: AcsObservation = Field(default_factory=AcsObservation)
+    otp_resolution: OtpResolutionObservation | None = None
     payment_list: PaymentListObservation = Field(default_factory=PaymentListObservation)
     notes: tuple[str, ...] = ()
 
@@ -243,6 +271,27 @@ class ResultMatrixEntry(StrictDiagnosticModel):
             "acs_classification": self.acs.classification.value,
             "acs_reason": self.acs.reason,
             "callback_returned": self.acs.returned_to_callback,
+            "otp_resolution_status": (
+                self.otp_resolution.status.value
+                if self.otp_resolution is not None
+                else None
+            ),
+            "otp_source_type": (
+                self.otp_resolution.source_type.value
+                if self.otp_resolution is not None
+                and self.otp_resolution.source_type is not None
+                else None
+            ),
+            "otp_present": (
+                self.otp_resolution.otp_present
+                if self.otp_resolution is not None
+                else None
+            ),
+            "should_auto_submit": (
+                self.otp_resolution.should_auto_submit
+                if self.otp_resolution is not None
+                else None
+            ),
             "payment_list_outcome": self.payment_list.outcome.value,
             "payment_list_status": (
                 self.payment_list.status.value if self.payment_list.status is not None else None
