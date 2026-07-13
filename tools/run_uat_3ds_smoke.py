@@ -63,9 +63,9 @@ from paynkolay_pos.three_ds import (
     AcsFieldEvidence,
     AcsFrameEvidence,
     AcsProfileEvidence,
-    OtpResolutionStatus,
     detect_acs_profile,
     resolve_otp_source,
+    run_acs_otp_action,
 )
 
 OTP_SELECTORS = (
@@ -376,11 +376,16 @@ async def _complete_browser_challenge(
                 evidence=profile_evidence,
                 configured_otp=(None if _expected_otp_from_form(otp) else otp),
             )
-            if resolution.status is not OtpResolutionStatus.READY:
+            action_result = await run_acs_otp_action(
+                otp_locator=otp_target.locator,
+                submit_locator=submit_target.locator,
+                resolution=resolution,
+            )
+            if not action_result.submitted:
                 return {
                     "completed": False,
-                    "reason": f"otp_resolution_{resolution.status.value}",
-                    "otp_resolution": resolution.evidence(),
+                    "reason": action_result.reason,
+                    "otp_resolution": action_result.otp_resolution,
                     "final_url": _safe_url(page.url),
                     "title": await page.title(),
                     "otp_selector": otp_target.selector,
@@ -388,20 +393,6 @@ async def _complete_browser_challenge(
                     "frames": await _frame_metadata(page),
                 }
 
-            otp_value = resolution.otp_value
-            if otp_value is None:
-                return {
-                    "completed": False,
-                    "reason": "otp_resolution_missing_value",
-                    "otp_resolution": resolution.evidence(),
-                    "final_url": _safe_url(page.url),
-                    "title": await page.title(),
-                    "otp_selector": otp_target.selector,
-                    "visible_fields": await _visible_field_metadata(page),
-                    "frames": await _frame_metadata(page),
-                }
-            await otp_target.locator.fill(otp_value)
-            await submit_target.locator.click()
             await _wait_for_network_quiet(page)
             return {
                 "completed": True,
@@ -411,7 +402,7 @@ async def _complete_browser_challenge(
                 "otp_frame_url": _safe_url(otp_target.frame.url),
                 "submit_selector": submit_target.selector,
                 "submit_frame_url": _safe_url(submit_target.frame.url),
-                "otp_resolution": resolution.evidence(),
+                "otp_resolution": action_result.otp_resolution,
             }
         except PlaywrightError as exc:
             return {

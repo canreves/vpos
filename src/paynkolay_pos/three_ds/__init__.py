@@ -1,5 +1,10 @@
 """3D Secure browser challenge helpers."""
 
+from paynkolay_pos.three_ds.acs_action import (
+    AcsActionResult,
+    SupportsAcsLocator,
+    run_acs_otp_action,
+)
 from paynkolay_pos.three_ds.acs_profile import (
     AcsBankProfile,
     AcsFieldEvidence,
@@ -34,9 +39,11 @@ __all__ = [
     "AcsOtpStrategy",
     "AcsProfile",
     "AcsProfileEvidence",
+    "AcsActionResult",
     "OtpResolution",
     "OtpResolutionStatus",
     "OtpSourceType",
+    "SupportsAcsLocator",
     "SupportsThreeDSPage",
     "ThreeDSChallengeResult",
     "ThreeDSFormDocument",
@@ -46,4 +53,5 @@ __all__ = [
     "detect_acs_profile",
     "render_three_ds_form",
     "resolve_otp_source",
+    "run_acs_otp_action",
 ]
