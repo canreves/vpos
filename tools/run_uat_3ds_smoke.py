@@ -6,7 +6,6 @@ import argparse
 import asyncio
 import json
 import os
-import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from html.parser import HTMLParser
@@ -57,7 +56,9 @@ from paynkolay_pos.three_ds import (
     AcsFieldEvidence,
     AcsFrameEvidence,
     AcsProfileEvidence,
+    OtpResolutionStatus,
     detect_acs_profile,
+    resolve_otp_source,
 )
 
 OTP_SELECTORS = (
@@ -361,11 +362,18 @@ async def _complete_browser_challenge(
                     "frames": await _frame_metadata(page),
                 }
 
-            otp_value = await _otp_value_for_page(page, otp)
-            if otp_value is None:
+            profile_evidence = await _profile_evidence_for_page(page)
+            profile = detect_acs_profile(profile_evidence)
+            resolution = resolve_otp_source(
+                profile=profile,
+                evidence=profile_evidence,
+                configured_otp=(None if _expected_otp_from_form(otp) else otp),
+            )
+            if resolution.status is not OtpResolutionStatus.READY:
                 return {
                     "completed": False,
-                    "reason": "otp_value_not_found_in_form",
+                    "reason": f"otp_resolution_{resolution.status.value}",
+                    "otp_resolution": resolution.evidence(),
                     "final_url": _safe_url(page.url),
                     "title": await page.title(),
                     "otp_selector": otp_target.selector,
@@ -373,6 +381,18 @@ async def _complete_browser_challenge(
                     "frames": await _frame_metadata(page),
                 }
 
+            otp_value = resolution.otp_value
+            if otp_value is None:
+                return {
+                    "completed": False,
+                    "reason": "otp_resolution_missing_value",
+                    "otp_resolution": resolution.evidence(),
+                    "final_url": _safe_url(page.url),
+                    "title": await page.title(),
+                    "otp_selector": otp_target.selector,
+                    "visible_fields": await _visible_field_metadata(page),
+                    "frames": await _frame_metadata(page),
+                }
             await otp_target.locator.fill(otp_value)
             await submit_target.locator.click()
             await _wait_for_network_quiet(page)
@@ -384,6 +404,7 @@ async def _complete_browser_challenge(
                 "otp_frame_url": _safe_url(otp_target.frame.url),
                 "submit_selector": submit_target.selector,
                 "submit_frame_url": _safe_url(submit_target.frame.url),
+                "otp_resolution": resolution.evidence(),
             }
         except PlaywrightError as exc:
             return {
@@ -843,6 +864,41 @@ def _profile_frames(challenge_result: dict[str, object]) -> tuple[AcsFrameEviden
     return tuple(frames)
 
 
+async def _profile_evidence_for_page(page: Page) -> AcsProfileEvidence:
+    frames: list[AcsFrameEvidence] = []
+    for frame in page.frames[:10]:
+        fields = tuple(
+            AcsFieldEvidence(
+                tag=_optional_text(field.get("tag")),
+                type=_optional_text(field.get("type")),
+                name=_optional_text(field.get("name")),
+                id=_optional_text(field.get("id")),
+                text=_optional_text(field.get("text")),
+            )
+            for field in await _visible_field_metadata_for_frame(frame)
+        )
+        frames.append(
+            AcsFrameEvidence(
+                url=_safe_url(frame.url),
+                text_prefix=await _frame_text_prefix(frame),
+                visible_fields=fields,
+            )
+        )
+    return AcsProfileEvidence(
+        title=await page.title(),
+        final_url=_safe_url(page.url),
+        frames=tuple(frames),
+    )
+
+
+async def _frame_text_prefix(frame: Frame) -> str:
+    try:
+        text = await frame.locator("body").inner_text(timeout=1_000)
+    except PlaywrightError:
+        return ""
+    return " ".join(text.split())[:1000]
+
+
 def _object_list(value: object) -> list[dict[str, object]]:
     if not isinstance(value, list):
         return []
@@ -896,20 +952,8 @@ def _has_auto_submit(html: str) -> bool:
     return "onload" in lowered and ".submit(" in lowered
 
 
-async def _otp_value_for_page(page: Page, otp: SecretStr) -> str | None:
-    configured = otp.get_secret_value()
-    if configured != OTP_FROM_FORM_SENTINEL:
-        return configured
-    texts: list[str] = []
-    for frame in page.frames:
-        try:
-            texts.append(await frame.locator("body").inner_text(timeout=1_000))
-        except PlaywrightError:
-            continue
-    combined = "\n".join(texts)
-    for match in re.finditer(r"(?<!\d)(\d{6})(?!\d)", combined):
-        return match.group(1)
-    return None
+def _expected_otp_from_form(otp: SecretStr) -> bool:
+    return otp.get_secret_value() == OTP_FROM_FORM_SENTINEL
 
 
 if __name__ == "__main__":

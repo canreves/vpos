@@ -20,6 +20,12 @@ from paynkolay_pos.three_ds.form_renderer import (
     ThreeDSFormPayloadError,
     render_three_ds_form,
 )
+from paynkolay_pos.three_ds.otp_resolver import (
+    OtpResolution,
+    OtpResolutionStatus,
+    OtpSourceType,
+    resolve_otp_source,
+)
 
 __all__ = [
     "AcsBankProfile",
@@ -28,6 +34,9 @@ __all__ = [
     "AcsOtpStrategy",
     "AcsProfile",
     "AcsProfileEvidence",
+    "OtpResolution",
+    "OtpResolutionStatus",
+    "OtpSourceType",
     "SupportsThreeDSPage",
     "ThreeDSChallengeResult",
     "ThreeDSFormDocument",
@@ -36,4 +45,5 @@ __all__ = [
     "complete_three_ds_html_challenge",
     "detect_acs_profile",
     "render_three_ds_form",
+    "resolve_otp_source",
 ]
