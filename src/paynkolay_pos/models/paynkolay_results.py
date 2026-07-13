@@ -7,7 +7,7 @@ from decimal import Decimal
 from enum import StrEnum
 
 from pydantic import AliasChoices, Field, SecretStr
-from pydantic.functional_validators import field_validator
+from pydantic.functional_validators import field_validator, model_validator
 
 from paynkolay_pos.models.payments import (
     Currency,
@@ -60,28 +60,73 @@ class PaynkolayPaymentResult(PaynkolayProviderModel):
 
     response_code: str = Field(alias="RESPONSE_CODE", min_length=1)
     response_data: str | None = Field(default=None, alias="RESPONSE_DATA")
-    use_3d: str = Field(alias="USE_3D", min_length=1)
-    rnd: str = Field(alias="RND", min_length=1)
-    merchant_no: str = Field(alias="MERCHANT_NO", min_length=1)
+    use_3d: str = Field(default="", alias="USE_3D")
+    rnd: str = Field(default="", alias="RND")
+    merchant_no: str = Field(default="", alias="MERCHANT_NO")
     auth_code: str = Field(default="", alias="AUTH_CODE")
-    reference_code: str = Field(alias="REFERENCE_CODE", min_length=1)
-    client_reference_code: str = Field(alias="CLIENT_REFERENCE_CODE", min_length=1)
-    timestamp: str = Field(alias="TIMESTAMP", min_length=1)
-    transaction_amount: Decimal = Field(alias="TRANSACTION_AMOUNT", gt=Decimal("0"))
-    authorization_amount: Decimal = Field(alias="AUTHORIZATION_AMOUNT", gt=Decimal("0"))
+    reference_code: str = Field(default="", alias="REFERENCE_CODE")
+    client_reference_code: str = Field(default="", alias="CLIENT_REFERENCE_CODE")
+    timestamp: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("TIMESTAMP", "TimeStamp"),
+    )
+    transaction_amount: Decimal | None = Field(default=None, alias="TRANSACTION_AMOUNT")
+    authorization_amount: Decimal | None = Field(default=None, alias="AUTHORIZATION_AMOUNT")
     commission: Decimal | None = Field(default=None, alias="COMMISION")
     commission_rate: Decimal | None = Field(default=None, alias="COMMISION_RATE")
-    installment: int = Field(alias="INSTALLMENT", ge=1)
-    currency_code: Currency = Field(alias="CURRENCY_CODE")
+    installment: int = Field(default=1, alias="INSTALLMENT", ge=1)
+    currency_code: Currency = Field(default=Currency.TRY, alias="CURRENCY_CODE")
     hash_data: str | None = Field(default=None, alias="hashData")
-    hash_data_v2: str = Field(alias="hashDataV2", min_length=1)
+    hash_data_v2: str = Field(
+        default="",
+        validation_alias=AliasChoices("hashDataV2", "hashDatav2"),
+    )
 
-    @field_validator("transaction_amount", "authorization_amount")
+    @field_validator(
+        "use_3d",
+        "rnd",
+        "merchant_no",
+        "auth_code",
+        "reference_code",
+        "client_reference_code",
+        "hash_data_v2",
+        mode="before",
+    )
     @classmethod
-    def normalize_amount(cls, amount: Decimal) -> Decimal:
+    def default_nullable_text_fields(cls, value: object) -> object:
+        """Accept provider failure payloads that explicitly send null optional text."""
+
+        if value is None:
+            return ""
+        return value
+
+    @field_validator("installment", mode="before")
+    @classmethod
+    def default_nullable_installment(cls, value: object) -> object:
+        """Accept provider failure payloads that omit installment details."""
+
+        if value is None:
+            return 1
+        return value
+
+    @field_validator("currency_code", mode="before")
+    @classmethod
+    def default_nullable_currency(cls, value: object) -> object:
+        """Accept provider failure payloads that omit currency details."""
+
+        if value is None:
+            return Currency.TRY
+        return value
+
+    @field_validator("transaction_amount", "authorization_amount", mode="before")
+    @classmethod
+    def normalize_amount(cls, amount: object) -> Decimal | None:
         """Keep provider amount strings comparable with internal models."""
 
-        return amount.quantize(Decimal("0.01"))
+        if amount is None:
+            return None
+        normalized = str(amount).replace(",", ".")
+        return Decimal(normalized).quantize(Decimal("0.01"))
 
     @field_validator("response_code", mode="before")
     @classmethod
@@ -89,6 +134,14 @@ class PaynkolayPaymentResult(PaynkolayProviderModel):
         """Accept provider response codes whether they arrive as text or numbers."""
 
         return str(response_code)
+
+    @model_validator(mode="after")
+    def validate_success_hash(self) -> PaynkolayPaymentResult:
+        """Require response hash evidence for successful provider approvals."""
+
+        if self.successful and not self.hash_data_v2.strip():
+            raise ValueError("successful Paynkolay results must include hashDataV2")
+        return self
 
     @property
     def successful(self) -> bool:
@@ -133,7 +186,8 @@ class PaynkolayPaymentResult(PaynkolayProviderModel):
     def canonical_authorization_amount(self) -> str:
         """Return the exact authorization amount string used in response hash checks."""
 
-        return f"{self.authorization_amount:.2f}"
+        amount = self.authorization_amount or self.transaction_amount or Decimal("0.00")
+        return f"{amount:.2f}"
 
     def to_transaction_status_response(
         self,
@@ -144,11 +198,12 @@ class PaynkolayPaymentResult(PaynkolayProviderModel):
 
         payment_status = self.status
         authorization_code = self.auth_code.strip() or None
+        amount = self.authorization_amount or self.transaction_amount or Decimal("0.00")
         return TransactionStatusResponse(
             order_id=self.client_reference_code,
             provider_transaction_id=self.reference_code,
             status=payment_status,
-            amount=self.authorization_amount,
+            amount=amount,
             currency=self.currency_code,
             updated_at=self._parsed_timestamp(source_timezone),
             authorization_code=(
@@ -160,7 +215,13 @@ class PaynkolayPaymentResult(PaynkolayProviderModel):
         )
 
     def _parsed_timestamp(self, source_timezone: tzinfo) -> datetime:
-        parsed = datetime.fromisoformat(self.timestamp)
+        if self.timestamp is None:
+            return datetime.now(UTC)
+        try:
+            parsed = datetime.fromisoformat(self.timestamp)
+        except ValueError:
+            parsed = datetime.strptime(self.timestamp, "%m/%d/%Y %I:%M:%S %p")
+            return parsed.replace(tzinfo=source_timezone)
         if parsed.tzinfo is None:
             return parsed.replace(tzinfo=source_timezone)
         return parsed
@@ -171,9 +232,20 @@ def parse_paynkolay_payment_result(
 ) -> PaynkolayThreeDSInitializeResult | PaynkolayPaymentResult:
     """Parse a Paynkolay payment response/result into a typed provider model."""
 
-    if "BANK_REQUEST_MESSAGE" in payload:
+    bank_request_message = payload.get("BANK_REQUEST_MESSAGE")
+    if isinstance(bank_request_message, str) and bank_request_message.strip():
         return PaynkolayThreeDSInitializeResult.model_validate(payload)
-    return PaynkolayPaymentResult.model_validate(payload)
+    normalized_payload = _normalize_payment_result_payload(payload)
+    return PaynkolayPaymentResult.model_validate(normalized_payload)
+
+
+def _normalize_payment_result_payload(payload: dict[str, object]) -> dict[str, object]:
+    normalized = dict(payload)
+    hash_data_v2 = normalized.get("hashDataV2")
+    provider_hash_data_v2 = normalized.get("hashDatav2")
+    if hash_data_v2 is None and provider_hash_data_v2 is not None:
+        normalized["hashDataV2"] = provider_hash_data_v2
+    return normalized
 
 
 class PaynkolayPaymentListRow(PaynkolayProviderModel):

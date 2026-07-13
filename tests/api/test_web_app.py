@@ -972,6 +972,101 @@ async def test_payment_form_records_final_provider_result() -> None:
 
 @pytest.mark.api
 @pytest.mark.asyncio
+async def test_payment_form_records_paynkolay_moto_provider_result_variant() -> None:
+    final_result = PaynkolayPaymentResult.model_validate(
+        {
+            "RESPONSE_CODE": 2,
+            "RESPONSE_DATA": "İşlem Başarılı",
+            "USE_3D": "false",
+            "RND": "1783940656135",
+            "MERCHANT_NO": "400000273",
+            "AUTH_CODE": "462514",
+            "REFERENCE_CODE": "IKSIRPF530362",
+            "CLIENT_REFERENCE_CODE": "order-web-moto-variant",
+            "TimeStamp": None,
+            "TRANSACTION_AMOUNT": "22.00",
+            "AUTHORIZATION_AMOUNT": "22.00",
+            "INSTALLMENT": "1",
+            "CURRENCY_CODE": Currency.TRY,
+            "BANK_REQUEST_MESSAGE": None,
+            "hashDatav2": "hash",
+        }
+    )
+    app = create_app()
+    app.dependency_overrides[get_payment_initializer] = lambda: FakePaymentInitializer(
+        provider_result=final_result
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/payments",
+            json={
+                "order_id": "order-web-moto-variant",
+                "amount": "22.00",
+                "currency": "TRY",
+                "card_number": "4546711234567894",
+                "card_holder": "PAYNKOLAY TEST",
+                "expiry_month": 12,
+                "expiry_year": 2026,
+                "cvv": "000",
+                "requires_3ds": False,
+                "installment_count": 1,
+            },
+        )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "completed"
+    assert payload["requires_3ds"] is False
+    assert payload["provider_transaction_id"] == "IKSIRPF530362"
+    assert payload["three_ds"] is None
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_payment_form_records_provider_declined_init_result() -> None:
+    declined_result = PaynkolayPaymentResult.model_validate(
+        {
+            "RESPONSE_CODE": 0,
+            "RESPONSE_DATA": "İşlem Başarısız.",
+            "TRANSACTION_AMOUNT": "22,00",
+            "TimeStamp": "7/13/2026 2:05:18 PM",
+            "BANK_REQUEST_MESSAGE": None,
+            "hashDatav2": "declined-hash",
+        }
+    )
+    app = create_app()
+    app.dependency_overrides[get_payment_initializer] = lambda: FakePaymentInitializer(
+        provider_result=declined_result,
+        status_fails=True,
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/payments",
+            json={
+                "order_id": "order-web-provider-declined",
+                "amount": "22.00",
+                "currency": "TRY",
+                "card_number": "6501738564461396",
+                "card_holder": "PAYNKOLAY TEST",
+                "expiry_month": 12,
+                "expiry_year": 2026,
+                "cvv": "000",
+                "requires_3ds": True,
+                "installment_count": 1,
+            },
+        )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "failed"
+    assert payload["failure_reason"] == "İşlem Başarısız."
+    assert payload["three_ds"] is None
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
 async def test_payment_form_keeps_final_result_when_payment_list_verification_fails() -> None:
     final_result = PaynkolayPaymentResult.model_validate(
         {

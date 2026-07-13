@@ -156,6 +156,43 @@ def test_parse_paynkolay_payment_result_uses_result_payload_when_no_3ds_html() -
     assert result.reference_code == "IKSIRPF102168"
 
 
+@pytest.mark.api
+def test_parse_paynkolay_moto_result_ignores_null_3ds_form_field() -> None:
+    result = parse_paynkolay_payment_result(
+        successful_result_payload(
+            BANK_REQUEST_MESSAGE=None,
+            USE_3D="false",
+            TimeStamp=None,
+            hashDataV2=None,
+            hashDatav2=PAYMENT_RESULT_HASH,
+        )
+    )
+
+    assert isinstance(result, PaynkolayPaymentResult)
+    assert result.status is PaymentStatus.CAPTURED
+    assert result.use_3d == "false"
+    assert result.hash_data_v2 == PAYMENT_RESULT_HASH
+
+
+@pytest.mark.api
+def test_parse_paynkolay_declined_init_result_with_null_provider_fields() -> None:
+    result = parse_paynkolay_payment_result(
+        {
+            "BANK_REQUEST_MESSAGE": None,
+            "RESPONSE_CODE": 0,
+            "RESPONSE_DATA": "İşlem Başarısız.",
+            "TRANSACTION_AMOUNT": "22,00",
+            "TimeStamp": "7/13/2026 2:05:18 PM",
+            "hashDatav2": "declined-hash",
+        }
+    )
+
+    assert isinstance(result, PaynkolayPaymentResult)
+    assert result.status is PaymentStatus.FAILED
+    assert result.response_code == "0"
+    assert result.response_data == "İşlem Başarısız."
+
+
 def payment_list_row_payload(**overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
         "REFERENCE_CODE": "IKSIRPF102168",
