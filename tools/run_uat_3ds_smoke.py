@@ -53,6 +53,12 @@ from paynkolay_pos.models import (
 )
 from paynkolay_pos.reporting import evidence_json
 from paynkolay_pos.scenarios import PaymentScenario, load_payment_scenario_catalog_from_env
+from paynkolay_pos.three_ds import (
+    AcsFieldEvidence,
+    AcsFrameEvidence,
+    AcsProfileEvidence,
+    detect_acs_profile,
+)
 
 OTP_SELECTORS = (
     'input[name="otp"]',
@@ -644,6 +650,7 @@ def _matrix_entry_for_challenge(
         init=_init_observation_for_payload(response_payload),
         acs=_acs_observation_for_challenge(
             challenge_result,
+            brand=card.brand,
             expected_otp_from_page=_expected_otp_from_page(card),
         ),
         payment_list=_payment_list_observation(final_status),
@@ -732,6 +739,7 @@ def _init_observation_for_payload(response_payload: dict[str, Any]) -> InitObser
 def _acs_observation_for_challenge(
     challenge_result: dict[str, object],
     *,
+    brand: CardBrand,
     expected_otp_from_page: bool,
 ) -> AcsObservation:
     completed = bool(challenge_result.get("completed"))
@@ -739,7 +747,15 @@ def _acs_observation_for_challenge(
     reason = _optional_text(challenge_result.get("reason"))
     final_url = _optional_text(challenge_result.get("final_url"))
     title = _optional_text(challenge_result.get("title"))
-    visible_text = _challenge_visible_text(challenge_result)
+    profile = detect_acs_profile(
+        AcsProfileEvidence(
+            brand=brand,
+            title=title,
+            final_url=final_url,
+            reason=reason,
+            frames=_profile_frames(challenge_result),
+        )
+    )
 
     if completed:
         return AcsObservation(
@@ -750,30 +766,23 @@ def _acs_observation_for_challenge(
             ),
             page_title=title,
             safe_url=final_url,
-            reason=reason,
-            otp_input_found=challenge_result.get("otp_selector") is not None,
-            submit_control_found=challenge_result.get("submit_selector") is not None,
+            reason=profile.reason,
+            otp_input_found=profile.otp_input_found,
+            submit_control_found=profile.submit_control_found,
             returned_to_callback=returned_to_callback,
         )
 
-    if _looks_like_blank_or_redirect_error(final_url, reason):
-        classification = AcsScreenClassification.BLANK_OR_REDIRECT_ERROR
-    elif _looks_like_acs_error_screen(visible_text):
-        classification = AcsScreenClassification.ACS_ERROR_SCREEN
-    elif reason == "otp_value_not_found_in_form":
+    classification = profile.screen_classification
+    if reason == "otp_value_not_found_in_form":
         classification = AcsScreenClassification.SMS_MANUAL_REQUIRED
-    elif reason in {"otp_selector_not_found", "submit_selector_not_found"}:
-        classification = AcsScreenClassification.UNSUPPORTED
-    else:
-        classification = AcsScreenClassification.UNKNOWN
 
     return AcsObservation(
         classification=classification,
         page_title=title,
         safe_url=final_url,
-        reason=reason,
-        otp_input_found=challenge_result.get("otp_selector") is not None,
-        submit_control_found=challenge_result.get("submit_selector") is not None,
+        reason=profile.reason,
+        otp_input_found=profile.otp_input_found,
+        submit_control_found=profile.submit_control_found,
         returned_to_callback=returned_to_callback,
     )
 
@@ -811,40 +820,33 @@ def _optional_text(value: object) -> str | None:
     return text or None
 
 
-def _looks_like_blank_or_redirect_error(final_url: str | None, reason: str | None) -> bool:
-    if reason == "playwright_error":
-        return True
-    if final_url is None:
-        return False
-    return final_url.startswith("chrome-error://") or final_url == "about:blank"
-
-
-def _challenge_visible_text(challenge_result: dict[str, object]) -> str:
-    texts: list[str] = []
+def _profile_frames(challenge_result: dict[str, object]) -> tuple[AcsFrameEvidence, ...]:
+    frames: list[AcsFrameEvidence] = []
     for frame in _object_list(challenge_result.get("frames")):
-        text_prefix = frame.get("text_prefix")
-        if text_prefix is not None:
-            texts.append(str(text_prefix))
-    return " ".join(texts)
+        fields = tuple(
+            AcsFieldEvidence(
+                tag=_optional_text(field.get("tag")),
+                type=_optional_text(field.get("type")),
+                name=_optional_text(field.get("name")),
+                id=_optional_text(field.get("id")),
+                text=_optional_text(field.get("text")),
+            )
+            for field in _object_list(frame.get("visible_fields"))
+        )
+        frames.append(
+            AcsFrameEvidence(
+                url=_optional_text(frame.get("url")),
+                text_prefix=_optional_text(frame.get("text_prefix")) or "",
+                visible_fields=fields,
+            )
+        )
+    return tuple(frames)
 
 
 def _object_list(value: object) -> list[dict[str, object]]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, dict)]
-
-
-def _looks_like_acs_error_screen(visible_text: str) -> bool:
-    lowered = visible_text.lower()
-    error_markers = (
-        "3d-",
-        "gerçekleştiremiyoruz",
-        "gerceklestiremiyoruz",
-        "tekrar deneyiniz",
-        "hata",
-        "error",
-    )
-    return any(marker in lowered for marker in error_markers)
 
 
 def _form_summary(html: str) -> dict[str, object]:
