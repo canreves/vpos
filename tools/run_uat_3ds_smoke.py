@@ -63,9 +63,12 @@ OTP_SELECTORS = (
     'input[id*="sifre" i]',
     'input[name*="password" i]',
     'input[id*="password" i]',
+    'input[name*="pass" i]',
+    'input[id*="pass" i]',
     'input[type="password"]',
     'input[type="tel"]',
     'input[type="text"]',
+    'input[type="number"]',
 )
 SUBMIT_SELECTORS = (
     'button[type="submit"]',
@@ -736,6 +739,7 @@ def _acs_observation_for_challenge(
     reason = _optional_text(challenge_result.get("reason"))
     final_url = _optional_text(challenge_result.get("final_url"))
     title = _optional_text(challenge_result.get("title"))
+    visible_text = _challenge_visible_text(challenge_result)
 
     if completed:
         return AcsObservation(
@@ -754,6 +758,8 @@ def _acs_observation_for_challenge(
 
     if _looks_like_blank_or_redirect_error(final_url, reason):
         classification = AcsScreenClassification.BLANK_OR_REDIRECT_ERROR
+    elif _looks_like_acs_error_screen(visible_text):
+        classification = AcsScreenClassification.ACS_ERROR_SCREEN
     elif reason == "otp_value_not_found_in_form":
         classification = AcsScreenClassification.SMS_MANUAL_REQUIRED
     elif reason in {"otp_selector_not_found", "submit_selector_not_found"}:
@@ -811,6 +817,34 @@ def _looks_like_blank_or_redirect_error(final_url: str | None, reason: str | Non
     if final_url is None:
         return False
     return final_url.startswith("chrome-error://") or final_url == "about:blank"
+
+
+def _challenge_visible_text(challenge_result: dict[str, object]) -> str:
+    texts: list[str] = []
+    for frame in _object_list(challenge_result.get("frames")):
+        text_prefix = frame.get("text_prefix")
+        if text_prefix is not None:
+            texts.append(str(text_prefix))
+    return " ".join(texts)
+
+
+def _object_list(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _looks_like_acs_error_screen(visible_text: str) -> bool:
+    lowered = visible_text.lower()
+    error_markers = (
+        "3d-",
+        "gerçekleştiremiyoruz",
+        "gerceklestiremiyoruz",
+        "tekrar deneyiniz",
+        "hata",
+        "error",
+    )
+    return any(marker in lowered for marker in error_markers)
 
 
 def _form_summary(html: str) -> dict[str, object]:
