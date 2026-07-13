@@ -36,11 +36,28 @@
     return "neutral";
   }
 
+  function hasValidThreeDsUrl(url) {
+    const normalized = String(url || "").trim();
+    return Boolean(normalized && normalized !== "#" && normalized !== "/#");
+  }
+
+  function hideThreeDsLink() {
+    threeDsLink.href = "/#";
+    threeDsLink.classList.add("hidden");
+    threeDsLink.setAttribute("aria-disabled", "true");
+  }
+
+  function showThreeDsLink(url) {
+    threeDsLink.href = url;
+    threeDsLink.classList.remove("hidden");
+    threeDsLink.removeAttribute("aria-disabled");
+  }
+
   function clearResult() {
     Object.values(fields).forEach((field) => {
       field.textContent = "-";
     });
-    threeDsLink.classList.add("hidden");
+    hideThreeDsLink();
   }
 
   function renderPayment(payment) {
@@ -64,11 +81,11 @@
     fields.failure.textContent = payment.failure_reason || "-";
     fields.updated.textContent = payment.updated_at;
 
-    if (payment.links && payment.links.three_ds) {
-      threeDsLink.href = payment.links.three_ds;
-      threeDsLink.classList.remove("hidden");
+    const threeDsUrl = payment.links && payment.links.three_ds;
+    if (hasValidThreeDsUrl(threeDsUrl)) {
+      showThreeDsLink(threeDsUrl);
     } else {
-      threeDsLink.classList.add("hidden");
+      hideThreeDsLink();
     }
 
     setState(payment.status, stateKind(payment.status));
@@ -106,9 +123,19 @@
     lookupPayment(lookupInput.value);
   });
 
+  threeDsLink.addEventListener("click", (event) => {
+    if (!hasValidThreeDsUrl(threeDsLink.getAttribute("href"))) {
+      event.preventDefault();
+      hideThreeDsLink();
+      message.textContent = "3D Secure challenge URL was not returned for this payment.";
+    }
+  });
+
   const initialOrderId = new URLSearchParams(window.location.search).get("order_id");
   if (initialOrderId) {
     lookupInput.value = initialOrderId;
     lookupPayment(initialOrderId);
   }
+
+  hideThreeDsLink();
 })();

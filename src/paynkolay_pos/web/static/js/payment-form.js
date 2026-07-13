@@ -19,6 +19,8 @@
   const flowOptions = Array.from(document.querySelectorAll(".flow-option"));
   const installmentSelect = document.getElementById("installment-count");
   const installmentStatus = document.getElementById("installment-status");
+  const requires3dsField = document.getElementById("requires-3ds-field");
+  const requires3dsInput = document.getElementById("requires-3ds");
   let installmentTimer = null;
   let selectedNewCardFlow = "moto";
   let availableCards = [];
@@ -41,6 +43,35 @@
     state.className = `status-pill ${kind === "success" ? "success" : kind === "error" ? "error" : "neutral"}`;
   }
 
+  function hasValidThreeDsUrl(url) {
+    const normalized = String(url || "").trim();
+    return Boolean(normalized && normalized !== "#" && normalized !== "/#");
+  }
+
+  function hideThreeDsLink() {
+    threeDsLink.href = "/#";
+    threeDsLink.classList.add("hidden");
+    threeDsLink.setAttribute("aria-disabled", "true");
+  }
+
+  function showThreeDsLink(url) {
+    threeDsLink.href = url;
+    threeDsLink.classList.remove("hidden");
+    threeDsLink.removeAttribute("aria-disabled");
+  }
+
+  function applySelectedCardFlow(card) {
+    const requires3ds = Boolean(card.requires_3ds);
+    requires3dsInput.checked = requires3ds;
+    requires3dsInput.disabled = true;
+    requires3dsField.classList.toggle("hidden", !requires3ds);
+  }
+
+  function useManualCardFlow() {
+    requires3dsInput.disabled = false;
+    requires3dsField.classList.remove("hidden");
+  }
+
   function formPayload() {
     const data = new FormData(form);
     return {
@@ -52,7 +83,7 @@
       expiry_month: Number(data.get("expiry_month")),
       expiry_year: Number(data.get("expiry_year")),
       cvv: data.get("cvv"),
-      requires_3ds: data.get("requires_3ds") === "on",
+      requires_3ds: requires3dsInput.checked,
       installment_count: Number(data.get("installment_count")),
     };
   }
@@ -149,7 +180,8 @@
     document.getElementById("expiry-month").value = card.expiry_month;
     document.getElementById("expiry-year").value = card.expiry_year;
     document.getElementById("cvv").value = card.cvv;
-    document.getElementById("requires-3ds").checked = Boolean(card.requires_3ds);
+    applySelectedCardFlow(card);
+    hideThreeDsLink();
     setDefaultInstallments();
     scheduleInstallmentRefresh();
   }
@@ -161,7 +193,7 @@
       currency: data.get("currency"),
       card_brand: data.get("card_brand"),
       card_number: String(data.get("card_number") || "").replace(/\s+/g, ""),
-      requires_3ds: data.get("requires_3ds") === "on",
+      requires_3ds: requires3dsInput.checked,
     };
   }
 
@@ -371,15 +403,36 @@
     document.getElementById("currency"),
     document.getElementById("card-brand"),
     document.getElementById("card-number"),
-    document.getElementById("requires-3ds"),
+    requires3dsInput,
   ].forEach((element) => {
     element.addEventListener("input", scheduleInstallmentRefresh);
     element.addEventListener("change", scheduleInstallmentRefresh);
   });
 
+  [
+    document.getElementById("card-brand"),
+    document.getElementById("card-number"),
+    document.getElementById("card-holder"),
+    document.getElementById("expiry-month"),
+    document.getElementById("expiry-year"),
+    document.getElementById("cvv"),
+  ].forEach((element) => {
+    element.addEventListener("input", useManualCardFlow);
+    element.addEventListener("change", useManualCardFlow);
+  });
+
+  threeDsLink.addEventListener("click", (event) => {
+    if (!hasValidThreeDsUrl(threeDsLink.getAttribute("href"))) {
+      event.preventDefault();
+      hideThreeDsLink();
+      setMessage("3D Secure challenge URL was not returned for this payment.", "error");
+    }
+  });
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     submitButton.disabled = true;
+    hideThreeDsLink();
     setMessage("Submitting", "neutral");
 
     try {
@@ -397,13 +450,17 @@
         resultFields.paymentListStatus.textContent = "-";
         resultFields.paymentListAuth.textContent = "-";
       }
-      if (response.three_ds && response.three_ds.render_url) {
-        threeDsLink.href = response.three_ds.render_url;
-        threeDsLink.classList.remove("hidden");
+      const threeDsUrl = response.three_ds && response.three_ds.render_url;
+      if (hasValidThreeDsUrl(threeDsUrl)) {
+        showThreeDsLink(threeDsUrl);
+        setMessage(response.message, "success");
+      } else if (response.requires_3ds && response.status === "pending_3ds") {
+        hideThreeDsLink();
+        setMessage("3D Secure challenge URL was not returned for this payment.", "error");
       } else {
-        threeDsLink.classList.add("hidden");
+        hideThreeDsLink();
+        setMessage(response.message, "success");
       }
-      setMessage(response.message, "success");
     } catch (error) {
       setMessage(error.message, "error");
     } finally {
@@ -417,4 +474,6 @@
     environmentLabel.textContent = "Config unavailable";
     setMessage(error.message, "error");
   });
+
+  hideThreeDsLink();
 })();
