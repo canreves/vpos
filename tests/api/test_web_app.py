@@ -1079,6 +1079,9 @@ async def test_payment_form_records_provider_declined_init_result() -> None:
     assert payload["provider_response_code"] == "0"
     assert payload["provider_response_data"] == "İşlem Başarısız."
     assert payload["failure_reason"] == "İşlem Başarısız."
+    assert "Provider code=0" in payload["message"]
+    assert "provider message=İşlem Başarısız." in payload["message"]
+    assert "VISA 650173******1396" in payload["message"]
     assert payload["three_ds"] is None
     assert "6501738564461396" not in response.text
     assert "000" not in response.text
@@ -1134,6 +1137,8 @@ async def test_payment_form_keeps_final_result_when_payment_list_verification_fa
     assert payload["provider_transaction_id"] == "ref-1001"
     assert payload["provider_response_code"] == "2"
     assert payload["provider_response_data"] == "Islem Basarili"
+    assert "Provider code=2" in payload["message"]
+    assert "provider message=Islem Basarili" in payload["message"]
     assert payload["payment_list"] == {
         "status": None,
         "provider_transaction_id": None,

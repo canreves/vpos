@@ -176,7 +176,10 @@ async def create_payment(
         )
         return PaymentFormResponse.from_session(
             session,
-            message="Payment provider returned a final payment result.",
+            message=_final_result_message(
+                provider_result=provider_result,
+                provider_request=provider_request,
+            ),
         )
 
     raise TypeError(f"unsupported provider result type: {type(provider_result).__name__}")
@@ -198,6 +201,22 @@ def _provider_request_summary(outcome: PaymentInitializationOutcome) -> Provider
         payment_channel=payment_request.payment_channel.value,
         success_url=outcome.success_url,
         fail_url=outcome.fail_url,
+    )
+
+
+def _final_result_message(
+    *,
+    provider_result: PaynkolayPaymentResult,
+    provider_request: ProviderRequestSummary,
+) -> str:
+    response_data = provider_result.response_data or "-"
+    return (
+        "Payment provider returned a final payment result. "
+        f"Provider code={provider_result.response_code}; "
+        f"provider message={response_data}; "
+        f"request={provider_request.card_brand.upper()} {provider_request.masked_pan} "
+        f"use3D={provider_request.use_3d} amount={provider_request.amount} "
+        f"{provider_request.currency.value}."
     )
 
 
