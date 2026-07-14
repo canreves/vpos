@@ -210,20 +210,43 @@ def visible_otp_from_evidence(evidence: AcsProfileEvidence) -> str | None:
 
 
 def _visible_otp_from_text(text: str) -> str | None:
-    marker_pattern = (
-        r"otp|sms|şifre|sifre|password|passcode|code|kod|doğrulama|dogrulama"
+    marker_pattern = r"otp|sms|şifre|sifre|passcode|code|kod|doğrulama|dogrulama"
+    negative_pattern = (
+        r"tutar|amount|try|tl|tarih|date|saat|time|kart|card|telefon|phone|gsm|"
+        r"işyeri|isyeri|merchant|referans|reference|ref|sipariş|siparis|order|timer"
     )
-    for line in text.splitlines():
+    action_pattern = r"yardım|yardim|resend|iptal|cancel|onayla|submit|tamam|gönder|gonder"
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+    for line in lines:
         if re.search(marker_pattern, line, flags=re.IGNORECASE) is None:
+            continue
+        if re.search(negative_pattern, line, flags=re.IGNORECASE) is not None:
             continue
         match = re.search(r"(?<!\d)(\d{6})(?!\d)", line)
         if match is not None:
             return match.group(1)
 
+    for index, line in enumerate(lines):
+        if re.search(marker_pattern, line, flags=re.IGNORECASE) is None:
+            continue
+        candidates: list[str] = []
+        for candidate_line in lines[index + 1 : index + 9]:
+            if re.search(action_pattern, candidate_line, flags=re.IGNORECASE) is not None:
+                break
+            if re.search(negative_pattern, candidate_line, flags=re.IGNORECASE) is not None:
+                continue
+            candidates.extend(re.findall(r"(?<!\d)(\d{6})(?!\d)", candidate_line))
+        if candidates:
+            return candidates[-1]
+
     for match in re.finditer(r"(?<!\d)(\d{6})(?!\d)", text):
         start = max(0, match.start() - 40)
         end = min(len(text), match.end() + 40)
-        if re.search(marker_pattern, text[start:end], flags=re.IGNORECASE) is not None:
+        context = text[start:end]
+        if re.search(negative_pattern, context, flags=re.IGNORECASE) is not None:
+            continue
+        if re.search(marker_pattern, context, flags=re.IGNORECASE) is not None:
             return match.group(1)
     return None
 

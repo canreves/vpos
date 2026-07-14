@@ -12,6 +12,7 @@ from paynkolay_pos.three_ds import (
     AcsProfileEvidence,
     detect_acs_profile,
 )
+from paynkolay_pos.three_ds.acs_profile import visible_otp_from_evidence
 
 
 def frame(
@@ -134,6 +135,44 @@ def test_detect_acs_profile_prefers_visible_otp_over_sms_manual_text() -> None:
 
     assert profile.screen_classification is AcsScreenClassification.VISIBLE_OTP_CODE
     assert profile.otp_strategy is AcsOtpStrategy.VISIBLE_PAGE_OTP
+
+
+@pytest.mark.three_ds
+def test_visible_otp_detection_uses_code_after_visa_timer_block() -> None:
+    evidence = AcsProfileEvidence(
+        brand=CardBrand.VISA,
+        title="International Security Platform 3D",
+        final_url="https://vpostest.qnb.com.tr/PayforACSSimulator/",
+        frames=(
+            frame(
+                url="https://vpostest.qnb.com.tr/PayforACSSimulator/",
+                text_prefix=(
+                    "Verified by VISA\n"
+                    "Üye İşyeri : PAYNKOLAY / KOLAYPOSDESTE\n"
+                    "Tutar : 300,00 TRY\n"
+                    "Tarih : 15:10:08\n"
+                    "Kart Numarası : XXXX XXXX XXXX 6111\n"
+                    "Telefon : XXX XXX 1004\n"
+                    "Güvenlik Kodu :\n"
+                    "Cavv(Sadece :\n"
+                    "biliyorsanız giriniz)\n"
+                    "169\n"
+                    "430793\n"
+                    "Yardım Resend Password İptal Onayla"
+                ),
+                fields=(
+                    AcsFieldEvidence(tag="input", type="password", name="password"),
+                    AcsFieldEvidence(tag="input", type="text", name="cavv"),
+                    AcsFieldEvidence(tag="button", type="submit", text="Onayla"),
+                ),
+            ),
+        ),
+    )
+    profile = detect_acs_profile(evidence)
+
+    assert profile.screen_classification is AcsScreenClassification.VISIBLE_OTP_CODE
+    assert profile.otp_strategy is AcsOtpStrategy.VISIBLE_PAGE_OTP
+    assert visible_otp_from_evidence(evidence) == "430793"
 
 
 @pytest.mark.three_ds

@@ -320,7 +320,8 @@ async def _frame_text_prefix(frame: Frame) -> str:
         text = await frame.locator("body").inner_text(timeout=1_000)
     except PlaywrightError:
         return ""
-    return " ".join(text.split())[:1000]
+    lines = [" ".join(line.split()) for line in text.splitlines()]
+    return "\n".join(line for line in lines if line)[:1000]
 
 
 async def _visible_field_metadata_for_frame(frame: Frame) -> list[AcsFieldEvidence]:
