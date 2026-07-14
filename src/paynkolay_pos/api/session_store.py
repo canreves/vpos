@@ -10,6 +10,7 @@ from decimal import Decimal
 from paynkolay_pos.api.session_models import (
     PaymentSession,
     PaymentSessionStatus,
+    ProviderRequestSummary,
     mask_pan,
     utc_now,
 )
@@ -82,7 +83,10 @@ class PaymentSessionStore:
         order_id: str,
         status: PaymentSessionStatus,
         *,
+        provider_request: ProviderRequestSummary | None = None,
         provider_transaction_id: str | None = None,
+        provider_response_code: str | None = None,
+        provider_response_data: str | None = None,
         failure_reason: str | None = None,
     ) -> PaymentSession:
         """Update provider-facing state on a tracked session."""
@@ -100,6 +104,15 @@ class PaymentSessionStore:
                     "provider_transaction_id": provider_transaction_id
                     if provider_transaction_id is not None
                     else session.provider_transaction_id,
+                    "provider_request": provider_request
+                    if provider_request is not None
+                    else session.provider_request,
+                    "provider_response_code": provider_response_code
+                    if provider_response_code is not None
+                    else session.provider_response_code,
+                    "provider_response_data": provider_response_data
+                    if provider_response_data is not None
+                    else session.provider_response_data,
                     "failure_reason": failure_reason
                     if failure_reason is not None
                     else session.failure_reason,

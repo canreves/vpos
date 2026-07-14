@@ -1061,8 +1061,27 @@ async def test_payment_form_records_provider_declined_init_result() -> None:
     assert response.status_code == 202
     payload = response.json()
     assert payload["status"] == "failed"
+    assert payload["provider_request"] == {
+        "client_ref_code": "order-web-provider-declined",
+        "amount": "22.00",
+        "currency": "TRY",
+        "use_3d": True,
+        "installment_no": 1,
+        "card_brand": "visa",
+        "masked_pan": "650173******1396",
+        "expiry_month": 12,
+        "expiry_year": 2026,
+        "transaction_type": "SALES",
+        "payment_channel": "e_commerce",
+        "success_url": "https://merchant.example.test/payments/result/success",
+        "fail_url": "https://merchant.example.test/payments/result/fail",
+    }
+    assert payload["provider_response_code"] == "0"
+    assert payload["provider_response_data"] == "İşlem Başarısız."
     assert payload["failure_reason"] == "İşlem Başarısız."
     assert payload["three_ds"] is None
+    assert "6501738564461396" not in response.text
+    assert "000" not in response.text
 
 
 @pytest.mark.api
@@ -1113,6 +1132,8 @@ async def test_payment_form_keeps_final_result_when_payment_list_verification_fa
     payload = response.json()
     assert payload["status"] == "completed"
     assert payload["provider_transaction_id"] == "ref-1001"
+    assert payload["provider_response_code"] == "2"
+    assert payload["provider_response_data"] == "Islem Basarili"
     assert payload["payment_list"] == {
         "status": None,
         "provider_transaction_id": None,

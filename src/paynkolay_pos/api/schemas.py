@@ -7,7 +7,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
-from paynkolay_pos.api.session_models import PaymentSession, PaymentSessionStatus
+from paynkolay_pos.api.session_models import (
+    PaymentSession,
+    PaymentSessionStatus,
+    ProviderRequestSummary,
+)
 from paynkolay_pos.config import CardBrand
 from paynkolay_pos.models import Currency
 
@@ -261,7 +265,10 @@ class PaymentFormResponse(BaseModel):
     currency: Currency
     masked_pan: str
     requires_3ds: bool
+    provider_request: ProviderRequestSummary | None = None
     provider_transaction_id: str | None = None
+    provider_response_code: str | None = None
+    provider_response_data: str | None = None
     failure_reason: str | None = None
     payment_list: PaymentListStatusSummary | None = None
     three_ds: dict[str, str] | None = None
@@ -291,7 +298,10 @@ class PaymentFormResponse(BaseModel):
             currency=session.currency,
             masked_pan=session.masked_pan,
             requires_3ds=session.requires_3ds,
+            provider_request=session.provider_request,
             provider_transaction_id=session.provider_transaction_id,
+            provider_response_code=session.provider_response_code,
+            provider_response_data=session.provider_response_data,
             failure_reason=session.failure_reason,
             payment_list=PaymentListStatusSummary.from_session(session),
             three_ds=three_ds,

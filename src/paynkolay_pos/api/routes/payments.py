@@ -14,6 +14,7 @@ from paynkolay_pos.api.dependencies import (
     get_three_ds_form_store,
 )
 from paynkolay_pos.api.payment_initializer import (
+    PaymentInitializationOutcome,
     PaymentProviderInitializationError,
     PaymentProviderStatusVerificationError,
     SupportsPaymentInitializer,
@@ -23,7 +24,12 @@ from paynkolay_pos.api.schemas import (
     PaymentFormResponse,
     PaymentLookupResponse,
 )
-from paynkolay_pos.api.session_models import PaymentSession, PaymentSessionStatus
+from paynkolay_pos.api.session_models import (
+    PaymentSession,
+    PaymentSessionStatus,
+    ProviderRequestSummary,
+    mask_pan,
+)
 from paynkolay_pos.api.session_store import (
     PaymentSessionAlreadyExistsError,
     PaymentSessionNotFoundError,
@@ -106,6 +112,7 @@ async def create_payment(
         ) from exc
 
     provider_result = outcome.provider_result
+    provider_request = _provider_request_summary(outcome)
     if isinstance(provider_result, PaynkolayThreeDSInitializeResult):
         await three_ds_form_store.put(
             order_id,
@@ -114,6 +121,7 @@ async def create_payment(
         session = await session_store.update_status(
             order_id,
             PaymentSessionStatus.PENDING_3DS,
+            provider_request=provider_request,
         )
         await _log_payment_event(
             external_logger,
@@ -143,7 +151,10 @@ async def create_payment(
         session = await session_store.update_status(
             order_id,
             session_status,
+            provider_request=provider_request,
             provider_transaction_id=provider_result.reference_code,
+            provider_response_code=provider_result.response_code,
+            provider_response_data=provider_result.response_data,
             failure_reason=(
                 provider_result.response_data
                 if session_status is PaymentSessionStatus.FAILED
@@ -169,6 +180,25 @@ async def create_payment(
         )
 
     raise TypeError(f"unsupported provider result type: {type(provider_result).__name__}")
+
+
+def _provider_request_summary(outcome: PaymentInitializationOutcome) -> ProviderRequestSummary:
+    payment_request = outcome.payment_request
+    return ProviderRequestSummary(
+        client_ref_code=payment_request.order_id,
+        amount=payment_request.canonical_amount,
+        currency=payment_request.currency,
+        use_3d=payment_request.requires_3ds,
+        installment_no=payment_request.installment_count,
+        card_brand=payment_request.card.brand.value,
+        masked_pan=mask_pan(payment_request.card.pan.get_secret_value()),
+        expiry_month=payment_request.card.expiry_month,
+        expiry_year=payment_request.card.expiry_year,
+        transaction_type="SALES",
+        payment_channel=payment_request.payment_channel.value,
+        success_url=outcome.success_url,
+        fail_url=outcome.fail_url,
+    )
 
 
 @router.get("/{order_id}", response_model=PaymentLookupResponse)

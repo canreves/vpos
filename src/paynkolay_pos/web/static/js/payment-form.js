@@ -32,6 +32,11 @@
     amount: document.getElementById("result-amount"),
     threeDs: document.getElementById("result-3ds"),
     providerRef: document.getElementById("result-provider-ref"),
+    providerCode: document.getElementById("result-provider-code"),
+    providerMessage: document.getElementById("result-provider-message"),
+    requestRef: document.getElementById("result-request-ref"),
+    requestCard: document.getElementById("result-request-card"),
+    requestFlow: document.getElementById("result-request-flow"),
     paymentListStatus: document.getElementById("result-payment-list-status"),
     paymentListAuth: document.getElementById("result-payment-list-auth"),
   };
@@ -442,6 +447,20 @@
       resultFields.amount.textContent = `${response.amount} ${response.currency}`;
       resultFields.threeDs.textContent = response.requires_3ds ? "Required" : "Not required";
       resultFields.providerRef.textContent = response.provider_transaction_id || "-";
+      resultFields.providerCode.textContent = response.provider_response_code || "-";
+      resultFields.providerMessage.textContent = response.provider_response_data || "-";
+      if (response.provider_request) {
+        const providerRequest = response.provider_request;
+        resultFields.requestRef.textContent = providerRequest.client_ref_code || "-";
+        resultFields.requestCard.textContent =
+          `${String(providerRequest.card_brand || "").toUpperCase()} ${providerRequest.masked_pan || "-"} ${providerRequest.expiry_month || "-"}/${providerRequest.expiry_year || "-"}`;
+        resultFields.requestFlow.textContent =
+          `use3D=${providerRequest.use_3d} installment=${providerRequest.installment_no} channel=${providerRequest.payment_channel}`;
+      } else {
+        resultFields.requestRef.textContent = "-";
+        resultFields.requestCard.textContent = "-";
+        resultFields.requestFlow.textContent = "-";
+      }
       if (response.payment_list) {
         resultFields.paymentListStatus.textContent =
           response.payment_list.status || response.payment_list.error || "-";

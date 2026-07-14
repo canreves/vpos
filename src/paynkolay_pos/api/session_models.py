@@ -11,6 +11,24 @@ from pydantic import BaseModel, Field, field_validator
 from paynkolay_pos.models import Currency, PaymentStatus
 
 
+class ProviderRequestSummary(BaseModel):
+    """Sanitized provider request fields safe to expose in UI diagnostics."""
+
+    client_ref_code: str = Field(min_length=1, max_length=64)
+    amount: str = Field(min_length=1, max_length=32)
+    currency: Currency
+    use_3d: bool
+    installment_no: int = Field(ge=1, le=12)
+    card_brand: str = Field(min_length=1, max_length=32)
+    masked_pan: str = Field(min_length=8, max_length=24)
+    expiry_month: int = Field(ge=1, le=12)
+    expiry_year: int = Field(ge=2026, le=2100)
+    transaction_type: str = Field(min_length=1, max_length=32)
+    payment_channel: str = Field(min_length=1, max_length=32)
+    success_url: str = Field(min_length=1, max_length=500)
+    fail_url: str = Field(min_length=1, max_length=500)
+
+
 class PaymentSessionStatus(StrEnum):
     """States tracked by the browser payment workflow."""
 
@@ -37,7 +55,10 @@ class PaymentSession(BaseModel):
     card_holder: str = Field(min_length=1, max_length=64)
     requires_3ds: bool
     installment_count: int = Field(ge=1, le=12)
+    provider_request: ProviderRequestSummary | None = None
     provider_transaction_id: str | None = Field(default=None, min_length=1)
+    provider_response_code: str | None = Field(default=None, min_length=1)
+    provider_response_data: str | None = Field(default=None, min_length=1)
     failure_reason: str | None = Field(default=None, min_length=1)
     payment_list_status: PaymentStatus | None = None
     payment_list_provider_transaction_id: str | None = Field(default=None, min_length=1)
