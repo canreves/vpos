@@ -134,12 +134,12 @@ Confirmed flows:
 - PaymentList verification after successful payment.
 - 3D Secure initialization through `BANK_REQUEST_MESSAGE`.
 - Manual browser 3D Secure completion through the tester UI.
+- Headless Playwright 3D Secure OTP automation for web and parallel tester flows.
 - Same-day cancel request through `/v1/CancelRefundPayment`.
 
 Known UAT notes:
 
-- 3D Secure ACS behavior may differ between manual browser, headed Chromium, and headless
-  Chromium.
+- 3D Secure ACS behavior may differ by issuer simulator and card profile.
 - Reliable negative UAT testing requires official invalid card/CVV/OTP data from the
   provider.
 - PaymentList may continue to show the original sales row after cancel; the cancel service
@@ -188,6 +188,10 @@ Start the UAT tester UI:
 ```bash
 make uat-web
 ```
+
+The tester UI runs 3D Secure automation headless by default so parallel runs do not open
+one visible browser window per card. For visual debugging, pass
+`WEB_3DS_HEADED=1 WEB_3DS_CLOSE_DELAY=5`.
 
 Run guarded UAT smoke checks:
 
