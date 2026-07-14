@@ -71,8 +71,6 @@ class TestCard(StrictConfigModel):
         if not cvv.isdigit():
             raise ValueError("card CVV must contain digits only")
 
-        if self.requires_3ds and self.expected_otp is None:
-            raise ValueError("3DS test cards must define expected_otp")
         if not self.requires_3ds and self.expected_otp is not None:
             raise ValueError("non-3DS test cards must not define expected_otp")
 

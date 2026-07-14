@@ -751,7 +751,16 @@ async def test_cards_route_rejects_duplicate_alias(
 
 @pytest.mark.api
 @pytest.mark.asyncio
-async def test_cards_route_requires_otp_for_3ds_card(client: httpx.AsyncClient) -> None:
+async def test_cards_route_appends_new_3ds_card_without_otp(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "settings.json"
+    config_payload = build_private_runtime_config_payload(card_count=10)
+    config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+    monkeypatch.setenv("PAYNKOLAY_CONFIG_FILE", str(config_path))
+
     response = await client.post(
         "/api/cards",
         json={
@@ -765,8 +774,38 @@ async def test_cards_route_requires_otp_for_3ds_card(client: httpx.AsyncClient) 
         },
     )
 
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["alias"] == "manual_3ds_without_otp"
+    assert payload["flow_type"] == "secure"
+    assert payload["requires_3ds"] is True
+    assert payload["has_expected_otp"] is False
+    updated = json.loads(config_path.read_text(encoding="utf-8"))
+    cards = updated["environments"]["dev"]["cards"]
+    assert "expected_otp" not in cards[-1]
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_cards_route_rejects_non_numeric_otp_for_3ds_card(
+    client: httpx.AsyncClient,
+) -> None:
+    response = await client.post(
+        "/api/cards",
+        json={
+            "alias": "manual_3ds_bad_otp",
+            "brand": "visa",
+            "card_number": "4111111111111234",
+            "expiry_month": 10,
+            "expiry_year": 2030,
+            "cvv": "321",
+            "flow_type": "secure",
+            "expected_otp": "12AB56",
+        },
+    )
+
     assert response.status_code == 422
-    assert "expected_otp is required" in response.text
+    assert "expected_otp must contain digits only" in response.text
 
 
 @pytest.mark.api

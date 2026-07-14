@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
 from paynkolay_pos.config import EnvironmentName, RuntimeSettings, load_runtime_settings
 from paynkolay_pos.scenarios import load_payment_scenario_catalog
@@ -84,7 +83,7 @@ def test_runtime_settings_selects_active_environment() -> None:
 
 
 @pytest.mark.config
-def test_runtime_settings_rejects_3ds_card_without_otp() -> None:
+def test_runtime_settings_allows_3ds_card_without_otp() -> None:
     payload = valid_settings_payload()
     environments = payload["environments"]
     assert isinstance(environments, dict)
@@ -96,8 +95,9 @@ def test_runtime_settings_rejects_3ds_card_without_otp() -> None:
     assert isinstance(card, dict)
     card.pop("expected_otp")
 
-    with pytest.raises(ValidationError, match="3DS test cards must define expected_otp"):
-        RuntimeSettings.model_validate(payload)
+    settings = RuntimeSettings.model_validate(payload)
+
+    assert settings.environments["dev"].cards[0].expected_otp is None
 
 
 @pytest.mark.config

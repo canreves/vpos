@@ -83,10 +83,8 @@ class TestCardCreateRequest(BaseModel):
         if not cvv.isdigit():
             raise ValueError("cvv must contain digits only")
 
-        if self.flow_type == "secure":
-            otp = self.expected_otp.get_secret_value() if self.expected_otp is not None else ""
-            if not otp:
-                raise ValueError("expected_otp is required for 3D Secure cards")
+        if self.flow_type == "secure" and self.expected_otp is not None:
+            otp = self.expected_otp.get_secret_value()
             if not otp.isdigit():
                 raise ValueError("expected_otp must contain digits only")
         if self.flow_type == "moto" and self.expected_otp is not None:

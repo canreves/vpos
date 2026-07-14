@@ -326,7 +326,10 @@
       flow_type: selectedNewCardFlow,
     };
     if (selectedNewCardFlow === "secure") {
-      payload.expected_otp = String(data.get("expected_otp") || "").trim();
+      const expectedOtp = String(data.get("expected_otp") || "").trim();
+      if (expectedOtp) {
+        payload.expected_otp = expectedOtp;
+      }
     }
     return payload;
   }
