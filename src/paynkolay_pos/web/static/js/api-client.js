@@ -53,6 +53,15 @@
         method: "POST",
       });
     },
+    createParallelRun(payload) {
+      return requestJson("/api/parallel-runs", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    getParallelRun(runId) {
+      return requestJson(`/api/parallel-runs/${encodeURIComponent(runId)}`);
+    },
     createPayment(payload) {
       return requestJson("/api/payments", {
         method: "POST",
