@@ -34,8 +34,8 @@ SCENARIO_FILE ?=
 WEB_HOST ?= 127.0.0.1
 WEB_PORT ?= 8000
 WEB_RELOAD ?=
-WEB_3DS_HEADED ?= 1
-WEB_3DS_CLOSE_DELAY ?= 5
+WEB_3DS_HEADED ?= 0
+WEB_3DS_CLOSE_DELAY ?= 0
 
 help:
 	@echo "Paynkolay Sanal POS automation commands"
