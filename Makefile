@@ -34,6 +34,8 @@ SCENARIO_FILE ?=
 WEB_HOST ?= 127.0.0.1
 WEB_PORT ?= 8000
 WEB_RELOAD ?=
+WEB_3DS_HEADED ?= 1
+WEB_3DS_CLOSE_DELAY ?= 5
 
 help:
 	@echo "Paynkolay Sanal POS automation commands"
@@ -228,10 +230,10 @@ scale-demo-parallel:
 	PAYNKOLAY_SCENARIO_CATALOG=$(SCENARIO_OUT) $(PYTEST) -m scenario -n auto
 
 web:
-	$(UVICORN) paynkolay_pos.api.app:create_app --factory $(WEB_RELOAD) --host $(WEB_HOST) --port $(WEB_PORT)
+	PAYNKOLAY_3DS_AUTOMATION_HEADED=$(WEB_3DS_HEADED) PAYNKOLAY_3DS_AUTOMATION_CLOSE_DELAY=$(WEB_3DS_CLOSE_DELAY) $(UVICORN) paynkolay_pos.api.app:create_app --factory $(WEB_RELOAD) --host $(WEB_HOST) --port $(WEB_PORT)
 
 uat-web: uat-inputs
-	PAYNKOLAY_CONFIG_FILE=$(UAT_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) PAYNKOLAY_ENV=uat $(UVICORN) paynkolay_pos.api.app:create_app --factory $(WEB_RELOAD) --host $(WEB_HOST) --port $(WEB_PORT)
+	PAYNKOLAY_CONFIG_FILE=$(UAT_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) PAYNKOLAY_ENV=uat PAYNKOLAY_3DS_AUTOMATION_HEADED=$(WEB_3DS_HEADED) PAYNKOLAY_3DS_AUTOMATION_CLOSE_DELAY=$(WEB_3DS_CLOSE_DELAY) $(UVICORN) paynkolay_pos.api.app:create_app --factory $(WEB_RELOAD) --host $(WEB_HOST) --port $(WEB_PORT)
 
 web-test:
 	$(PYTEST) tests/api

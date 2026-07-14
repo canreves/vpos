@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import urlsplit, urlunsplit
 
 from playwright.async_api import Browser, BrowserContext, Frame, Locator, Page, async_playwright
@@ -107,6 +108,7 @@ async def complete_acs_browser_challenge(
     callback_url: str,
     form_base_url: str = DEFAULT_FORM_BASE_URL,
     headed: bool = False,
+    close_delay_seconds: float = 0.0,
 ) -> AcsBrowserAutomationResult:
     """Complete a 3DS ACS challenge when a safe OTP source can be resolved."""
 
@@ -185,6 +187,8 @@ async def complete_acs_browser_challenge(
 
             await _wait_for_network_quiet(page)
             final_evidence = await _profile_evidence_for_page(page, brand=brand)
+            if headed and close_delay_seconds > 0:
+                await asyncio.sleep(close_delay_seconds)
             return _result(
                 completed=True,
                 submitted=True,

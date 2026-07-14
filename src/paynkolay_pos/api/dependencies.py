@@ -44,8 +44,16 @@ class SupportsThreeDSAutomator(Protocol):
 class PlaywrightThreeDSAutomator:
     """Default server-side Playwright automator."""
 
-    def __init__(self, *, form_base_url: str) -> None:
+    def __init__(
+        self,
+        *,
+        form_base_url: str,
+        headed: bool,
+        close_delay_seconds: float,
+    ) -> None:
         self._form_base_url = form_base_url
+        self._headed = headed
+        self._close_delay_seconds = close_delay_seconds
 
     async def complete(
         self,
@@ -63,6 +71,8 @@ class PlaywrightThreeDSAutomator:
             configured_otp=configured_otp,
             callback_url=callback_url,
             form_base_url=self._form_base_url,
+            headed=self._headed,
+            close_delay_seconds=self._close_delay_seconds,
         )
 
 
@@ -127,8 +137,27 @@ def get_three_ds_automator() -> SupportsThreeDSAutomator:
         form_base_url=os.getenv(
             "PAYNKOLAY_UAT_3DS_FORM_BASE_URL",
             "https://vpostest.qnb.com.tr/PayforACSSimulator/",
-        )
+        ),
+        headed=_env_flag("PAYNKOLAY_3DS_AUTOMATION_HEADED", default=False),
+        close_delay_seconds=_env_float("PAYNKOLAY_3DS_AUTOMATION_CLOSE_DELAY", default=0.0),
     )
+
+
+def _env_flag(name: str, *, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_float(name: str, *, default: float) -> float:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
 
 
 async def get_payment_initializer() -> AsyncIterator[SupportsPaymentInitializer]:
