@@ -116,6 +116,18 @@ def test_resolve_otp_source_reports_missing_source() -> None:
 
 
 @pytest.mark.three_ds
+def test_resolve_otp_source_treats_dynamic_sentinel_as_missing_static_source() -> None:
+    resolution = resolve_otp_source(
+        profile=profile(AcsOtpStrategy.STATIC_CONFIG_OTP),
+        evidence=AcsProfileEvidence(),
+        configured_otp=SecretStr("__from_form__"),
+    )
+
+    assert resolution.status is OtpResolutionStatus.MISSING_SOURCE
+    assert resolution.should_auto_submit is False
+
+
+@pytest.mark.three_ds
 def test_resolve_otp_source_marks_unsupported_profiles() -> None:
     resolution = resolve_otp_source(
         profile=profile(AcsOtpStrategy.UNSUPPORTED),

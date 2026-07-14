@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -119,7 +120,7 @@ def detect_acs_profile(evidence: AcsProfileEvidence) -> AcsProfile:
             submit_control_found=submit_control_found,
         )
 
-    if _has_visible_otp_code(text) and otp_input_found:
+    if visible_otp_from_evidence(evidence) is not None and otp_input_found:
         return AcsProfile(
             bank_profile=bank_profile,
             screen_classification=AcsScreenClassification.VISIBLE_OTP_CODE,
@@ -200,6 +201,33 @@ def _combined_text(evidence: AcsProfileEvidence) -> str:
     return " ".join(part.lower() for part in parts if part)
 
 
+def visible_otp_from_evidence(evidence: AcsProfileEvidence) -> str | None:
+    """Return a visible six-digit OTP only when nearby text identifies it as a code."""
+
+    texts = [evidence.title or "", evidence.reason or ""]
+    texts.extend(frame.text_prefix for frame in evidence.frames)
+    return _visible_otp_from_text("\n".join(texts))
+
+
+def _visible_otp_from_text(text: str) -> str | None:
+    marker_pattern = (
+        r"otp|sms|şifre|sifre|password|passcode|code|kod|doğrulama|dogrulama"
+    )
+    for line in text.splitlines():
+        if re.search(marker_pattern, line, flags=re.IGNORECASE) is None:
+            continue
+        match = re.search(r"(?<!\d)(\d{6})(?!\d)", line)
+        if match is not None:
+            return match.group(1)
+
+    for match in re.finditer(r"(?<!\d)(\d{6})(?!\d)", text):
+        start = max(0, match.start() - 40)
+        end = min(len(text), match.end() + 40)
+        if re.search(marker_pattern, text[start:end], flags=re.IGNORECASE) is not None:
+            return match.group(1)
+    return None
+
+
 def _has_otp_input(frames: tuple[AcsFrameEvidence, ...]) -> bool:
     markers = ("otp", "sifre", "şifre", "pass", "password", "sms")
     for field in _fields(frames):
@@ -263,8 +291,4 @@ def _looks_like_sms_challenge(text: str, otp_input_found: bool) -> bool:
 
 
 def _has_visible_otp_code(text: str) -> bool:
-    markers = ("otp", "sifre", "şifre", "password", "code", "kod")
-    if not any(marker in text for marker in markers):
-        return False
-    tokens = text.replace(":", " ").replace(".", " ").split()
-    return any(token.isdigit() and len(token) == 6 for token in tokens)
+    return _visible_otp_from_text(text) is not None

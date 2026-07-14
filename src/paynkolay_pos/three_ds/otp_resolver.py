@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-import re
 from enum import StrEnum
 
 from pydantic import BaseModel, Field, SecretStr
 
-from paynkolay_pos.three_ds.acs_profile import AcsOtpStrategy, AcsProfile, AcsProfileEvidence
+from paynkolay_pos.three_ds.acs_profile import (
+    AcsOtpStrategy,
+    AcsProfile,
+    AcsProfileEvidence,
+    visible_otp_from_evidence,
+)
 
 
 class OtpResolutionStatus(StrEnum):
@@ -25,6 +29,9 @@ class OtpSourceType(StrEnum):
 
     VISIBLE_PAGE = "visible_page"
     STATIC_CONFIG = "static_config"
+
+
+DYNAMIC_OTP_SENTINEL = "__from_form__"
 
 
 class OtpResolution(BaseModel):
@@ -86,7 +93,8 @@ def resolve_otp_source(
         )
 
     if profile.otp_strategy is AcsOtpStrategy.STATIC_CONFIG_OTP:
-        if configured_otp is None or not configured_otp.get_secret_value().strip():
+        configured_value = configured_otp.get_secret_value().strip() if configured_otp else ""
+        if not configured_value or configured_value == DYNAMIC_OTP_SENTINEL:
             return OtpResolution(
                 status=OtpResolutionStatus.MISSING_SOURCE,
                 reason="ACS profile requires a configured OTP but none was provided",
@@ -124,9 +132,4 @@ def resolve_otp_source(
 
 
 def _visible_otp_from_evidence(evidence: AcsProfileEvidence) -> str | None:
-    texts = [evidence.title or "", evidence.reason or ""]
-    texts.extend(frame.text_prefix for frame in evidence.frames)
-    combined = "\n".join(texts)
-    for match in re.finditer(r"(?<!\d)(\d{6})(?!\d)", combined):
-        return match.group(1)
-    return None
+    return visible_otp_from_evidence(evidence)
