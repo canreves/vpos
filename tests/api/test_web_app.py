@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 from collections.abc import AsyncIterator
@@ -77,6 +78,9 @@ class FakePaymentInitializer:
         self,
         *,
         provider_result: PaynkolayThreeDSInitializeResult | PaynkolayPaymentResult | None = None,
+        outcomes: list[
+            PaynkolayThreeDSInitializeResult | PaynkolayPaymentResult | BaseException
+        ] | None = None,
         payment_list_status: TransactionStatusResponse | None = None,
         fails: bool = False,
         status_fails: bool = False,
@@ -84,10 +88,12 @@ class FakePaymentInitializer:
         self.provider_result = provider_result or PaynkolayThreeDSInitializeResult.model_validate(
             {"BANK_REQUEST_MESSAGE": "<form>3DS challenge</form>"}
         )
+        self.outcomes = outcomes or []
         self.payment_list_status = payment_list_status
         self.fails = fails
         self.status_fails = status_fails
         self.calls: list[tuple[str, str]] = []
+        self.requests: list[PaymentFormRequest] = []
         self.status_calls: list[str] = []
 
     async def initialize(
@@ -98,11 +104,18 @@ class FakePaymentInitializer:
         card_holder_ip: str,
     ) -> PaymentInitializationOutcome:
         self.calls.append((order_id, card_holder_ip))
+        self.requests.append(request)
         if self.fails:
             raise PaymentProviderInitializationError("provider payment initialization failed")
+        provider_result = self.provider_result
+        if self.outcomes:
+            outcome = self.outcomes.pop(0)
+            if isinstance(outcome, BaseException):
+                raise outcome
+            provider_result = outcome
         return PaymentInitializationOutcome(
             payment_request=_payment_request(request, order_id=order_id),
-            provider_result=self.provider_result,
+            provider_result=provider_result,
             success_url="https://merchant.example.test/payments/result/success",
             fail_url="https://merchant.example.test/payments/result/fail",
         )
@@ -155,6 +168,82 @@ def _payment_request(
     )
 
 
+def _payment_result(
+    *,
+    response_code: str,
+    response_data: str,
+) -> PaynkolayPaymentResult:
+    return PaynkolayPaymentResult.model_validate(
+        {
+            "RESPONSE_CODE": response_code,
+            "RESPONSE_DATA": response_data,
+            "USE_3D": "false",
+            "RND": "rnd-parallel",
+            "MERCHANT_NO": "merchant-web",
+            "AUTH_CODE": "AUTHPAR",
+            "REFERENCE_CODE": "ref-parallel",
+            "CLIENT_REFERENCE_CODE": "parallel-order",
+            "TIMESTAMP": "2026-07-07T12:00:00+00:00",
+            "TRANSACTION_AMOUNT": "100.00",
+            "AUTHORIZATION_AMOUNT": "100.00",
+            "INSTALLMENT": 1,
+            "CURRENCY_CODE": Currency.TRY,
+            "hashDataV2": "hash",
+        }
+    )
+
+
+def _runtime_card(
+    *,
+    alias: str,
+    pan: str,
+    requires_3ds: bool,
+    expected_otp: str | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "alias": alias,
+        "brand": "visa",
+        "pan": pan,
+        "expiry_month": 12,
+        "expiry_year": 2030,
+        "cvv": "123",
+        "requires_3ds": requires_3ds,
+    }
+    if expected_otp is not None:
+        payload["expected_otp"] = expected_otp
+    return payload
+
+
+def _write_parallel_runtime_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    cards: list[dict[str, object]],
+) -> Path:
+    config_path = tmp_path / "parallel-settings.json"
+    config_payload = build_private_runtime_config_payload(card_count=10)
+    environments = cast(dict[str, Any], config_payload["environments"])
+    dev = cast(dict[str, Any], environments["dev"])
+    dev["cards"] = cards
+    config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+    monkeypatch.setenv("PAYNKOLAY_CONFIG_FILE", str(config_path))
+    monkeypatch.setenv("PAYNKOLAY_ENV", "dev")
+    return config_path
+
+
+async def _wait_parallel_run(
+    client: httpx.AsyncClient,
+    run_id: str,
+) -> dict[str, Any]:
+    for _ in range(10):
+        response = await client.get(f"/api/parallel-runs/{run_id}")
+        assert response.status_code == 200
+        payload = response.json()
+        if payload["status"] != "running":
+            return cast(dict[str, Any], payload)
+        await asyncio.sleep(0.01)
+    raise AssertionError(f"parallel run did not finish: {run_id}")
+
+
 @pytest.mark.api
 @pytest.mark.asyncio
 async def test_health_check_returns_ok(client: httpx.AsyncClient) -> None:
@@ -197,6 +286,8 @@ async def test_reports_page_renders_dynamic_report_screen(client: httpx.AsyncCli
     assert 'id="report-status"' in response.text
     assert 'id="history-status"' in response.text
     assert 'id="credential-run-button"' in response.text
+    assert 'id="parallel-run-button"' in response.text
+    assert 'id="parallel-selection-body"' in response.text
     assert "make credential-scenario-report" in response.text
     assert "/static/js/reports.js" in response.text
 
@@ -615,6 +706,243 @@ async def test_cards_route_requires_otp_for_3ds_card(client: httpx.AsyncClient) 
 
     assert response.status_code == 422
     assert "expected_otp is required" in response.text
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_run_manual_mode_repeats_selected_cards(
+    client: httpx.AsyncClient,
+    fake_initializer: FakePaymentInitializer,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="parallel_moto",
+                pan="4111111111111111",
+                requires_3ds=False,
+            ),
+        ],
+    )
+    fake_initializer.provider_result = _payment_result(
+        response_code="2",
+        response_data="Islem Basarili",
+    )
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "manual",
+            "amount": "100.00",
+            "currency": "TRY",
+            "concurrency": 2,
+            "manual_cards": [{"alias": "parallel_moto", "repeat_count": 2}],
+        },
+    )
+
+    assert response.status_code == 202
+    payload = await _wait_parallel_run(client, response.json()["run_id"])
+    assert payload["status"] == "completed"
+    assert payload["total"] == 2
+    assert payload["completed"] == 2
+    assert payload["failed"] == 0
+    assert [item["attempt_index"] for item in payload["items"]] == [1, 2]
+    assert {item["classification"] for item in payload["items"]} == {"completed"}
+    assert all(item["payment_list_status"] == "captured" for item in payload["items"])
+    assert len(fake_initializer.calls) == 2
+    assert "4111111111111111" not in response.text
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_run_records_3ds_items_as_pending_without_browser_execution(
+    client: httpx.AsyncClient,
+    fake_initializer: FakePaymentInitializer,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="parallel_3ds",
+                pan="5555555555554444",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+        ],
+    )
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "manual",
+            "amount": "50.00",
+            "currency": "TRY",
+            "concurrency": 1,
+            "manual_cards": [{"alias": "parallel_3ds", "repeat_count": 1}],
+        },
+    )
+
+    assert response.status_code == 202
+    payload = await _wait_parallel_run(client, response.json()["run_id"])
+    assert payload["status"] == "completed"
+    assert payload["items"][0]["classification"] == "pending_3ds"
+    assert payload["items"][0]["requires_3ds"] is True
+    assert payload["items"][0]["three_ds_url"].startswith("/payments/batch-")
+    assert fake_initializer.status_calls == []
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_run_continues_when_one_item_fails(
+    client: httpx.AsyncClient,
+    fake_initializer: FakePaymentInitializer,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="parallel_moto",
+                pan="4111111111111111",
+                requires_3ds=False,
+            ),
+        ],
+    )
+    network_cause = OSError("[Errno 8] nodename nor servname provided")
+    fake_initializer.outcomes = [
+        PaymentProviderInitializationError("provider payment initialization failed"),
+        _payment_result(response_code="2", response_data="Islem Basarili"),
+    ]
+    fake_initializer.outcomes[0].__cause__ = network_cause
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "manual",
+            "amount": "100.00",
+            "currency": "TRY",
+            "concurrency": 2,
+            "manual_cards": [{"alias": "parallel_moto", "repeat_count": 2}],
+        },
+    )
+
+    assert response.status_code == 202
+    payload = await _wait_parallel_run(client, response.json()["run_id"])
+    assert payload["status"] == "completed_with_failures"
+    assert payload["completed"] == 1
+    assert payload["failed"] == 1
+    assert [item["classification"] for item in payload["items"]] == [
+        "network_error",
+        "completed",
+    ]
+    assert len(fake_initializer.calls) == 2
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_run_rejects_unknown_manual_card(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="parallel_moto",
+                pan="4111111111111111",
+                requires_3ds=False,
+            ),
+        ],
+    )
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "manual",
+            "amount": "100.00",
+            "currency": "TRY",
+            "manual_cards": [{"alias": "missing_card", "repeat_count": 1}],
+        },
+    )
+
+    assert response.status_code == 422
+    assert "unknown card alias" in response.json()["detail"]
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_run_random_mode_excludes_synthetic_cards(
+    client: httpx.AsyncClient,
+    fake_initializer: FakePaymentInitializer,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="real_moto",
+                pan="4111111111111111",
+                requires_3ds=False,
+            ),
+            _runtime_card(
+                alias="synthetic_env1_card_0001",
+                pan="5555555555554444",
+                requires_3ds=False,
+            ),
+        ],
+    )
+    fake_initializer.provider_result = _payment_result(
+        response_code="2",
+        response_data="Islem Basarili",
+    )
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "random",
+            "amount": "100.00",
+            "currency": "TRY",
+            "concurrency": 2,
+            "random_count": 3,
+        },
+    )
+
+    assert response.status_code == 202
+    payload = await _wait_parallel_run(client, response.json()["run_id"])
+    assert {item["card_alias"] for item in payload["items"]} == {"real_moto"}
+    assert len(fake_initializer.calls) == 3
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_run_validation_limits_manual_items(client: httpx.AsyncClient) -> None:
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "manual",
+            "amount": "100.00",
+            "currency": "TRY",
+            "manual_cards": [
+                {"alias": "a", "repeat_count": 6},
+                {"alias": "b", "repeat_count": 5},
+            ],
+        },
+    )
+
+    assert response.status_code == 422
+    assert "manual mode can create at most 10 test items" in response.text
 
 
 @pytest.mark.api
