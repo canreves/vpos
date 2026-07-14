@@ -388,6 +388,85 @@ class PaymentLookupResponse(BaseModel):
         )
 
 
+class ParallelRunManualCardSelection(BaseModel):
+    """One card selection for a manual parallel run."""
+
+    alias: str = Field(min_length=1, max_length=120)
+    repeat_count: int = Field(ge=1, le=10)
+
+
+class ParallelRunCreateRequest(BaseModel):
+    """Browser request to start a parallel payment initialization run."""
+
+    mode: Literal["manual", "random"]
+    concurrency: int = Field(default=10, ge=1, le=10)
+    amount: Decimal = Field(gt=Decimal("0"), max_digits=12, decimal_places=2)
+    currency: Currency = Currency.TRY
+    manual_cards: list[ParallelRunManualCardSelection] = Field(default_factory=list)
+    random_count: int | None = Field(default=None, ge=1, le=10)
+
+    @field_validator("amount")
+    @classmethod
+    def normalize_amount(cls, amount: Decimal) -> Decimal:
+        """Keep batch amounts in provider-friendly two-decimal format."""
+
+        return amount.quantize(Decimal("0.01"))
+
+    @model_validator(mode="after")
+    def validate_mode_inputs(self) -> ParallelRunCreateRequest:
+        """Require exactly the selection input needed by the selected mode."""
+
+        if self.mode == "manual":
+            if not self.manual_cards:
+                raise ValueError("manual mode requires at least one card selection")
+            if sum(item.repeat_count for item in self.manual_cards) > 10:
+                raise ValueError("manual mode can create at most 10 test items")
+            if self.random_count is not None:
+                raise ValueError("manual mode must not define random_count")
+        if self.mode == "random":
+            if self.random_count is None:
+                raise ValueError("random mode requires random_count")
+            if self.manual_cards:
+                raise ValueError("random mode must not define manual_cards")
+        return self
+
+
+class ParallelRunItemResponse(BaseModel):
+    """One item result in a parallel payment initialization run."""
+
+    item_id: str
+    card_alias: str
+    attempt_index: int
+    order_id: str
+    status: Literal["pending", "running", "completed", "failed"]
+    classification: str
+    requires_3ds: bool
+    provider_request: ProviderRequestSummary | None = None
+    provider_response_code: str | None = None
+    provider_response_data: str | None = None
+    payment_list_status: str | None = None
+    payment_list_error: str | None = None
+    error_message: str | None = None
+    duration_ms: int | None = None
+    three_ds_url: str | None = None
+
+
+class ParallelRunResponse(BaseModel):
+    """Summary response for a parallel payment initialization run."""
+
+    run_id: str
+    mode: Literal["manual", "random"]
+    status: Literal["pending", "running", "completed", "completed_with_failures", "failed"]
+    concurrency: int
+    total: int
+    completed: int
+    failed: int
+    started_at: str | None = None
+    finished_at: str | None = None
+    message: str
+    items: list[ParallelRunItemResponse] = Field(default_factory=list)
+
+
 class ReportStatusResponse(BaseModel):
     """Local Allure report status exposed to the browser."""
 

@@ -8,12 +8,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from paynkolay_pos.api.dependencies import static_dir, templates_dir
+from paynkolay_pos.api.parallel_run_store import ParallelRunStore
 from paynkolay_pos.api.routes import (
     callbacks,
     cards,
     config,
     health,
     installments,
+    parallel_runs,
     payments,
     reports,
     results,
@@ -33,6 +35,7 @@ def create_app() -> FastAPI:
     )
     app.state.payment_session_store = PaymentSessionStore()
     app.state.three_ds_form_store = ThreeDSFormStore()
+    app.state.parallel_run_store = ParallelRunStore()
     app.state.credential_report_run = reports.ReportCommandRunState()
     app.mount("/static", StaticFiles(directory=static_dir()), name="static")
 
@@ -78,6 +81,7 @@ def create_app() -> FastAPI:
     app.include_router(config.router)
     app.include_router(cards.router)
     app.include_router(installments.router)
+    app.include_router(parallel_runs.router)
     app.include_router(payments.router)
     app.include_router(three_ds.router)
     app.include_router(results.router)

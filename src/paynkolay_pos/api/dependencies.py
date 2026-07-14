@@ -10,6 +10,7 @@ from typing import cast
 from fastapi import HTTPException, Request, status
 from pydantic import SecretStr
 
+from paynkolay_pos.api.parallel_run_store import ParallelRunStore
 from paynkolay_pos.api.payment_initializer import (
     PaynkolayPaymentInitializer,
     SupportsPaymentInitializer,
@@ -70,6 +71,12 @@ def get_three_ds_form_store(request: Request) -> ThreeDSFormStore:
     """Return the app-scoped transient 3DS form store."""
 
     return cast(ThreeDSFormStore, request.app.state.three_ds_form_store)
+
+
+def get_parallel_run_store(request: Request) -> ParallelRunStore:
+    """Return the app-scoped in-memory parallel run store."""
+
+    return cast(ParallelRunStore, request.app.state.parallel_run_store)
 
 
 async def get_payment_initializer() -> AsyncIterator[SupportsPaymentInitializer]:

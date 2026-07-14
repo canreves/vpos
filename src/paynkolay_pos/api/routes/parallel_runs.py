@@ -1,0 +1,541 @@
+"""Parallel payment initialization run routes."""
+
+from __future__ import annotations
+
+import asyncio
+import random
+from collections import Counter
+from collections.abc import Sequence
+from decimal import Decimal
+from typing import Annotated
+from uuid import uuid4
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+
+from paynkolay_pos.api.dependencies import (
+    get_parallel_run_store,
+    get_payment_initializer,
+    get_payment_session_store,
+    get_three_ds_form_store,
+)
+from paynkolay_pos.api.parallel_run_store import (
+    ParallelRunItemState,
+    ParallelRunNotFoundError,
+    ParallelRunState,
+    ParallelRunStore,
+    utc_now,
+)
+from paynkolay_pos.api.payment_initializer import (
+    PaymentInitializationOutcome,
+    PaymentProviderInitializationError,
+    PaymentProviderStatusVerificationError,
+    SupportsPaymentInitializer,
+)
+from paynkolay_pos.api.routes.payments import _provider_request_summary
+from paynkolay_pos.api.schemas import (
+    ParallelRunCreateRequest,
+    ParallelRunItemResponse,
+    ParallelRunResponse,
+    PaymentFormRequest,
+)
+from paynkolay_pos.api.session_models import PaymentSessionStatus, ProviderRequestSummary
+from paynkolay_pos.api.session_store import PaymentSessionStore
+from paynkolay_pos.api.three_ds_store import ThreeDSFormStore
+from paynkolay_pos.config import TestCard, load_runtime_settings
+from paynkolay_pos.models import Currency, PaynkolayPaymentResult, PaynkolayThreeDSInitializeResult
+
+router = APIRouter(prefix="/api/parallel-runs", tags=["parallel_runs"])
+
+PaymentInitializerDependency = Annotated[
+    SupportsPaymentInitializer,
+    Depends(get_payment_initializer),
+]
+PaymentSessionStoreDependency = Annotated[
+    PaymentSessionStore,
+    Depends(get_payment_session_store),
+]
+ThreeDSFormStoreDependency = Annotated[
+    ThreeDSFormStore,
+    Depends(get_three_ds_form_store),
+]
+ParallelRunStoreDependency = Annotated[
+    ParallelRunStore,
+    Depends(get_parallel_run_store),
+]
+
+
+@router.post("", response_model=ParallelRunResponse, status_code=status.HTTP_202_ACCEPTED)
+async def create_parallel_run(
+    request: ParallelRunCreateRequest,
+    http_request: Request,
+    background_tasks: BackgroundTasks,
+    initializer: PaymentInitializerDependency,
+    session_store: PaymentSessionStoreDependency,
+    three_ds_form_store: ThreeDSFormStoreDependency,
+    run_store: ParallelRunStoreDependency,
+) -> ParallelRunResponse:
+    """Start a parallel payment initialization run from configured cards."""
+
+    cards = _load_card_map()
+    selected_cards = _select_cards(request, cards)
+    run_id = uuid4().hex[:12]
+    items = _parallel_items(run_id=run_id, selected_cards=selected_cards)
+    run = ParallelRunState(
+        run_id=run_id,
+        mode=request.mode,
+        concurrency=request.concurrency,
+        items=items,
+        status="running",
+        started_at=utc_now(),
+        message="Parallel run started.",
+    )
+    await run_store.create(run)
+    background_tasks.add_task(
+        _execute_parallel_run,
+        run_id=run_id,
+        cards_by_alias=cards,
+        amount=request.amount,
+        currency=request.currency,
+        client_host=_client_host(http_request),
+        initializer=initializer,
+        session_store=session_store,
+        three_ds_form_store=three_ds_form_store,
+        run_store=run_store,
+    )
+    return run.response(include_items=True)
+
+
+@router.get("/{run_id}", response_model=ParallelRunResponse)
+async def get_parallel_run(
+    run_id: str,
+    run_store: ParallelRunStoreDependency,
+) -> ParallelRunResponse:
+    """Return a parallel run summary."""
+
+    try:
+        run = await run_store.get(run_id)
+    except ParallelRunNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return run.response(include_items=True)
+
+
+@router.get("/{run_id}/items", response_model=list[ParallelRunItemResponse])
+async def get_parallel_run_items(
+    run_id: str,
+    run_store: ParallelRunStoreDependency,
+) -> list[ParallelRunItemResponse]:
+    """Return item results for a parallel run."""
+
+    try:
+        run = await run_store.get(run_id)
+    except ParallelRunNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return [item.response() for item in run.items]
+
+
+async def _execute_parallel_run(
+    *,
+    run_id: str,
+    cards_by_alias: dict[str, TestCard],
+    amount: Decimal,
+    currency: Currency,
+    client_host: str,
+    initializer: SupportsPaymentInitializer,
+    session_store: PaymentSessionStore,
+    three_ds_form_store: ThreeDSFormStore,
+    run_store: ParallelRunStore,
+) -> None:
+    semaphore = asyncio.Semaphore((await run_store.get(run_id)).concurrency)
+    run = await run_store.get(run_id)
+    tasks = [
+        _execute_item(
+            run_id=run_id,
+            item=item,
+            card=cards_by_alias[item.card_alias],
+            amount=amount,
+            currency=currency,
+            client_host=client_host,
+            initializer=initializer,
+            session_store=session_store,
+            three_ds_form_store=three_ds_form_store,
+            run_store=run_store,
+            semaphore=semaphore,
+        )
+        for item in run.items
+    ]
+    task_results = await asyncio.gather(*tasks, return_exceptions=True)
+    await run_store.mutate(run_id, lambda run: _record_unhandled_task_errors(run, task_results))
+    await run_store.mutate(run_id, _finish_run)
+
+
+async def _execute_item(
+    *,
+    run_id: str,
+    item: ParallelRunItemState,
+    card: TestCard,
+    amount: Decimal,
+    currency: Currency,
+    client_host: str,
+    initializer: SupportsPaymentInitializer,
+    session_store: PaymentSessionStore,
+    three_ds_form_store: ThreeDSFormStore,
+    run_store: ParallelRunStore,
+    semaphore: asyncio.Semaphore,
+) -> None:
+    async with semaphore:
+        await run_store.mutate(run_id, lambda run: _mark_item_running(run, item.item_id))
+        try:
+            request = _payment_form_request(
+                card=card,
+                amount=amount,
+                currency=currency,
+            )
+            await session_store.create(
+                order_id=item.order_id,
+                amount=request.amount,
+                currency=request.currency,
+                pan=request.card_number.get_secret_value(),
+                card_holder=request.card_holder,
+                requires_3ds=request.requires_3ds,
+                installment_count=request.installment_count,
+            )
+            outcome = await initializer.initialize(
+                request,
+                order_id=item.order_id,
+                card_holder_ip=client_host,
+            )
+            await _record_provider_outcome(
+                run_id=run_id,
+                item_id=item.item_id,
+                outcome=outcome,
+                initializer=initializer,
+                session_store=session_store,
+                three_ds_form_store=three_ds_form_store,
+                run_store=run_store,
+                currency=request.currency,
+            )
+        except PaymentProviderInitializationError as exc:
+            classification = _classify_initialization_error(exc)
+            error_message = str(exc)
+            await _mark_session_failed(
+                session_store,
+                item.order_id,
+                "provider payment initialization failed",
+            )
+            await run_store.mutate(
+                run_id,
+                lambda run: _mark_item_failed(
+                    run,
+                    item.item_id,
+                    classification=classification,
+                    error_message=error_message,
+                ),
+            )
+        except Exception as exc:
+            error_message = f"{type(exc).__name__}: {exc}"
+            await _mark_session_failed(
+                session_store,
+                item.order_id,
+                error_message,
+            )
+            await run_store.mutate(
+                run_id,
+                lambda run: _mark_item_failed(
+                    run,
+                    item.item_id,
+                    classification="framework_error",
+                    error_message=error_message,
+                ),
+        )
+
+
+async def _mark_session_failed(
+    session_store: PaymentSessionStore,
+    order_id: str,
+    failure_reason: str,
+) -> None:
+    try:
+        await session_store.update_status(
+            order_id,
+            PaymentSessionStatus.FAILED,
+            failure_reason=failure_reason,
+        )
+    except Exception:
+        return
+
+
+async def _record_provider_outcome(
+    *,
+    run_id: str,
+    item_id: str,
+    outcome: PaymentInitializationOutcome,
+    initializer: SupportsPaymentInitializer,
+    session_store: PaymentSessionStore,
+    three_ds_form_store: ThreeDSFormStore,
+    run_store: ParallelRunStore,
+    currency: Currency,
+) -> None:
+    provider_request = _provider_request_summary(outcome)
+    provider_result = outcome.provider_result
+    if isinstance(provider_result, PaynkolayThreeDSInitializeResult):
+        await three_ds_form_store.put(
+            outcome.payment_request.order_id,
+            provider_result.bank_request_message,
+        )
+        await session_store.update_status(
+            outcome.payment_request.order_id,
+            PaymentSessionStatus.PENDING_3DS,
+            provider_request=provider_request,
+        )
+        await run_store.mutate(
+            run_id,
+            lambda run: _mark_item_completed(
+                run,
+                item_id,
+                provider_request=provider_request,
+                classification="pending_3ds",
+                three_ds_url=f"/payments/{outcome.payment_request.order_id}/three-ds",
+            ),
+        )
+        return
+
+    if isinstance(provider_result, PaynkolayPaymentResult):
+        session_status = (
+            PaymentSessionStatus.COMPLETED
+            if provider_result.successful
+            else PaymentSessionStatus.FAILED
+        )
+        session = await session_store.update_status(
+            outcome.payment_request.order_id,
+            session_status,
+            provider_request=provider_request,
+            provider_transaction_id=provider_result.reference_code,
+            provider_response_code=provider_result.response_code,
+            provider_response_data=provider_result.response_data,
+            failure_reason=(
+                provider_result.response_data if not provider_result.successful else None
+            ),
+        )
+        try:
+            session = await session_store.update_payment_list_status(
+                outcome.payment_request.order_id,
+                await initializer.verify_transaction_status(
+                    outcome.payment_request.order_id,
+                    currency=currency,
+                ),
+            )
+        except PaymentProviderStatusVerificationError as exc:
+            session = await session_store.update_payment_list_error(
+                outcome.payment_request.order_id,
+                str(exc),
+            )
+        await run_store.mutate(
+            run_id,
+            lambda run: _mark_item_completed(
+                run,
+                item_id,
+                provider_request=provider_request,
+                provider_response_code=provider_result.response_code,
+                provider_response_data=provider_result.response_data,
+                payment_list_status=(
+                    session.payment_list_status.value
+                    if session.payment_list_status is not None
+                    else None
+                ),
+                payment_list_error=session.payment_list_error,
+                classification="completed" if provider_result.successful else "provider_failed",
+            ),
+        )
+
+
+def _load_card_map() -> dict[str, TestCard]:
+    try:
+        cards = load_runtime_settings().current.cards
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"runtime payment configuration is unavailable: {exc}",
+        ) from exc
+    return {card.alias: card for card in cards}
+
+
+def _select_cards(
+    request: ParallelRunCreateRequest,
+    cards: dict[str, TestCard],
+) -> list[TestCard]:
+    if request.mode == "manual":
+        selected: list[TestCard] = []
+        for item in request.manual_cards:
+            card = cards.get(item.alias)
+            if card is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=f"unknown card alias: {item.alias}",
+                )
+            selected.extend([card] * item.repeat_count)
+        return selected
+
+    real_cards = [
+        card
+        for card in cards.values()
+        if not card.alias.startswith("synthetic_")
+    ]
+    if not real_cards:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="random mode requires at least one non-synthetic card",
+        )
+    count = request.random_count or 1
+    return [random.choice(real_cards) for _ in range(count)]
+
+
+def _parallel_items(
+    *,
+    run_id: str,
+    selected_cards: list[TestCard],
+) -> list[ParallelRunItemState]:
+    attempts_by_alias: Counter[str] = Counter()
+    items: list[ParallelRunItemState] = []
+    for index, card in enumerate(selected_cards, start=1):
+        attempts_by_alias[card.alias] += 1
+        items.append(
+            ParallelRunItemState(
+                item_id=f"item-{index:03d}",
+                card_alias=card.alias,
+                attempt_index=attempts_by_alias[card.alias],
+                order_id=f"batch-{run_id[:8]}-{index:03d}",
+                requires_3ds=card.requires_3ds,
+            )
+        )
+    return items
+
+
+def _payment_form_request(
+    *,
+    card: TestCard,
+    amount: Decimal,
+    currency: Currency,
+) -> PaymentFormRequest:
+    return PaymentFormRequest(
+        amount=amount,
+        currency=currency,
+        card_brand=card.brand,
+        card_number=card.pan,
+        card_holder="PAYNKOLAY TEST",
+        expiry_month=card.expiry_month,
+        expiry_year=card.expiry_year,
+        cvv=card.cvv,
+        requires_3ds=card.requires_3ds,
+        installment_count=1,
+    )
+
+
+def _mark_item_running(run: ParallelRunState, item_id: str) -> None:
+    item = _item(run, item_id)
+    item.status = "running"
+    item.classification = "running"
+    item.started_at = utc_now()
+
+
+def _mark_item_completed(
+    run: ParallelRunState,
+    item_id: str,
+    *,
+    provider_request: ProviderRequestSummary,
+    classification: str,
+    provider_response_code: str | None = None,
+    provider_response_data: str | None = None,
+    payment_list_status: str | None = None,
+    payment_list_error: str | None = None,
+    three_ds_url: str | None = None,
+) -> None:
+    item = _item(run, item_id)
+    item.status = "completed"
+    item.classification = classification
+    item.provider_request = provider_request
+    item.provider_response_code = provider_response_code
+    item.provider_response_data = provider_response_data
+    item.payment_list_status = payment_list_status
+    item.payment_list_error = payment_list_error
+    item.three_ds_url = three_ds_url
+    item.finished_at = utc_now()
+
+
+def _mark_item_failed(
+    run: ParallelRunState,
+    item_id: str,
+    *,
+    classification: str,
+    error_message: str,
+) -> None:
+    item = _item(run, item_id)
+    item.status = "failed"
+    item.classification = classification
+    item.error_message = error_message
+    item.finished_at = utc_now()
+
+
+def _record_unhandled_task_errors(
+    run: ParallelRunState,
+    task_results: Sequence[object],
+) -> None:
+    unhandled_errors = [result for result in task_results if isinstance(result, BaseException)]
+    pending_items = [item for item in run.items if item.status in {"pending", "running"}]
+    for item, error in zip(pending_items, unhandled_errors, strict=False):
+        item.status = "failed"
+        item.classification = "framework_error"
+        item.error_message = f"{type(error).__name__}: {error}"
+        item.finished_at = utc_now()
+
+
+def _finish_run(run: ParallelRunState) -> None:
+    run.finished_at = utc_now()
+    failed_count = sum(1 for item in run.items if item.status == "failed")
+    provider_failed_count = sum(1 for item in run.items if item.classification == "provider_failed")
+    if failed_count or provider_failed_count:
+        run.status = "completed_with_failures"
+        run.message = "Parallel run completed with failed items."
+        return
+    run.status = "completed"
+    run.message = "Parallel run completed."
+
+
+def _item(run: ParallelRunState, item_id: str) -> ParallelRunItemState:
+    for item in run.items:
+        if item.item_id == item_id:
+            return item
+    raise KeyError(f"parallel run item does not exist: {item_id}")
+
+
+def _client_host(request: Request) -> str:
+    if request.client is None or not request.client.host.strip():
+        return "127.0.0.1"
+    return request.client.host
+
+
+def _classify_initialization_error(exc: PaymentProviderInitializationError) -> str:
+    error_text = " ".join(str(part) for part in _exception_chain(exc)).lower()
+    network_markers = (
+        "nodename nor servname",
+        "name or service not known",
+        "temporary failure in name resolution",
+        "connection refused",
+        "connection reset",
+        "connecterror",
+        "network",
+        "timeout",
+        "timed out",
+        "dns",
+    )
+    if any(marker in error_text for marker in network_markers):
+        return "network_error"
+    return "framework_error"
+
+
+def _exception_chain(exc: BaseException) -> list[BaseException]:
+    chain = [exc]
+    current = exc
+    while current.__cause__ is not None:
+        chain.append(current.__cause__)
+        current = current.__cause__
+    return chain
