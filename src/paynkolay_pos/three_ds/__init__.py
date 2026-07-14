@@ -5,6 +5,10 @@ from paynkolay_pos.three_ds.acs_action import (
     SupportsAcsLocator,
     run_acs_otp_action,
 )
+from paynkolay_pos.three_ds.acs_browser import (
+    AcsBrowserAutomationResult,
+    complete_acs_browser_challenge,
+)
 from paynkolay_pos.three_ds.acs_profile import (
     AcsBankProfile,
     AcsFieldEvidence,
@@ -40,6 +44,7 @@ __all__ = [
     "AcsProfile",
     "AcsProfileEvidence",
     "AcsActionResult",
+    "AcsBrowserAutomationResult",
     "OtpResolution",
     "OtpResolutionStatus",
     "OtpSourceType",
@@ -50,6 +55,7 @@ __all__ = [
     "ThreeDSFormPayloadError",
     "complete_three_ds_challenge",
     "complete_three_ds_html_challenge",
+    "complete_acs_browser_challenge",
     "detect_acs_profile",
     "render_three_ds_form",
     "resolve_otp_source",

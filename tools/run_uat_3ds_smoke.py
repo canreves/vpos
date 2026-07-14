@@ -63,6 +63,7 @@ from paynkolay_pos.three_ds import (
     AcsFieldEvidence,
     AcsFrameEvidence,
     AcsProfileEvidence,
+    complete_acs_browser_challenge,
     detect_acs_profile,
     resolve_otp_source,
     run_acs_otp_action,
@@ -278,6 +279,7 @@ async def _run_3ds_smoke(
         challenge_result = await _complete_browser_challenge(
             html=html,
             otp=card.expected_otp,
+            brand=card.brand,
             headed=headed,
             form_base_url=form_base_url,
             callback_url=environment.callback_base_url,
@@ -317,6 +319,30 @@ async def _run_3ds_smoke(
 
 
 async def _complete_browser_challenge(
+    *,
+    html: str,
+    otp: SecretStr,
+    brand: CardBrand,
+    headed: bool,
+    form_base_url: str,
+    callback_url: str,
+) -> dict[str, object]:
+    result = await complete_acs_browser_challenge(
+        html=html,
+        brand=brand,
+        configured_otp=(None if _expected_otp_from_form(otp) else otp),
+        callback_url=callback_url,
+        form_base_url=form_base_url,
+        headed=headed,
+    )
+    payload = result.model_dump(mode="json")
+    payload["frames"] = [
+        frame.model_dump(mode="json") for frame in result.frames
+    ]
+    return payload
+
+
+async def _complete_browser_challenge_legacy(
     *,
     html: str,
     otp: SecretStr,

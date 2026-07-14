@@ -113,6 +113,30 @@ def test_detect_acs_profile_classifies_visible_simulator_otp() -> None:
 
 
 @pytest.mark.three_ds
+def test_detect_acs_profile_prefers_visible_otp_over_sms_manual_text() -> None:
+    profile = detect_acs_profile(
+        AcsProfileEvidence(
+            brand=CardBrand.VISA,
+            title="ACS Simulator",
+            final_url="https://vpostest.qnb.com.tr/PayforACSSimulator/",
+            frames=(
+                frame(
+                    url="https://vpostest.qnb.com.tr/PayforACSSimulator/",
+                    text_prefix="SMS şifreniz 123456 ile işlemi onaylayın",
+                    fields=(
+                        AcsFieldEvidence(tag="input", type="text", name="otp"),
+                        AcsFieldEvidence(tag="button", type="submit", text="Submit"),
+                    ),
+                ),
+            ),
+        )
+    )
+
+    assert profile.screen_classification is AcsScreenClassification.VISIBLE_OTP_CODE
+    assert profile.otp_strategy is AcsOtpStrategy.VISIBLE_PAGE_OTP
+
+
+@pytest.mark.three_ds
 def test_detect_acs_profile_falls_back_to_static_config_otp_for_generic_input() -> None:
     profile = detect_acs_profile(
         AcsProfileEvidence(

@@ -119,6 +119,17 @@ def detect_acs_profile(evidence: AcsProfileEvidence) -> AcsProfile:
             submit_control_found=submit_control_found,
         )
 
+    if _has_visible_otp_code(text) and otp_input_found:
+        return AcsProfile(
+            bank_profile=bank_profile,
+            screen_classification=AcsScreenClassification.VISIBLE_OTP_CODE,
+            otp_strategy=AcsOtpStrategy.VISIBLE_PAGE_OTP,
+            confidence=0.8,
+            reason="ACS page appears to include a visible simulator OTP",
+            otp_input_found=otp_input_found,
+            submit_control_found=submit_control_found,
+        )
+
     if _looks_like_mobile_approval(text):
         return AcsProfile(
             bank_profile=bank_profile,
@@ -137,17 +148,6 @@ def detect_acs_profile(evidence: AcsProfileEvidence) -> AcsProfile:
             otp_strategy=AcsOtpStrategy.SMS_MANUAL_REQUIRED,
             confidence=0.85,
             reason="ACS page asks for an SMS password/code",
-            otp_input_found=otp_input_found,
-            submit_control_found=submit_control_found,
-        )
-
-    if _has_visible_otp_code(text):
-        return AcsProfile(
-            bank_profile=bank_profile,
-            screen_classification=AcsScreenClassification.VISIBLE_OTP_CODE,
-            otp_strategy=AcsOtpStrategy.VISIBLE_PAGE_OTP,
-            confidence=0.8,
-            reason="ACS page appears to include a visible simulator OTP",
             otp_input_found=otp_input_found,
             submit_control_found=submit_control_found,
         )
