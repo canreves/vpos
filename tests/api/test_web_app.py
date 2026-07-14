@@ -286,10 +286,22 @@ async def test_reports_page_renders_dynamic_report_screen(client: httpx.AsyncCli
     assert 'id="report-status"' in response.text
     assert 'id="history-status"' in response.text
     assert 'id="credential-run-button"' in response.text
-    assert 'id="parallel-run-button"' in response.text
-    assert 'id="parallel-selection-body"' in response.text
     assert "make credential-scenario-report" in response.text
     assert "/static/js/reports.js" in response.text
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_page_renders_parallel_run_screen(client: httpx.AsyncClient) -> None:
+    response = await client.get("/parallel")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert 'class="nav-link active" href="/parallel"' in response.text
+    assert 'id="parallel-run-button"' in response.text
+    assert 'id="parallel-selection-body"' in response.text
+    assert 'id="parallel-results-body"' in response.text
+    assert "/static/js/parallel-runs.js" in response.text
 
 
 @pytest.mark.api

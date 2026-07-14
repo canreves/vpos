@@ -202,6 +202,8 @@ def _result_html_response(
         </div>
         <nav aria-label="Primary">
           <a class="nav-link" href="/">Payment</a>
+          <a class="nav-link" href="/parallel">Parallel</a>
+          <a class="nav-link" href="/settings">Settings</a>
           <a class="nav-link" href="/reports">Reports</a>
         </nav>
       </header>

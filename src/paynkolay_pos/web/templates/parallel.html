@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Parallel Tests</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script src="/static/js/api-client.js" defer></script>
+    <script src="/static/js/parallel-runs.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Parallel Tests</h1>
+          <p>Paynkolay POS</p>
+        </div>
+        <nav aria-label="Primary">
+          <a class="nav-link" href="/">Payment</a>
+          <a class="nav-link active" href="/parallel">Parallel</a>
+          <a class="nav-link" href="/settings">Settings</a>
+          <a class="nav-link" href="/reports">Reports</a>
+        </nav>
+      </header>
+      <main class="workspace single">
+        <section class="panel report-command-panel">
+          <div class="panel-heading">
+            <h2>Parallel Test</h2>
+            <span class="status-pill neutral" id="parallel-run-status">Idle</span>
+          </div>
+          <div class="card-add-form">
+            <label class="field">
+              <span>Mode</span>
+              <select id="parallel-mode">
+                <option value="manual">Manual selection</option>
+                <option value="random">Random real cards</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Amount</span>
+              <input id="parallel-amount" type="number" min="1" step="0.01" value="100">
+            </label>
+            <label class="field">
+              <span>Concurrency</span>
+              <input id="parallel-concurrency" type="number" min="1" max="10" value="10">
+            </label>
+            <label class="field" id="parallel-random-count-field">
+              <span>Random count</span>
+              <input id="parallel-random-count" type="number" min="1" max="10" value="10">
+            </label>
+          </div>
+          <div id="parallel-manual-panel">
+            <div class="card-add-form">
+              <label class="field">
+                <span>Card</span>
+                <select id="parallel-card-select"></select>
+              </label>
+              <label class="field">
+                <span>Repeat</span>
+                <input id="parallel-repeat-count" type="number" min="1" max="10" value="1">
+              </label>
+              <div class="result-actions">
+                <button class="secondary-action" id="parallel-add-card" type="button">Add card</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Card</th>
+                    <th>Repeat</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="parallel-selection-body"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="result-actions">
+            <button class="secondary-action" id="parallel-run-button" type="button">
+              Start parallel run
+            </button>
+          </div>
+          <dl class="result-list">
+            <div>
+              <dt>Run ID</dt>
+              <dd id="parallel-run-id">-</dd>
+            </div>
+            <div>
+              <dt>Progress</dt>
+              <dd id="parallel-progress">-</dd>
+            </div>
+            <div>
+              <dt>Selected Tests</dt>
+              <dd id="parallel-selected-total">0</dd>
+            </div>
+            <div>
+              <dt>Message</dt>
+              <dd id="parallel-message">Ready</dd>
+            </div>
+          </dl>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Card</th>
+                  <th>Attempt</th>
+                  <th>Order</th>
+                  <th>Status</th>
+                  <th>Class</th>
+                  <th>Provider</th>
+                  <th>PaymentList</th>
+                  <th>3DS</th>
+                  <th>Duration</th>
+                </tr>
+              </thead>
+              <tbody id="parallel-results-body"></tbody>
+            </table>
+          </div>
+          <p class="inline-message">
+            Runs payment initialization in parallel. 3D Secure cards stop at pending 3DS in v1.
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

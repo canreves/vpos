@@ -69,6 +69,14 @@ def create_app() -> FastAPI:
             {"title": "Reports"},
         )
 
+    @app.get("/parallel", include_in_schema=False)
+    async def parallel_page(request: Request) -> Response:
+        return templates.TemplateResponse(
+            request,
+            "parallel.html",
+            {"title": "Parallel Tests"},
+        )
+
     @app.get("/settings", include_in_schema=False)
     async def settings_page(request: Request) -> Response:
         return templates.TemplateResponse(
