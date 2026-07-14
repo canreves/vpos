@@ -39,12 +39,16 @@ OTP_SELECTORS = (
     'input[type="number"]',
 )
 SUBMIT_SELECTORS = (
-    'button[type="submit"]',
-    'input[type="submit"]',
     'button:has-text("Onay")',
     'button:has-text("Tamam")',
     'button:has-text("Gönder")',
     'button:has-text("Submit")',
+    'input[type="submit"][value*="Onay" i]',
+    'input[type="submit"][value*="Tamam" i]',
+    'input[type="submit"][value*="Gönder" i]',
+    'input[type="submit"][value*="Submit" i]',
+    'button[type="submit"]',
+    'input[type="submit"]',
     "button",
 )
 DEFAULT_FORM_BASE_URL = "https://vpostest.qnb.com.tr/PayforACSSimulator/"
