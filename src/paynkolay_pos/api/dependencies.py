@@ -50,10 +50,12 @@ class PlaywrightThreeDSAutomator:
         form_base_url: str,
         headed: bool,
         close_delay_seconds: float,
+        headed_fallback: bool,
     ) -> None:
         self._form_base_url = form_base_url
         self._headed = headed
         self._close_delay_seconds = close_delay_seconds
+        self._headed_fallback = headed_fallback
 
     async def complete(
         self,
@@ -65,7 +67,7 @@ class PlaywrightThreeDSAutomator:
     ) -> AcsBrowserAutomationResult:
         """Complete a 3DS challenge using Chromium."""
 
-        return await complete_acs_browser_challenge(
+        result = await complete_acs_browser_challenge(
             html=html,
             brand=brand,
             configured_otp=configured_otp,
@@ -73,6 +75,28 @@ class PlaywrightThreeDSAutomator:
             form_base_url=self._form_base_url,
             headed=self._headed,
             close_delay_seconds=self._close_delay_seconds,
+        )
+        if self._should_retry_headed(result):
+            return await complete_acs_browser_challenge(
+                html=html,
+                brand=brand,
+                configured_otp=configured_otp,
+                callback_url=callback_url,
+                form_base_url=self._form_base_url,
+                headed=True,
+                close_delay_seconds=self._close_delay_seconds,
+            )
+        return result
+
+    def _should_retry_headed(self, result: AcsBrowserAutomationResult) -> bool:
+        """Retry in headed mode only when headless could not find a dynamic OTP source."""
+
+        if self._headed or not self._headed_fallback or result.submitted:
+            return False
+        resolution = result.otp_resolution or {}
+        return (
+            result.reason == "otp_resolution_missing_source"
+            or resolution.get("status") == "missing_source"
         )
 
 
@@ -140,6 +164,7 @@ def get_three_ds_automator() -> SupportsThreeDSAutomator:
         ),
         headed=_env_flag("PAYNKOLAY_3DS_AUTOMATION_HEADED", default=False),
         close_delay_seconds=_env_float("PAYNKOLAY_3DS_AUTOMATION_CLOSE_DELAY", default=0.0),
+        headed_fallback=_env_flag("PAYNKOLAY_3DS_AUTOMATION_HEADED_FALLBACK", default=True),
     )
 
 
