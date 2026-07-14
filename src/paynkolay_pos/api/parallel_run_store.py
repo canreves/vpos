@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from paynkolay_pos.api.schemas import ParallelRunItemResponse, ParallelRunResponse
-from paynkolay_pos.api.session_models import ProviderRequestSummary
+from paynkolay_pos.api.session_models import ProviderRequestSummary, ThreeDSAutomationSummary
 
 ParallelRunStatus = Literal["pending", "running", "completed", "completed_with_failures", "failed"]
 ParallelRunItemStatus = Literal["pending", "running", "completed", "failed"]
@@ -31,6 +31,7 @@ class ParallelRunItemState:
     provider_response_data: str | None = None
     payment_list_status: str | None = None
     payment_list_error: str | None = None
+    three_ds_automation: ThreeDSAutomationSummary | None = None
     error_message: str | None = None
     three_ds_url: str | None = None
     started_at: datetime | None = None
@@ -60,6 +61,7 @@ class ParallelRunItemState:
             provider_response_data=self.provider_response_data,
             payment_list_status=self.payment_list_status,
             payment_list_error=self.payment_list_error,
+            three_ds_automation=self.three_ds_automation,
             error_message=self.error_message,
             duration_ms=self.duration_ms,
             three_ds_url=self.three_ds_url,

@@ -11,6 +11,7 @@ from paynkolay_pos.api.session_models import (
     PaymentSession,
     PaymentSessionStatus,
     ProviderRequestSummary,
+    ThreeDSAutomationSummary,
     mask_pan,
     utc_now,
 )
@@ -169,6 +170,29 @@ class PaymentSessionStore:
             updated = session.model_copy(
                 update={
                     "payment_list_error": error,
+                    "updated_at": self._clock(),
+                }
+            )
+            self._sessions[order_id] = PaymentSession.model_validate(updated)
+            return self._sessions[order_id]
+
+    async def update_three_ds_automation(
+        self,
+        order_id: str,
+        automation: ThreeDSAutomationSummary,
+    ) -> PaymentSession:
+        """Store sanitized 3DS automation evidence on a tracked session."""
+
+        async with self._lock:
+            session = self._sessions.get(order_id)
+            if session is None:
+                raise PaymentSessionNotFoundError(
+                    f"payment session does not exist for order_id={order_id!r}"
+                )
+
+            updated = session.model_copy(
+                update={
+                    "three_ds_automation": automation,
                     "updated_at": self._clock(),
                 }
             )

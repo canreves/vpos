@@ -5,12 +5,15 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from pydantic import SecretStr
 
 from paynkolay_pos.api.dependencies import (
+    SupportsThreeDSAutomator,
     get_external_payment_logger,
     get_payment_initializer,
     get_payment_session_store,
+    get_three_ds_automator,
     get_three_ds_form_store,
 )
 from paynkolay_pos.api.payment_initializer import (
@@ -28,6 +31,7 @@ from paynkolay_pos.api.session_models import (
     PaymentSession,
     PaymentSessionStatus,
     ProviderRequestSummary,
+    ThreeDSAutomationSummary,
     mask_pan,
 )
 from paynkolay_pos.api.session_store import (
@@ -36,7 +40,12 @@ from paynkolay_pos.api.session_store import (
     PaymentSessionStore,
 )
 from paynkolay_pos.api.three_ds_store import ThreeDSFormStore
-from paynkolay_pos.models import PaynkolayPaymentResult, PaynkolayThreeDSInitializeResult
+from paynkolay_pos.config import load_runtime_settings
+from paynkolay_pos.models import (
+    PaymentStatus,
+    PaynkolayPaymentResult,
+    PaynkolayThreeDSInitializeResult,
+)
 from paynkolay_pos.reporting import (
     PaymentLogEvent,
     PaymentLogEventType,
@@ -56,6 +65,10 @@ ThreeDSFormStoreDependency = Annotated[
     ThreeDSFormStore,
     Depends(get_three_ds_form_store),
 ]
+ThreeDSAutomatorDependency = Annotated[
+    SupportsThreeDSAutomator,
+    Depends(get_three_ds_automator),
+]
 ExternalLoggerDependency = Annotated[
     SupportsExternalPaymentLogger,
     Depends(get_external_payment_logger),
@@ -66,9 +79,11 @@ ExternalLoggerDependency = Annotated[
 async def create_payment(
     request: PaymentFormRequest,
     http_request: Request,
+    background_tasks: BackgroundTasks,
     session_store: PaymentSessionStoreDependency,
     three_ds_form_store: ThreeDSFormStoreDependency,
     initializer: PaymentInitializerDependency,
+    automator: ThreeDSAutomatorDependency,
     external_logger: ExternalLoggerDependency,
 ) -> PaymentFormResponse:
     """Accept and validate a browser payment form payload.
@@ -135,10 +150,20 @@ async def create_payment(
             session,
             metadata={"render_url": f"/payments/{order_id}/three-ds"},
         )
+        background_tasks.add_task(
+            _auto_complete_three_ds_session,
+            order_id=order_id,
+            html=provider_result.bank_request_message,
+            request=request,
+            callback_url=outcome.success_url,
+            session_store=session_store,
+            initializer=initializer,
+            automator=automator,
+        )
         three_ds = {"render_url": f"/payments/{order_id}/three-ds"}
         return PaymentFormResponse.from_session(
             session,
-            message="Payment initialized; 3D Secure authentication is required.",
+            message="Payment initialized; 3D Secure automation has started.",
             three_ds=three_ds,
         )
 
@@ -259,6 +284,69 @@ async def _verify_payment_list_status(
     except PaymentProviderStatusVerificationError as exc:
         return await session_store.update_payment_list_error(order_id, str(exc))
     return await session_store.update_payment_list_status(order_id, payment_list_status)
+
+
+async def _auto_complete_three_ds_session(
+    *,
+    order_id: str,
+    html: str,
+    request: PaymentFormRequest,
+    callback_url: str,
+    session_store: PaymentSessionStore,
+    initializer: SupportsPaymentInitializer,
+    automator: SupportsThreeDSAutomator,
+) -> None:
+    await session_store.update_three_ds_automation(
+        order_id,
+        ThreeDSAutomationSummary(status="running", reason="3DS automation started"),
+    )
+    configured_otp = _configured_otp_for_request(request)
+    result = await automator.complete(
+        html=html,
+        brand=request.card_brand,
+        configured_otp=configured_otp,
+        callback_url=callback_url,
+    )
+    await session_store.update_three_ds_automation(
+        order_id,
+        ThreeDSAutomationSummary.model_validate(result.summary()),
+    )
+    if not result.completed or not result.submitted:
+        return
+
+    session = await _verify_payment_list_status(
+        order_id=order_id,
+        request=request,
+        session=await session_store.get(order_id),
+        session_store=session_store,
+        initializer=initializer,
+    )
+    if session.payment_list_status in {
+        PaymentStatus.AUTHENTICATED,
+        PaymentStatus.AUTHORIZED,
+        PaymentStatus.CAPTURED,
+    }:
+        await session_store.update_status(order_id, PaymentSessionStatus.COMPLETED)
+    elif session.payment_list_status is PaymentStatus.FAILED:
+        await session_store.update_status(
+            order_id,
+            PaymentSessionStatus.FAILED,
+            failure_reason="3DS automation completed but PaymentList returned failed",
+        )
+    elif session.payment_list_status is not None:
+        await session_store.update_status(order_id, PaymentSessionStatus.STATUS_VERIFIED)
+
+
+def _configured_otp_for_request(request: PaymentFormRequest) -> SecretStr | None:
+    pan = request.card_number.get_secret_value()
+    try:
+        cards = load_runtime_settings().current.cards
+    except (FileNotFoundError, RuntimeError, ValueError):
+        return None
+    for card in cards:
+        if card.pan.get_secret_value() == pan:
+            return card.expected_otp
+    return None
 
 
 async def _log_payment_event(

@@ -13,9 +13,11 @@ from uuid import uuid4
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 
 from paynkolay_pos.api.dependencies import (
+    SupportsThreeDSAutomator,
     get_parallel_run_store,
     get_payment_initializer,
     get_payment_session_store,
+    get_three_ds_automator,
     get_three_ds_form_store,
 )
 from paynkolay_pos.api.parallel_run_store import (
@@ -38,11 +40,21 @@ from paynkolay_pos.api.schemas import (
     ParallelRunResponse,
     PaymentFormRequest,
 )
-from paynkolay_pos.api.session_models import PaymentSessionStatus, ProviderRequestSummary
+from paynkolay_pos.api.session_models import (
+    PaymentSession,
+    PaymentSessionStatus,
+    ProviderRequestSummary,
+    ThreeDSAutomationSummary,
+)
 from paynkolay_pos.api.session_store import PaymentSessionStore
 from paynkolay_pos.api.three_ds_store import ThreeDSFormStore
 from paynkolay_pos.config import TestCard, load_runtime_settings
-from paynkolay_pos.models import Currency, PaynkolayPaymentResult, PaynkolayThreeDSInitializeResult
+from paynkolay_pos.models import (
+    Currency,
+    PaymentStatus,
+    PaynkolayPaymentResult,
+    PaynkolayThreeDSInitializeResult,
+)
 
 router = APIRouter(prefix="/api/parallel-runs", tags=["parallel_runs"])
 
@@ -58,6 +70,10 @@ ThreeDSFormStoreDependency = Annotated[
     ThreeDSFormStore,
     Depends(get_three_ds_form_store),
 ]
+ThreeDSAutomatorDependency = Annotated[
+    SupportsThreeDSAutomator,
+    Depends(get_three_ds_automator),
+]
 ParallelRunStoreDependency = Annotated[
     ParallelRunStore,
     Depends(get_parallel_run_store),
@@ -72,6 +88,7 @@ async def create_parallel_run(
     initializer: PaymentInitializerDependency,
     session_store: PaymentSessionStoreDependency,
     three_ds_form_store: ThreeDSFormStoreDependency,
+    automator: ThreeDSAutomatorDependency,
     run_store: ParallelRunStoreDependency,
 ) -> ParallelRunResponse:
     """Start a parallel payment initialization run from configured cards."""
@@ -98,6 +115,7 @@ async def create_parallel_run(
         currency=request.currency,
         client_host=_client_host(http_request),
         initializer=initializer,
+        automator=automator,
         session_store=session_store,
         three_ds_form_store=three_ds_form_store,
         run_store=run_store,
@@ -141,6 +159,7 @@ async def _execute_parallel_run(
     currency: Currency,
     client_host: str,
     initializer: SupportsPaymentInitializer,
+    automator: SupportsThreeDSAutomator,
     session_store: PaymentSessionStore,
     three_ds_form_store: ThreeDSFormStore,
     run_store: ParallelRunStore,
@@ -156,6 +175,7 @@ async def _execute_parallel_run(
             currency=currency,
             client_host=client_host,
             initializer=initializer,
+            automator=automator,
             session_store=session_store,
             three_ds_form_store=three_ds_form_store,
             run_store=run_store,
@@ -177,6 +197,7 @@ async def _execute_item(
     currency: Currency,
     client_host: str,
     initializer: SupportsPaymentInitializer,
+    automator: SupportsThreeDSAutomator,
     session_store: PaymentSessionStore,
     three_ds_form_store: ThreeDSFormStore,
     run_store: ParallelRunStore,
@@ -208,7 +229,9 @@ async def _execute_item(
                 run_id=run_id,
                 item_id=item.item_id,
                 outcome=outcome,
+                card=card,
                 initializer=initializer,
+                automator=automator,
                 session_store=session_store,
                 three_ds_form_store=three_ds_form_store,
                 run_store=run_store,
@@ -269,7 +292,9 @@ async def _record_provider_outcome(
     run_id: str,
     item_id: str,
     outcome: PaymentInitializationOutcome,
+    card: TestCard,
     initializer: SupportsPaymentInitializer,
+    automator: SupportsThreeDSAutomator,
     session_store: PaymentSessionStore,
     three_ds_form_store: ThreeDSFormStore,
     run_store: ParallelRunStore,
@@ -278,14 +303,58 @@ async def _record_provider_outcome(
     provider_request = _provider_request_summary(outcome)
     provider_result = outcome.provider_result
     if isinstance(provider_result, PaynkolayThreeDSInitializeResult):
+        order_id = outcome.payment_request.order_id
         await three_ds_form_store.put(
-            outcome.payment_request.order_id,
+            order_id,
             provider_result.bank_request_message,
         )
         await session_store.update_status(
-            outcome.payment_request.order_id,
+            order_id,
             PaymentSessionStatus.PENDING_3DS,
             provider_request=provider_request,
+        )
+        await session_store.update_three_ds_automation(
+            order_id,
+            ThreeDSAutomationSummary(status="running", reason="3DS automation started"),
+        )
+        automation_result = await automator.complete(
+            html=provider_result.bank_request_message,
+            brand=card.brand,
+            configured_otp=card.expected_otp,
+            callback_url=outcome.success_url,
+        )
+        automation_summary = ThreeDSAutomationSummary.model_validate(
+            automation_result.summary()
+        )
+        await session_store.update_three_ds_automation(order_id, automation_summary)
+        if not automation_result.completed or not automation_result.submitted:
+            await run_store.mutate(
+                run_id,
+                lambda run: _mark_item_completed(
+                    run,
+                    item_id,
+                    provider_request=provider_request,
+                    classification=_classification_for_acs_automation(automation_result),
+                    three_ds_url=f"/payments/{order_id}/three-ds",
+                    three_ds_automation=automation_summary,
+                ),
+            )
+            return
+
+        session = await _verify_parallel_payment_list(
+            order_id=order_id,
+            currency=currency,
+            initializer=initializer,
+            session_store=session_store,
+        )
+        classification = _classification_for_payment_list_status(
+            session.payment_list_status.value if session.payment_list_status is not None else None
+        )
+        await session_store.update_status(
+            order_id,
+            PaymentSessionStatus.COMPLETED
+            if classification == "completed"
+            else PaymentSessionStatus.STATUS_VERIFIED,
         )
         await run_store.mutate(
             run_id,
@@ -293,8 +362,15 @@ async def _record_provider_outcome(
                 run,
                 item_id,
                 provider_request=provider_request,
-                classification="pending_3ds",
-                three_ds_url=f"/payments/{outcome.payment_request.order_id}/three-ds",
+                classification=classification,
+                payment_list_status=(
+                    session.payment_list_status.value
+                    if session.payment_list_status is not None
+                    else None
+                ),
+                payment_list_error=session.payment_list_error,
+                three_ds_url=f"/payments/{order_id}/three-ds",
+                three_ds_automation=automation_summary,
             ),
         )
         return
@@ -346,6 +422,22 @@ async def _record_provider_outcome(
                 classification="completed" if provider_result.successful else "provider_failed",
             ),
         )
+
+
+async def _verify_parallel_payment_list(
+    *,
+    order_id: str,
+    currency: Currency,
+    initializer: SupportsPaymentInitializer,
+    session_store: PaymentSessionStore,
+) -> PaymentSession:
+    try:
+        return await session_store.update_payment_list_status(
+            order_id,
+            await initializer.verify_transaction_status(order_id, currency=currency),
+        )
+    except PaymentProviderStatusVerificationError as exc:
+        return await session_store.update_payment_list_error(order_id, str(exc))
 
 
 def _load_card_map() -> dict[str, TestCard]:
@@ -447,6 +539,7 @@ def _mark_item_completed(
     provider_response_data: str | None = None,
     payment_list_status: str | None = None,
     payment_list_error: str | None = None,
+    three_ds_automation: ThreeDSAutomationSummary | None = None,
     three_ds_url: str | None = None,
 ) -> None:
     item = _item(run, item_id)
@@ -457,6 +550,7 @@ def _mark_item_completed(
     item.provider_response_data = provider_response_data
     item.payment_list_status = payment_list_status
     item.payment_list_error = payment_list_error
+    item.three_ds_automation = three_ds_automation
     item.three_ds_url = three_ds_url
     item.finished_at = utc_now()
 
@@ -491,8 +585,8 @@ def _record_unhandled_task_errors(
 def _finish_run(run: ParallelRunState) -> None:
     run.finished_at = utc_now()
     failed_count = sum(1 for item in run.items if item.status == "failed")
-    provider_failed_count = sum(1 for item in run.items if item.classification == "provider_failed")
-    if failed_count or provider_failed_count:
+    attention_count = sum(1 for item in run.items if item.classification != "completed")
+    if failed_count or attention_count:
         run.status = "completed_with_failures"
         run.message = "Parallel run completed with failed items."
         return
@@ -530,6 +624,34 @@ def _classify_initialization_error(exc: PaymentProviderInitializationError) -> s
     if any(marker in error_text for marker in network_markers):
         return "network_error"
     return "framework_error"
+
+
+def _classification_for_acs_automation(result: object) -> str:
+    classification = getattr(result, "screen_classification", None)
+    reason = str(getattr(result, "reason", "") or "")
+    if classification in {"sms_manual_required", "mobile_approval_required"}:
+        return "acs_manual_required"
+    if classification == "acs_error_screen":
+        return "acs_error"
+    if classification == "blank_or_redirect_error":
+        return "blank_or_redirect_error"
+    if "missing_source" in reason:
+        return "acs_manual_required"
+    return "framework_error"
+
+
+def _classification_for_payment_list_status(payment_list_status: str | None) -> str:
+    if payment_list_status in {
+        PaymentStatus.AUTHENTICATED.value,
+        PaymentStatus.AUTHORIZED.value,
+        PaymentStatus.CAPTURED.value,
+    }:
+        return "completed"
+    if payment_list_status == PaymentStatus.FAILED.value:
+        return "provider_failed"
+    if payment_list_status is None:
+        return "payment_list_missing"
+    return "needs_investigation"
 
 
 def _exception_chain(exc: BaseException) -> list[BaseException]:

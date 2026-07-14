@@ -11,6 +11,7 @@ from paynkolay_pos.api.session_models import (
     PaymentSession,
     PaymentSessionStatus,
     ProviderRequestSummary,
+    ThreeDSAutomationSummary,
 )
 from paynkolay_pos.config import CardBrand
 from paynkolay_pos.models import Currency
@@ -271,6 +272,7 @@ class PaymentFormResponse(BaseModel):
     provider_response_data: str | None = None
     failure_reason: str | None = None
     payment_list: PaymentListStatusSummary | None = None
+    three_ds_automation: ThreeDSAutomationSummary | None = None
     three_ds: dict[str, str] | None = None
     message: str
     links: dict[str, str]
@@ -304,6 +306,7 @@ class PaymentFormResponse(BaseModel):
             provider_response_data=session.provider_response_data,
             failure_reason=session.failure_reason,
             payment_list=PaymentListStatusSummary.from_session(session),
+            three_ds_automation=session.three_ds_automation,
             three_ds=three_ds,
             message=message,
             links=links,
@@ -354,6 +357,7 @@ class PaymentLookupResponse(BaseModel):
     provider_transaction_id: str | None = None
     failure_reason: str | None = None
     payment_list: PaymentListStatusSummary | None = None
+    three_ds_automation: ThreeDSAutomationSummary | None = None
     created_at: str
     updated_at: str
     links: dict[str, str]
@@ -382,6 +386,7 @@ class PaymentLookupResponse(BaseModel):
             provider_transaction_id=session.provider_transaction_id,
             failure_reason=session.failure_reason,
             payment_list=PaymentListStatusSummary.from_session(session),
+            three_ds_automation=session.three_ds_automation,
             created_at=session.created_at.isoformat(),
             updated_at=session.updated_at.isoformat(),
             links=links,
@@ -446,6 +451,7 @@ class ParallelRunItemResponse(BaseModel):
     provider_response_data: str | None = None
     payment_list_status: str | None = None
     payment_list_error: str | None = None
+    three_ds_automation: ThreeDSAutomationSummary | None = None
     error_message: str | None = None
     duration_ms: int | None = None
     three_ds_url: str | None = None

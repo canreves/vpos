@@ -29,6 +29,19 @@ class ProviderRequestSummary(BaseModel):
     fail_url: str = Field(min_length=1, max_length=500)
 
 
+class ThreeDSAutomationSummary(BaseModel):
+    """Sanitized 3DS automation evidence safe to expose in UI/API responses."""
+
+    status: str = Field(min_length=1, max_length=40)
+    submitted: bool = False
+    classification: str | None = Field(default=None, min_length=1, max_length=80)
+    reason: str | None = Field(default=None, min_length=1, max_length=500)
+    otp_source_type: str | None = Field(default=None, min_length=1, max_length=80)
+    otp_present: bool = False
+    should_auto_submit: bool = False
+    final_url: str | None = Field(default=None, min_length=1, max_length=500)
+
+
 class PaymentSessionStatus(StrEnum):
     """States tracked by the browser payment workflow."""
 
@@ -66,6 +79,7 @@ class PaymentSession(BaseModel):
     payment_list_failure_code: str | None = Field(default=None, min_length=1)
     payment_list_updated_at: datetime | None = None
     payment_list_error: str | None = Field(default=None, min_length=1)
+    three_ds_automation: ThreeDSAutomationSummary | None = None
     created_at: datetime
     updated_at: datetime
 

@@ -17,6 +17,7 @@ from paynkolay_pos.api.app import create_app
 from paynkolay_pos.api.dependencies import (
     get_external_payment_logger,
     get_payment_initializer,
+    get_three_ds_automator,
 )
 from paynkolay_pos.api.payment_initializer import (
     PaymentInitializationOutcome,
@@ -37,6 +38,7 @@ from paynkolay_pos.models import (
 )
 from paynkolay_pos.reporting import PaymentLogEvent
 from paynkolay_pos.scenarios import build_private_scenario_catalog_payload
+from paynkolay_pos.three_ds import AcsBrowserAutomationResult
 
 
 @pytest_asyncio.fixture
@@ -50,13 +52,20 @@ async def fake_logger() -> AsyncIterator[FakeExternalPaymentLogger]:
 
 
 @pytest_asyncio.fixture
+async def fake_automator() -> AsyncIterator[FakeThreeDSAutomator]:
+    yield FakeThreeDSAutomator()
+
+
+@pytest_asyncio.fixture
 async def client(
     fake_initializer: FakePaymentInitializer,
     fake_logger: FakeExternalPaymentLogger,
+    fake_automator: FakeThreeDSAutomator,
 ) -> AsyncIterator[httpx.AsyncClient]:
     app = create_app()
     app.dependency_overrides[get_payment_initializer] = lambda: fake_initializer
     app.dependency_overrides[get_external_payment_logger] = lambda: fake_logger
+    app.dependency_overrides[get_three_ds_automator] = lambda: fake_automator
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
         transport=transport,
@@ -71,6 +80,42 @@ class FakeExternalPaymentLogger:
 
     async def log(self, event: PaymentLogEvent) -> None:
         self.events.append(event)
+
+
+class FakeThreeDSAutomator:
+    def __init__(self) -> None:
+        self.result = AcsBrowserAutomationResult(
+            completed=False,
+            submitted=False,
+            reason="otp_resolution_missing_source",
+            screen_classification="sms_manual_required",
+            otp_resolution={
+                "status": "missing_source",
+                "source_type": None,
+                "otp_present": False,
+                "should_auto_submit": False,
+                "reason": "missing source",
+            },
+        )
+        self.calls: list[dict[str, object]] = []
+
+    async def complete(
+        self,
+        *,
+        html: str,
+        brand: object,
+        configured_otp: object,
+        callback_url: str,
+    ) -> AcsBrowserAutomationResult:
+        self.calls.append(
+            {
+                "html_length": len(html),
+                "brand": str(brand),
+                "configured_otp_present": configured_otp is not None,
+                "callback_url": callback_url,
+            }
+        )
+        return self.result
 
 
 class FakePaymentInitializer:
@@ -770,9 +815,10 @@ async def test_parallel_run_manual_mode_repeats_selected_cards(
 
 @pytest.mark.api
 @pytest.mark.asyncio
-async def test_parallel_run_records_3ds_items_as_pending_without_browser_execution(
+async def test_parallel_run_records_3ds_automation_failure_without_stopping_run(
     client: httpx.AsyncClient,
     fake_initializer: FakePaymentInitializer,
+    fake_automator: FakeThreeDSAutomator,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -802,11 +848,85 @@ async def test_parallel_run_records_3ds_items_as_pending_without_browser_executi
 
     assert response.status_code == 202
     payload = await _wait_parallel_run(client, response.json()["run_id"])
-    assert payload["status"] == "completed"
-    assert payload["items"][0]["classification"] == "pending_3ds"
+    assert payload["status"] == "completed_with_failures"
+    assert payload["items"][0]["classification"] == "acs_manual_required"
     assert payload["items"][0]["requires_3ds"] is True
     assert payload["items"][0]["three_ds_url"].startswith("/payments/batch-")
+    assert payload["items"][0]["three_ds_automation"]["status"] == "failed"
+    assert fake_automator.calls == [
+        {
+            "html_length": len("<form>3DS challenge</form>"),
+            "brand": "visa",
+            "configured_otp_present": True,
+            "callback_url": "https://merchant.example.test/payments/result/success",
+        }
+    ]
     assert fake_initializer.status_calls == []
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_run_completes_3ds_item_after_automation_submit(
+    client: httpx.AsyncClient,
+    fake_initializer: FakePaymentInitializer,
+    fake_automator: FakeThreeDSAutomator,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="parallel_3ds",
+                pan="5555555555554444",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+        ],
+    )
+    fake_automator.result = AcsBrowserAutomationResult(
+        completed=True,
+        submitted=True,
+        returned_to_callback=True,
+        reason="otp_submitted",
+        screen_classification="static_config_otp",
+        otp_resolution={
+            "status": "ready",
+            "source_type": "static_config",
+            "otp_present": True,
+            "should_auto_submit": True,
+            "reason": "resolved OTP from configured test card metadata",
+        },
+    )
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "manual",
+            "amount": "50.00",
+            "currency": "TRY",
+            "concurrency": 1,
+            "manual_cards": [{"alias": "parallel_3ds", "repeat_count": 1}],
+        },
+    )
+
+    assert response.status_code == 202
+    payload = await _wait_parallel_run(client, response.json()["run_id"])
+    assert payload["status"] == "completed"
+    assert payload["items"][0]["classification"] == "completed"
+    assert payload["items"][0]["payment_list_status"] == "captured"
+    assert payload["items"][0]["three_ds_automation"] == {
+        "status": "completed",
+        "submitted": True,
+        "classification": "static_config_otp",
+        "reason": "otp_submitted",
+        "otp_source_type": "static_config",
+        "otp_present": True,
+        "should_auto_submit": True,
+        "final_url": None,
+    }
+    assert fake_initializer.status_calls == [payload["items"][0]["order_id"]]
 
 
 @pytest.mark.api
@@ -1151,6 +1271,76 @@ async def test_payment_form_initializes_provider_and_returns_3ds_state(
         "three_ds_required",
         "three_ds_rendered",
     ]
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_payment_form_auto_completes_3ds_when_otp_automation_submits(
+    client: httpx.AsyncClient,
+    fake_automator: FakeThreeDSAutomator,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="ui_3ds_static",
+                pan="4111111111111111",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+        ],
+    )
+    fake_automator.result = AcsBrowserAutomationResult(
+        completed=True,
+        submitted=True,
+        returned_to_callback=True,
+        reason="otp_submitted",
+        screen_classification="static_config_otp",
+        otp_resolution={
+            "status": "ready",
+            "source_type": "static_config",
+            "otp_present": True,
+            "should_auto_submit": True,
+            "reason": "resolved OTP from configured test card metadata",
+        },
+    )
+
+    response = await client.post(
+        "/api/payments",
+        json={
+            "order_id": "order-auto-3ds",
+            "amount": "100.00",
+            "currency": "TRY",
+            "card_number": "4111111111111111",
+            "card_holder": "PAYNKOLAY TEST",
+            "expiry_month": 12,
+            "expiry_year": 2030,
+            "cvv": "123",
+            "requires_3ds": True,
+            "installment_count": 1,
+        },
+    )
+    lookup_response = await client.get("/api/payments/order-auto-3ds")
+
+    assert response.status_code == 202
+    payload = lookup_response.json()
+    assert payload["status"] == "completed"
+    assert payload["payment_list"]["status"] == "captured"
+    assert payload["three_ds_automation"] == {
+        "status": "completed",
+        "submitted": True,
+        "classification": "static_config_otp",
+        "reason": "otp_submitted",
+        "otp_source_type": "static_config",
+        "otp_present": True,
+        "should_auto_submit": True,
+        "final_url": None,
+    }
+    assert fake_automator.calls[0]["configured_otp_present"] is True
+    assert "123456" not in lookup_response.text
 
 
 @pytest.mark.api
