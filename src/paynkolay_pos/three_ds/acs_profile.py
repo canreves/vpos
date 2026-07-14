@@ -240,6 +240,25 @@ def _visible_otp_from_text(text: str) -> str | None:
         if candidates:
             return candidates[-1]
 
+    marker_match = None
+    for match in re.finditer(marker_pattern, text, flags=re.IGNORECASE):
+        marker_match = match
+    if marker_match is not None:
+        segment = text[marker_match.end() :]
+        action_match = re.search(action_pattern, segment, flags=re.IGNORECASE)
+        if action_match is not None:
+            segment = segment[: action_match.start()]
+        candidates = []
+        for match in re.finditer(r"(?<!\d)(\d{6})(?!\d)", segment):
+            start = max(0, match.start() - 40)
+            end = min(len(segment), match.end() + 40)
+            context = segment[start:end]
+            if re.search(negative_pattern, context, flags=re.IGNORECASE) is not None:
+                continue
+            candidates.append(match.group(1))
+        if candidates:
+            return candidates[-1]
+
     for match in re.finditer(r"(?<!\d)(\d{6})(?!\d)", text):
         start = max(0, match.start() - 40)
         end = min(len(text), match.end() + 40)

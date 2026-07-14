@@ -176,6 +176,37 @@ def test_visible_otp_detection_uses_code_after_visa_timer_block() -> None:
 
 
 @pytest.mark.three_ds
+def test_visible_otp_detection_handles_collapsed_visa_text() -> None:
+    evidence = AcsProfileEvidence(
+        brand=CardBrand.VISA,
+        title="International Security Platform 3D",
+        final_url="https://vpostest.qnb.com.tr/PayforACSSimulator/",
+        frames=(
+            frame(
+                url="https://vpostest.qnb.com.tr/PayforACSSimulator/",
+                text_prefix=(
+                    "Verified by VISA International Security Platform 3D "
+                    "Üye İşyeri : PAYNKOLAY / KOLAYPOSDESTE Tutar : 300,00 TRY "
+                    "Tarih : 15:10:08 Kart Numarası : XXXX XXXX XXXX 6111 "
+                    "Telefon : XXX XXX 1004 Güvenlik Kodu : Cavv(Sadece : "
+                    "biliyorsanız giriniz) 169 430793 Yardım Resend Password İptal Onayla"
+                ),
+                fields=(
+                    AcsFieldEvidence(tag="input", type="password", name="password"),
+                    AcsFieldEvidence(tag="input", type="text", name="cavv"),
+                    AcsFieldEvidence(tag="button", type="submit", text="Onayla"),
+                ),
+            ),
+        ),
+    )
+    profile = detect_acs_profile(evidence)
+
+    assert profile.screen_classification is AcsScreenClassification.VISIBLE_OTP_CODE
+    assert profile.otp_strategy is AcsOtpStrategy.VISIBLE_PAGE_OTP
+    assert visible_otp_from_evidence(evidence) == "430793"
+
+
+@pytest.mark.three_ds
 def test_detect_acs_profile_ignores_unlabelled_six_digit_reference() -> None:
     profile = detect_acs_profile(
         AcsProfileEvidence(
