@@ -114,6 +114,7 @@ async def create_parallel_run(
         amount=request.amount,
         currency=request.currency,
         client_host=_client_host(http_request),
+        auto_complete_3ds=request.auto_complete_3ds,
         initializer=initializer,
         automator=automator,
         session_store=session_store,
@@ -158,6 +159,7 @@ async def _execute_parallel_run(
     amount: Decimal,
     currency: Currency,
     client_host: str,
+    auto_complete_3ds: bool,
     initializer: SupportsPaymentInitializer,
     automator: SupportsThreeDSAutomator,
     session_store: PaymentSessionStore,
@@ -174,6 +176,7 @@ async def _execute_parallel_run(
             amount=amount,
             currency=currency,
             client_host=client_host,
+            auto_complete_3ds=auto_complete_3ds,
             initializer=initializer,
             automator=automator,
             session_store=session_store,
@@ -196,6 +199,7 @@ async def _execute_item(
     amount: Decimal,
     currency: Currency,
     client_host: str,
+    auto_complete_3ds: bool,
     initializer: SupportsPaymentInitializer,
     automator: SupportsThreeDSAutomator,
     session_store: PaymentSessionStore,
@@ -230,6 +234,7 @@ async def _execute_item(
                 item_id=item.item_id,
                 outcome=outcome,
                 card=card,
+                auto_complete_3ds=auto_complete_3ds,
                 initializer=initializer,
                 automator=automator,
                 session_store=session_store,
@@ -293,6 +298,7 @@ async def _record_provider_outcome(
     item_id: str,
     outcome: PaymentInitializationOutcome,
     card: TestCard,
+    auto_complete_3ds: bool,
     initializer: SupportsPaymentInitializer,
     automator: SupportsThreeDSAutomator,
     session_store: PaymentSessionStore,
@@ -313,6 +319,18 @@ async def _record_provider_outcome(
             PaymentSessionStatus.PENDING_3DS,
             provider_request=provider_request,
         )
+        if not auto_complete_3ds:
+            await run_store.mutate(
+                run_id,
+                lambda run: _mark_item_completed(
+                    run,
+                    item_id,
+                    provider_request=provider_request,
+                    classification="pending_3ds",
+                    three_ds_url=f"/payments/{order_id}/three-ds",
+                ),
+            )
+            return
         await session_store.update_three_ds_automation(
             order_id,
             ThreeDSAutomationSummary(status="running", reason="3DS automation started"),

@@ -45,6 +45,11 @@
               <span>Concurrency</span>
               <input id="parallel-concurrency" type="number" min="1" max="10" value="10">
             </label>
+            <fieldset class="flow-toggle">
+              <legend>3DS Completion</legend>
+              <button id="parallel-3ds-mode-manual" class="flow-option active" type="button" data-mode="manual">Manual</button>
+              <button id="parallel-3ds-mode-auto" class="flow-option" type="button" data-mode="auto">Auto</button>
+            </fieldset>
             <label class="field" id="parallel-random-count-field">
               <span>Random count</span>
               <input id="parallel-random-count" type="number" min="1" max="10" value="10">

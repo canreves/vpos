@@ -319,6 +319,8 @@ async def test_root_renders_payment_screen(client: httpx.AsyncClient) -> None:
     assert 'id="card-add-form"' in response.text
     assert 'id="installment-status"' in response.text
     assert 'id="result-payment-list-status"' in response.text
+    assert 'id="three-ds-mode-manual"' in response.text
+    assert 'id="three-ds-mode-auto"' in response.text
 
 
 @pytest.mark.api
@@ -344,6 +346,8 @@ async def test_parallel_page_renders_parallel_run_screen(client: httpx.AsyncClie
     assert "text/html" in response.headers["content-type"]
     assert 'class="nav-link active" href="/parallel"' in response.text
     assert 'id="parallel-run-button"' in response.text
+    assert 'id="parallel-3ds-mode-manual"' in response.text
+    assert 'id="parallel-3ds-mode-auto"' in response.text
     assert 'id="parallel-selection-body"' in response.text
     assert 'id="parallel-results-body"' in response.text
     assert "/static/js/parallel-runs.js" in response.text
@@ -842,6 +846,7 @@ async def test_parallel_run_records_3ds_automation_failure_without_stopping_run(
             "amount": "50.00",
             "currency": "TRY",
             "concurrency": 1,
+            "auto_complete_3ds": True,
             "manual_cards": [{"alias": "parallel_3ds", "repeat_count": 1}],
         },
     )
@@ -862,6 +867,46 @@ async def test_parallel_run_records_3ds_automation_failure_without_stopping_run(
         }
     ]
     assert fake_initializer.status_calls == []
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_run_leaves_3ds_pending_when_auto_completion_is_disabled(
+    client: httpx.AsyncClient,
+    fake_automator: FakeThreeDSAutomator,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="parallel_3ds",
+                pan="5555555555554444",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+        ],
+    )
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "manual",
+            "amount": "50.00",
+            "currency": "TRY",
+            "concurrency": 1,
+            "manual_cards": [{"alias": "parallel_3ds", "repeat_count": 1}],
+        },
+    )
+
+    assert response.status_code == 202
+    payload = await _wait_parallel_run(client, response.json()["run_id"])
+    assert payload["status"] == "completed_with_failures"
+    assert payload["items"][0]["classification"] == "pending_3ds"
+    assert payload["items"][0]["three_ds_automation"] is None
+    assert fake_automator.calls == []
 
 
 @pytest.mark.api
@@ -907,6 +952,7 @@ async def test_parallel_run_completes_3ds_item_after_automation_submit(
             "amount": "50.00",
             "currency": "TRY",
             "concurrency": 1,
+            "auto_complete_3ds": True,
             "manual_cards": [{"alias": "parallel_3ds", "repeat_count": 1}],
         },
     )
@@ -1231,6 +1277,7 @@ async def test_payment_form_initializes_provider_and_returns_3ds_state(
     client: httpx.AsyncClient,
     fake_initializer: FakePaymentInitializer,
     fake_logger: FakeExternalPaymentLogger,
+    fake_automator: FakeThreeDSAutomator,
 ) -> None:
     response = await client.post(
         "/api/payments",
@@ -1255,8 +1302,10 @@ async def test_payment_form_initializes_provider_and_returns_3ds_state(
     assert payload["requires_3ds"] is True
     assert payload["masked_pan"] == "411111******1111"
     assert payload["three_ds"] == {"render_url": f"/payments/{payload['order_id']}/three-ds"}
+    assert payload["three_ds_automation"] is None
     assert fake_initializer.calls == [(payload["order_id"], "127.0.0.1")]
     assert fake_initializer.status_calls == []
+    assert fake_automator.calls == []
     assert "4111111111111111" not in str([event.model_dump() for event in fake_logger.events])
     assert "123" not in str([event.model_dump() for event in fake_logger.events])
     assert "4111111111111111" not in response.text
@@ -1321,6 +1370,7 @@ async def test_payment_form_auto_completes_3ds_when_otp_automation_submits(
             "cvv": "123",
             "requires_3ds": True,
             "installment_count": 1,
+            "auto_complete_3ds": True,
         },
     )
     lookup_response = await client.get("/api/payments/order-auto-3ds")

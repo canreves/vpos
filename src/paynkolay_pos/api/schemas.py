@@ -231,6 +231,7 @@ class PaymentFormRequest(BaseModel):
     cvv: SecretStr = Field(min_length=3, max_length=4)
     requires_3ds: bool = True
     installment_count: int = Field(default=1, ge=1, le=12)
+    auto_complete_3ds: bool = False
 
     @field_validator("amount")
     @classmethod
@@ -407,6 +408,7 @@ class ParallelRunCreateRequest(BaseModel):
     concurrency: int = Field(default=10, ge=1, le=10)
     amount: Decimal = Field(gt=Decimal("0"), max_digits=12, decimal_places=2)
     currency: Currency = Currency.TRY
+    auto_complete_3ds: bool = False
     manual_cards: list[ParallelRunManualCardSelection] = Field(default_factory=list)
     random_count: int | None = Field(default=None, ge=1, le=10)
 

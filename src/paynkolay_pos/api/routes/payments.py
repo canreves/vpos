@@ -150,20 +150,23 @@ async def create_payment(
             session,
             metadata={"render_url": f"/payments/{order_id}/three-ds"},
         )
-        background_tasks.add_task(
-            _auto_complete_three_ds_session,
-            order_id=order_id,
-            html=provider_result.bank_request_message,
-            request=request,
-            callback_url=outcome.success_url,
-            session_store=session_store,
-            initializer=initializer,
-            automator=automator,
-        )
+        message = "Payment initialized; 3D Secure authentication is required."
+        if request.auto_complete_3ds:
+            background_tasks.add_task(
+                _auto_complete_three_ds_session,
+                order_id=order_id,
+                html=provider_result.bank_request_message,
+                request=request,
+                callback_url=outcome.success_url,
+                session_store=session_store,
+                initializer=initializer,
+                automator=automator,
+            )
+            message = "Payment initialized; 3D Secure automation has started."
         three_ds = {"render_url": f"/payments/{order_id}/three-ds"}
         return PaymentFormResponse.from_session(
             session,
-            message="Payment initialized; 3D Secure automation has started.",
+            message=message,
             three_ds=three_ds,
         )
 

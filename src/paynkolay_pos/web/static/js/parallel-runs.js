@@ -3,6 +3,9 @@
   const parallelMode = document.getElementById("parallel-mode");
   const parallelAmount = document.getElementById("parallel-amount");
   const parallelConcurrency = document.getElementById("parallel-concurrency");
+  const parallelThreeDsModeOptions = Array.from(
+    document.querySelectorAll("[id^='parallel-3ds-mode-']"),
+  );
   const parallelRandomCountField = document.getElementById("parallel-random-count-field");
   const parallelRandomCount = document.getElementById("parallel-random-count");
   const parallelManualPanel = document.getElementById("parallel-manual-panel");
@@ -18,6 +21,7 @@
   const parallelResultsBody = document.getElementById("parallel-results-body");
   let parallelRunPoll = null;
   let parallelSelections = [];
+  let parallelThreeDsMode = "manual";
 
   function setParallelRunStatus(text, kind) {
     parallelRunStatus.textContent = text;
@@ -94,6 +98,7 @@
       amount: parallelAmount.value,
       currency: "TRY",
       concurrency: Number(parallelConcurrency.value),
+      auto_complete_3ds: parallelThreeDsMode === "auto",
     };
     if (mode === "random") {
       payload.random_count = Number(parallelRandomCount.value);
@@ -173,6 +178,13 @@
     return `${automation.status} ${submitted} ${source}`;
   }
 
+  function setParallelThreeDsMode(mode) {
+    parallelThreeDsMode = mode;
+    parallelThreeDsModeOptions.forEach((option) => {
+      option.classList.toggle("active", option.dataset.mode === mode);
+    });
+  }
+
   function startParallelPolling(runId) {
     if (parallelRunPoll !== null) {
       return;
@@ -199,6 +211,11 @@
 
   parallelMode.addEventListener("change", renderParallelMode);
   parallelRandomCount.addEventListener("input", renderParallelSelections);
+  parallelThreeDsModeOptions.forEach((option) => {
+    option.addEventListener("click", () => {
+      setParallelThreeDsMode(option.dataset.mode);
+    });
+  });
 
   parallelAddCard.addEventListener("click", () => {
     if (!parallelCardSelect.value) {
@@ -237,6 +254,7 @@
   });
 
   renderParallelMode();
+  setParallelThreeDsMode("manual");
   renderParallelSelections();
   loadParallelCards();
 })();

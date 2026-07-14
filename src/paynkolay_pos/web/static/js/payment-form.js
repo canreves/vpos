@@ -21,8 +21,10 @@
   const installmentStatus = document.getElementById("installment-status");
   const requires3dsField = document.getElementById("requires-3ds-field");
   const requires3dsInput = document.getElementById("requires-3ds");
+  const threeDsModeOptions = Array.from(document.querySelectorAll("[id^='three-ds-mode-']"));
   let installmentTimer = null;
   let selectedNewCardFlow = "moto";
+  let selectedThreeDsMode = "manual";
   let availableCards = [];
   let cardsLoaded = false;
 
@@ -140,6 +142,7 @@
       cvv: data.get("cvv"),
       requires_3ds: requires3dsInput.checked,
       installment_count: Number(data.get("installment_count")),
+      auto_complete_3ds: selectedThreeDsMode === "auto",
     };
   }
 
@@ -351,6 +354,13 @@
     newCardOtp.value = "";
   }
 
+  function setThreeDsMode(mode) {
+    selectedThreeDsMode = mode;
+    threeDsModeOptions.forEach((option) => {
+      option.classList.toggle("active", option.dataset.mode === mode);
+    });
+  }
+
   async function loadConfig() {
     const config = await window.PaynkolayApi.getConfig();
     const currencySelect = document.getElementById("currency");
@@ -422,6 +432,12 @@
   flowOptions.forEach((option) => {
     option.addEventListener("click", () => {
       setNewCardFlow(option.dataset.flow);
+    });
+  });
+
+  threeDsModeOptions.forEach((option) => {
+    option.addEventListener("click", () => {
+      setThreeDsMode(option.dataset.mode);
     });
   });
 
@@ -539,4 +555,5 @@
   });
 
   hideThreeDsLink();
+  setThreeDsMode("manual");
 })();
