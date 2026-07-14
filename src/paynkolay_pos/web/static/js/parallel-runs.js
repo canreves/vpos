@@ -138,6 +138,7 @@
           item.classification,
           provider || item.error_message || "-",
           item.payment_list_status || item.payment_list_error || "-",
+          formatAutomation(item.three_ds_automation),
         ];
         for (const value of values) {
           const cell = document.createElement("td");
@@ -161,6 +162,15 @@
         return row;
       }),
     );
+  }
+
+  function formatAutomation(automation) {
+    if (!automation) {
+      return "-";
+    }
+    const source = automation.otp_source_type || "no-source";
+    const submitted = automation.submitted ? "submitted" : "not-submitted";
+    return `${automation.status} ${submitted} ${source}`;
   }
 
   function startParallelPolling(runId) {

@@ -39,8 +39,10 @@
     requestFlow: document.getElementById("result-request-flow"),
     paymentListStatus: document.getElementById("result-payment-list-status"),
     paymentListAuth: document.getElementById("result-payment-list-auth"),
+    threeDsAutomation: document.getElementById("result-three-ds-automation"),
   };
   const threeDsLink = document.getElementById("result-three-ds-link");
+  let paymentPoll = null;
 
   function setMessage(text, kind) {
     message.textContent = text;
@@ -63,6 +65,54 @@
     threeDsLink.href = url;
     threeDsLink.classList.remove("hidden");
     threeDsLink.removeAttribute("aria-disabled");
+  }
+
+  function renderThreeDsAutomation(automation) {
+    if (!automation) {
+      resultFields.threeDsAutomation.textContent = "-";
+      return;
+    }
+    const source = automation.otp_source_type || "no-source";
+    const submitted = automation.submitted ? "submitted" : "not-submitted";
+    resultFields.threeDsAutomation.textContent =
+      `${automation.status} ${submitted} source=${source}`;
+  }
+
+  function renderPaymentState(response) {
+    resultFields.status.textContent = response.status;
+    if (response.payment_list) {
+      resultFields.paymentListStatus.textContent =
+        response.payment_list.status || response.payment_list.error || "-";
+      resultFields.paymentListAuth.textContent = response.payment_list.authorization_code || "-";
+    } else {
+      resultFields.paymentListStatus.textContent = "-";
+      resultFields.paymentListAuth.textContent = "-";
+    }
+    renderThreeDsAutomation(response.three_ds_automation);
+  }
+
+  function startPaymentPolling(orderId) {
+    if (paymentPoll !== null) {
+      window.clearInterval(paymentPoll);
+    }
+    paymentPoll = window.setInterval(() => {
+      window.PaynkolayApi.getPayment(orderId)
+        .then((response) => {
+          renderPaymentState(response);
+          const automation = response.three_ds_automation;
+          const automationDone = automation && automation.status !== "running";
+          const statusDone =
+            response.status !== "pending_3ds" && response.status !== "three_ds_rendered";
+          if (automationDone || statusDone) {
+            window.clearInterval(paymentPoll);
+            paymentPoll = null;
+          }
+        })
+        .catch(() => {
+          window.clearInterval(paymentPoll);
+          paymentPoll = null;
+        });
+    }, 2000);
   }
 
   function applySelectedCardFlow(card) {
@@ -461,18 +511,12 @@
         resultFields.requestCard.textContent = "-";
         resultFields.requestFlow.textContent = "-";
       }
-      if (response.payment_list) {
-        resultFields.paymentListStatus.textContent =
-          response.payment_list.status || response.payment_list.error || "-";
-        resultFields.paymentListAuth.textContent = response.payment_list.authorization_code || "-";
-      } else {
-        resultFields.paymentListStatus.textContent = "-";
-        resultFields.paymentListAuth.textContent = "-";
-      }
+      renderPaymentState(response);
       const threeDsUrl = response.three_ds && response.three_ds.render_url;
       if (hasValidThreeDsUrl(threeDsUrl)) {
         showThreeDsLink(threeDsUrl);
         setMessage(response.message, "success");
+        startPaymentPolling(response.order_id);
       } else if (response.requires_3ds && response.status === "pending_3ds") {
         hideThreeDsLink();
         setMessage("3D Secure challenge URL was not returned for this payment.", "error");
