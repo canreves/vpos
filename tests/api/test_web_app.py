@@ -343,6 +343,7 @@ async def test_reports_page_renders_dynamic_report_screen(client: httpx.AsyncCli
     assert 'id="credential-run-button"' in response.text
     assert 'id="parallel-evidence-status"' in response.text
     assert 'id="parallel-evidence-runs"' in response.text
+    assert 'id="parallel-evidence-detail"' in response.text
     assert "make credential-scenario-report" in response.text
     assert "/static/js/reports.js" in response.text
 
@@ -591,6 +592,56 @@ async def test_parallel_evidence_summarizes_persisted_runs(
         ],
         "message": "Parallel run evidence is available.",
     }
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_evidence_detail_returns_sanitized_document(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    evidence_dir = tmp_path / "parallel-runs"
+    evidence_dir.mkdir()
+    monkeypatch.setenv("PAYNKOLAY_PARALLEL_EVIDENCE_DIR", str(evidence_dir))
+    run_path = evidence_dir / "run-1001.json"
+    evidence = {
+        "event": "parallel_run_evidence",
+        "run": {
+            "run_id": "run-1001",
+            "status": "completed",
+            "items": [{"classification": "completed", "masked_pan": "411111******1111"}],
+        },
+    }
+    run_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    response = await client.get("/api/reports/parallel-runs/run-1001")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "run_id": "run-1001",
+        "evidence_path": str(run_path),
+        "evidence": evidence,
+    }
+    assert "4111111111111111" not in response.text
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_evidence_detail_rejects_unknown_or_invalid_run_id(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    evidence_dir = tmp_path / "parallel-runs"
+    evidence_dir.mkdir()
+    monkeypatch.setenv("PAYNKOLAY_PARALLEL_EVIDENCE_DIR", str(evidence_dir))
+
+    missing_response = await client.get("/api/reports/parallel-runs/missing-run")
+    invalid_response = await client.get("/api/reports/parallel-runs/..%2Fsecret")
+
+    assert missing_response.status_code == 404
+    assert invalid_response.status_code == 404
 
 
 @pytest.mark.api

@@ -48,6 +48,9 @@
     getParallelEvidence() {
       return requestJson("/api/reports/parallel-runs");
     },
+    getParallelEvidenceDetail(runId) {
+      return requestJson(`/api/reports/parallel-runs/${encodeURIComponent(runId)}`);
+    },
     getCredentialReportRun() {
       return requestJson("/api/reports/credential-run");
     },

@@ -15,6 +15,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 
 from paynkolay_pos.api.dependencies import allure_report_dir, allure_results_dir
 from paynkolay_pos.api.schemas import (
+    ParallelEvidenceDetailResponse,
     ParallelEvidenceResponse,
     ParallelEvidenceRunSummary,
     ReportCommandRunResponse,
@@ -176,6 +177,30 @@ async def parallel_run_evidence() -> ParallelEvidenceResponse:
     )
 
 
+@router.get("/parallel-runs/{run_id}", response_model=ParallelEvidenceDetailResponse)
+async def parallel_run_evidence_detail(run_id: str) -> ParallelEvidenceDetailResponse:
+    """Return one persisted parallel run evidence document."""
+
+    if not _valid_run_id(run_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="parallel run evidence does not exist",
+        )
+    evidence_path = _parallel_evidence_dir() / f"{run_id}.json"
+    payload = _read_parallel_evidence_payload(evidence_path)
+    run = payload.get("run")
+    if not isinstance(run, dict) or run.get("run_id") != run_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="parallel run evidence does not exist",
+        )
+    return ParallelEvidenceDetailResponse(
+        run_id=run_id,
+        evidence_path=str(evidence_path),
+        evidence=payload,
+    )
+
+
 def _report_command_state(request: Request) -> ReportCommandRunState:
     state = request.app.state.credential_report_run
     if not isinstance(state, ReportCommandRunState):
@@ -231,6 +256,28 @@ def _read_parallel_evidence_files(evidence_dir: Path) -> list[ParallelEvidenceRu
         if summary is not None:
             runs.append(summary)
     return runs[:10]
+
+
+def _read_parallel_evidence_payload(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="parallel run evidence does not exist",
+        ) from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="parallel run evidence does not exist",
+        )
+    return payload
+
+
+def _valid_run_id(run_id: str) -> bool:
+    return bool(run_id) and all(
+        character.isalnum() or character in {"-", "_"} for character in run_id
+    )
 
 
 def _parallel_evidence_summary(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
@@ -537,6 +537,14 @@ class ParallelEvidenceResponse(BaseModel):
     evidence_path: str
     runs: list[ParallelEvidenceRunSummary] = Field(default_factory=list)
     message: str
+
+
+class ParallelEvidenceDetailResponse(BaseModel):
+    """One persisted parallel run evidence document."""
+
+    run_id: str
+    evidence_path: str
+    evidence: dict[str, Any]
 
 
 class ReportCommandRunResponse(BaseModel):

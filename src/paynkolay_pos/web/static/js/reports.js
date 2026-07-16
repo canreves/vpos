@@ -22,6 +22,7 @@
   const parallelEvidenceRoot = document.getElementById("parallel-evidence-root");
   const parallelEvidenceMessage = document.getElementById("parallel-evidence-message");
   const parallelEvidenceRuns = document.getElementById("parallel-evidence-runs");
+  const parallelEvidenceDetail = document.getElementById("parallel-evidence-detail");
   let credentialRunPoll = null;
 
   function setStatus(text, kind) {
@@ -135,6 +136,7 @@
   function renderParallelEvidence(payload) {
     parallelEvidenceRoot.textContent = payload.evidence_path;
     parallelEvidenceMessage.textContent = payload.message;
+    parallelEvidenceDetail.textContent = "Select a run to inspect its sanitized evidence.";
     parallelEvidenceRuns.replaceChildren();
 
     if (!payload.available || payload.runs.length === 0) {
@@ -158,9 +160,30 @@
           cell.textContent = value;
           row.append(cell);
         }
+        const actionCell = document.createElement("td");
+        const viewButton = document.createElement("button");
+        viewButton.className = "secondary-action";
+        viewButton.type = "button";
+        viewButton.textContent = "View";
+        viewButton.addEventListener("click", () => {
+          renderParallelEvidenceDetail(run.run_id);
+        });
+        actionCell.append(viewButton);
+        row.append(actionCell);
         return row;
       }),
     );
+  }
+
+  function renderParallelEvidenceDetail(runId) {
+    parallelEvidenceDetail.textContent = "Loading evidence";
+    window.PaynkolayApi.getParallelEvidenceDetail(runId)
+      .then((payload) => {
+        parallelEvidenceDetail.textContent = JSON.stringify(payload.evidence, null, 2);
+      })
+      .catch((error) => {
+        parallelEvidenceDetail.textContent = error.message;
+      });
   }
 
   function formatClassifications(classifications) {
@@ -252,6 +275,7 @@
     .catch((error) => {
       parallelEvidenceRoot.textContent = "-";
       parallelEvidenceMessage.textContent = error.message;
+      parallelEvidenceDetail.textContent = "Parallel evidence could not be loaded.";
       parallelEvidenceRuns.replaceChildren();
       setParallelEvidenceStatus("Error", "error");
     });
