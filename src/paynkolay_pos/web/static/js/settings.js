@@ -114,6 +114,9 @@
     if (card.automation_status === "success_auto") {
       return "Auto";
     }
+    if (card.automation_status === "automation_diagnostic") {
+      return "Diagnostic";
+    }
     if (card.automation_status === "manual_only") {
       return "Manual";
     }

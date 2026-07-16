@@ -1535,7 +1535,7 @@ async def test_parallel_run_random_mode_excludes_synthetic_cards(
 
 @pytest.mark.api
 @pytest.mark.asyncio
-async def test_parallel_run_random_mode_excludes_quarantined_and_manual_only_cards(
+async def test_parallel_run_random_mode_excludes_non_success_auto_cards(
     client: httpx.AsyncClient,
     fake_initializer: FakePaymentInitializer,
     monkeypatch: pytest.MonkeyPatch,
@@ -1562,6 +1562,12 @@ async def test_parallel_run_random_mode_excludes_quarantined_and_manual_only_car
                 pan="4000000000000002",
                 requires_3ds=True,
                 expected_otp="123456",
+            ),
+            _runtime_card(
+                alias="garanti_bankasi_mastercard_6017",
+                pan="4000000000000036",
+                requires_3ds=True,
+                expected_otp="147852",
             ),
         ],
     )

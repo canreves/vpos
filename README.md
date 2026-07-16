@@ -141,8 +141,8 @@ Known UAT notes:
 
 - 3D Secure ACS behavior may differ by issuer simulator and card profile.
 - Automatic 3D Secure success flows use a card automation behavior catalogue. Cards marked
-  `manual_only` or `quarantined` stay available for intentional diagnostics but are excluded
-  from random/default success smoke selection.
+  `automation_diagnostic`, `manual_only`, or `quarantined` stay available for intentional
+  diagnostics but are excluded from random/default success smoke selection.
 - Reliable negative UAT testing requires official invalid card/CVV/OTP data from the
   provider.
 - PaymentList may continue to show the original sales row after cancel; the cancel service
@@ -157,13 +157,17 @@ so private config JSON files remain compatible and no PAN/CVV/OTP values are com
 Automation statuses:
 
 - `success_auto`: eligible for default/random automatic success smoke runs.
+- `automation_diagnostic`: ACS/OTP automation works, but provider finalization is not a
+  stable captured result.
 - `manual_only`: excluded from automatic success runs, still selectable for manual diagnosis.
 - `quarantined`: excluded from automatic success runs because the issuer/ACS behavior is
   currently unstable or bank-side failing.
 - `unknown`: treated as eligible by default until a specific UAT behavior is recorded.
 
 Current automatic 3D Secure baseline aliases include `nkolay_dynamic_otp_visa_6111`,
-`garanti_bankasi_mastercard_6017`, `akbank_visa_5232`, and `akbank_visa_7068`.
+`akbank_visa_5232`, and `akbank_visa_7068`. `garanti_bankasi_mastercard_6017` is kept as
+an automation diagnostic card because OTP submission works but PaymentList can remain
+`created`.
 
 ## Reporting
 

@@ -97,6 +97,9 @@
     if (card.automation_status === "success_auto") {
       return "auto";
     }
+    if (card.automation_status === "automation_diagnostic") {
+      return "diagnostic";
+    }
     if (card.automation_status === "manual_only") {
       return "manual";
     }

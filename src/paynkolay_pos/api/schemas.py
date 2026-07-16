@@ -50,7 +50,13 @@ class TestCardFormFill(BaseModel):
     card_holder: str = "PAYNKOLAY TEST"
     requires_3ds: bool
     has_expected_otp: bool
-    automation_status: Literal["success_auto", "manual_only", "quarantined", "unknown"]
+    automation_status: Literal[
+        "success_auto",
+        "automation_diagnostic",
+        "manual_only",
+        "quarantined",
+        "unknown",
+    ]
     automation_reason: str
     diagnostic_class: str
     automatic_success_candidate: bool
@@ -150,7 +156,13 @@ class ConfigCardSummary(BaseModel):
     brand: str
     requires_3ds: bool
     has_expected_otp: bool
-    automation_status: Literal["success_auto", "manual_only", "quarantined", "unknown"]
+    automation_status: Literal[
+        "success_auto",
+        "automation_diagnostic",
+        "manual_only",
+        "quarantined",
+        "unknown",
+    ]
     automation_reason: str
     diagnostic_class: str
     automatic_success_candidate: bool

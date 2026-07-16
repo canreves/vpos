@@ -10,6 +10,7 @@ class CardAutomationStatus(StrEnum):
     """Automation eligibility for live UAT card flows."""
 
     SUCCESS_AUTO = "success_auto"
+    AUTOMATION_DIAGNOSTIC = "automation_diagnostic"
     MANUAL_ONLY = "manual_only"
     QUARANTINED = "quarantined"
     UNKNOWN = "unknown"
@@ -44,9 +45,12 @@ KNOWN_CARD_BEHAVIORS: dict[str, CardAutomationBehavior] = {
         diagnostic_class="visible_otp",
     ),
     "garanti_bankasi_mastercard_6017": CardAutomationBehavior(
-        status=CardAutomationStatus.SUCCESS_AUTO,
-        reason="Embedded password 3DS flow completes successfully.",
-        diagnostic_class="embedded_password",
+        status=CardAutomationStatus.AUTOMATION_DIAGNOSTIC,
+        reason=(
+            "Embedded password 3DS automation submits successfully, but PaymentList can remain "
+            "created while the provider awaits finalization."
+        ),
+        diagnostic_class="awaiting_provider_finalization",
     ),
     "akbank_visa_5232": CardAutomationBehavior(
         status=CardAutomationStatus.SUCCESS_AUTO,
