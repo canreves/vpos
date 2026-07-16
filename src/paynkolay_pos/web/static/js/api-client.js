@@ -45,6 +45,9 @@
     getReportHistory() {
       return requestJson("/api/reports/history");
     },
+    getParallelEvidence() {
+      return requestJson("/api/reports/parallel-runs");
+    },
     getCredentialReportRun() {
       return requestJson("/api/reports/credential-run");
     },

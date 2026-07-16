@@ -126,6 +126,37 @@
             Runs credential CSV scenarios through the mocked payment flow and refreshes the Allure report.
           </p>
         </section>
+        <section class="panel report-command-panel">
+          <div class="panel-heading">
+            <h2>Parallel Evidence</h2>
+            <span class="status-pill neutral" id="parallel-evidence-status">Checking</span>
+          </div>
+          <dl class="result-list">
+            <div>
+              <dt>Evidence path</dt>
+              <dd id="parallel-evidence-root">-</dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd id="parallel-evidence-message">Checking parallel evidence</dd>
+            </div>
+          </dl>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Run</th>
+                  <th>Status</th>
+                  <th>Progress</th>
+                  <th>Classifications</th>
+                  <th>Finished</th>
+                  <th>Path</th>
+                </tr>
+              </thead>
+              <tbody id="parallel-evidence-runs"></tbody>
+            </table>
+          </div>
+        </section>
       </main>
     </div>
   </body>

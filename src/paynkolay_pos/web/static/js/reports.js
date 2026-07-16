@@ -18,6 +18,10 @@
   const credentialRunFinished = document.getElementById("credential-run-finished");
   const credentialRunExit = document.getElementById("credential-run-exit");
   const credentialRunOutput = document.getElementById("credential-run-output");
+  const parallelEvidenceStatus = document.getElementById("parallel-evidence-status");
+  const parallelEvidenceRoot = document.getElementById("parallel-evidence-root");
+  const parallelEvidenceMessage = document.getElementById("parallel-evidence-message");
+  const parallelEvidenceRuns = document.getElementById("parallel-evidence-runs");
   let credentialRunPoll = null;
 
   function setStatus(text, kind) {
@@ -33,6 +37,11 @@
   function setCredentialRunStatus(text, kind) {
     credentialRunStatus.textContent = text;
     credentialRunStatus.className = `status-pill ${kind}`;
+  }
+
+  function setParallelEvidenceStatus(text, kind) {
+    parallelEvidenceStatus.textContent = text;
+    parallelEvidenceStatus.className = `status-pill ${kind}`;
   }
 
   function formatDuration(value) {
@@ -123,6 +132,45 @@
     setCredentialRunStatus("Local/mock", "neutral");
   }
 
+  function renderParallelEvidence(payload) {
+    parallelEvidenceRoot.textContent = payload.evidence_path;
+    parallelEvidenceMessage.textContent = payload.message;
+    parallelEvidenceRuns.replaceChildren();
+
+    if (!payload.available || payload.runs.length === 0) {
+      setParallelEvidenceStatus("No evidence", "neutral");
+      return;
+    }
+
+    setParallelEvidenceStatus("Available", "success");
+    parallelEvidenceRuns.append(
+      ...payload.runs.map((run) => {
+        const row = document.createElement("tr");
+        for (const value of [
+          run.run_id,
+          run.status,
+          `${run.completed + run.failed}/${run.total}`,
+          formatClassifications(run.classifications),
+          formatDate(run.finished_at),
+          run.evidence_path,
+        ]) {
+          const cell = document.createElement("td");
+          cell.textContent = value;
+          row.append(cell);
+        }
+        return row;
+      }),
+    );
+  }
+
+  function formatClassifications(classifications) {
+    const entries = Object.entries(classifications || {});
+    if (entries.length === 0) {
+      return "-";
+    }
+    return entries.map(([key, value]) => `${key}: ${value}`).join(", ");
+  }
+
   function refreshHistory() {
     window.PaynkolayApi.getReportHistory().then(renderHistory).catch((error) => {
       historyMessage.textContent = error.message;
@@ -197,6 +245,15 @@
       historyMessage.textContent = error.message;
       historyTests.replaceChildren();
       setHistoryStatus("Error", "error");
+    });
+
+  window.PaynkolayApi.getParallelEvidence()
+    .then(renderParallelEvidence)
+    .catch((error) => {
+      parallelEvidenceRoot.textContent = "-";
+      parallelEvidenceMessage.textContent = error.message;
+      parallelEvidenceRuns.replaceChildren();
+      setParallelEvidenceStatus("Error", "error");
     });
 
   credentialRunButton.addEventListener("click", () => {

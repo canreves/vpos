@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -14,6 +15,8 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 
 from paynkolay_pos.api.dependencies import allure_report_dir, allure_results_dir
 from paynkolay_pos.api.schemas import (
+    ParallelEvidenceResponse,
+    ParallelEvidenceRunSummary,
     ReportCommandRunResponse,
     ReportHistoryResponse,
     ReportRunSummary,
@@ -145,11 +148,43 @@ async def report_history() -> ReportHistoryResponse:
     )
 
 
+@router.get("/parallel-runs", response_model=ParallelEvidenceResponse)
+async def parallel_run_evidence() -> ParallelEvidenceResponse:
+    """Return a summary of persisted parallel run evidence files."""
+
+    evidence_dir = _parallel_evidence_dir()
+    if not evidence_dir.is_dir():
+        return ParallelEvidenceResponse(
+            available=False,
+            evidence_path=str(evidence_dir),
+            message="Parallel run evidence has not been generated yet.",
+        )
+
+    runs = _read_parallel_evidence_files(evidence_dir)
+    if not runs:
+        return ParallelEvidenceResponse(
+            available=False,
+            evidence_path=str(evidence_dir),
+            message="No readable parallel run evidence files were found.",
+        )
+
+    return ParallelEvidenceResponse(
+        available=True,
+        evidence_path=str(evidence_dir),
+        runs=runs,
+        message="Parallel run evidence is available.",
+    )
+
+
 def _report_command_state(request: Request) -> ReportCommandRunState:
     state = request.app.state.credential_report_run
     if not isinstance(state, ReportCommandRunState):
         raise RuntimeError("credential report run state is not configured")
     return state
+
+
+def _parallel_evidence_dir() -> Path:
+    return Path(os.getenv("PAYNKOLAY_PARALLEL_EVIDENCE_DIR", "reports/parallel-runs"))
 
 
 def _execute_credential_report_run(run_state: ReportCommandRunState) -> None:
@@ -178,6 +213,75 @@ def _read_result_files(results_dir: Path) -> list[dict[str, Any]]:
         if isinstance(payload, dict):
             payloads.append(payload)
     return payloads
+
+
+def _read_parallel_evidence_files(evidence_dir: Path) -> list[ParallelEvidenceRunSummary]:
+    runs: list[ParallelEvidenceRunSummary] = []
+    for path in sorted(evidence_dir.glob("*.json"), key=_path_mtime, reverse=True):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        run = payload.get("run")
+        if not isinstance(run, dict):
+            continue
+        summary = _parallel_evidence_summary(run, path=path)
+        if summary is not None:
+            runs.append(summary)
+    return runs[:10]
+
+
+def _parallel_evidence_summary(
+    run: dict[str, Any],
+    *,
+    path: Path,
+) -> ParallelEvidenceRunSummary | None:
+    run_id = run.get("run_id")
+    status_value = run.get("status")
+    if not run_id or not status_value:
+        return None
+    return ParallelEvidenceRunSummary(
+        run_id=str(run_id),
+        status=str(status_value),
+        total=_int_value(run.get("total")),
+        completed=_int_value(run.get("completed")),
+        failed=_int_value(run.get("failed")),
+        finished_at=str(run["finished_at"]) if run.get("finished_at") else None,
+        evidence_path=str(path),
+        classifications=_parallel_classification_counts(run),
+    )
+
+
+def _parallel_classification_counts(run: dict[str, Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    items = run.get("items")
+    if not isinstance(items, list):
+        return counts
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        classification = str(item.get("classification") or "unknown")
+        counts[classification] = counts.get(classification, 0) + 1
+    return counts
+
+
+def _path_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _int_value(value: object) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return 0
 
 
 def _run_summary(test_results: list[dict[str, Any]]) -> ReportRunSummary:

@@ -517,6 +517,28 @@ class ReportHistoryResponse(BaseModel):
     message: str
 
 
+class ParallelEvidenceRunSummary(BaseModel):
+    """Safe summary of one persisted parallel run evidence file."""
+
+    run_id: str
+    status: str
+    total: int
+    completed: int
+    failed: int
+    finished_at: str | None = None
+    evidence_path: str
+    classifications: dict[str, int] = Field(default_factory=dict)
+
+
+class ParallelEvidenceResponse(BaseModel):
+    """Persisted parallel run evidence exposed to the browser."""
+
+    available: bool
+    evidence_path: str
+    runs: list[ParallelEvidenceRunSummary] = Field(default_factory=list)
+    message: str
+
+
 class ReportCommandRunResponse(BaseModel):
     """Status of a local tester-triggered report command."""
 

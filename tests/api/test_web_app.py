@@ -341,6 +341,8 @@ async def test_reports_page_renders_dynamic_report_screen(client: httpx.AsyncCli
     assert 'id="report-status"' in response.text
     assert 'id="history-status"' in response.text
     assert 'id="credential-run-button"' in response.text
+    assert 'id="parallel-evidence-status"' in response.text
+    assert 'id="parallel-evidence-runs"' in response.text
     assert "make credential-scenario-report" in response.text
     assert "/static/js/reports.js" in response.text
 
@@ -513,6 +515,82 @@ async def test_report_history_summarizes_latest_allure_results(
     assert payload["latest"]["duration_ms"] == 200
     assert payload["latest"]["recent_tests"][0]["name"] == "test_invalid_cvv"
     assert payload["latest"]["recent_tests"][0]["duration_ms"] == 100
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_evidence_returns_unavailable_when_missing(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    evidence_dir = tmp_path / "missing-parallel-runs"
+    monkeypatch.setenv("PAYNKOLAY_PARALLEL_EVIDENCE_DIR", str(evidence_dir))
+
+    response = await client.get("/api/reports/parallel-runs")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "available": False,
+        "evidence_path": str(evidence_dir),
+        "runs": [],
+        "message": "Parallel run evidence has not been generated yet.",
+    }
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_evidence_summarizes_persisted_runs(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    evidence_dir = tmp_path / "parallel-runs"
+    evidence_dir.mkdir()
+    monkeypatch.setenv("PAYNKOLAY_PARALLEL_EVIDENCE_DIR", str(evidence_dir))
+    (evidence_dir / "bad.json").write_text("{not-json", encoding="utf-8")
+    run_path = evidence_dir / "run-1001.json"
+    run_path.write_text(
+        json.dumps(
+            {
+                "event": "parallel_run_evidence",
+                "run": {
+                    "run_id": "run-1001",
+                    "status": "completed",
+                    "total": 2,
+                    "completed": 2,
+                    "failed": 0,
+                    "finished_at": "2026-07-16T06:38:44.485024+00:00",
+                    "items": [
+                        {"classification": "completed"},
+                        {"classification": "completed"},
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    response = await client.get("/api/reports/parallel-runs")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "available": True,
+        "evidence_path": str(evidence_dir),
+        "runs": [
+            {
+                "run_id": "run-1001",
+                "status": "completed",
+                "total": 2,
+                "completed": 2,
+                "failed": 0,
+                "finished_at": "2026-07-16T06:38:44.485024+00:00",
+                "evidence_path": str(run_path),
+                "classifications": {"completed": 2},
+            }
+        ],
+        "message": "Parallel run evidence is available.",
+    }
 
 
 @pytest.mark.api
