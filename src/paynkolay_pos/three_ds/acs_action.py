@@ -15,6 +15,12 @@ class SupportsAcsLocator(Protocol):
     async def fill(self, value: str) -> None:
         """Fill a form control."""
 
+    async def input_value(self) -> str:
+        """Return the current form control value."""
+
+    async def evaluate(self, expression: str, arg: object = None) -> object:
+        """Evaluate JavaScript against the form control."""
+
     async def click(self) -> None:
         """Click a form control."""
 
@@ -63,10 +69,37 @@ async def run_acs_otp_action(
             otp_resolution=resolution.evidence(),
         )
 
-    await otp_locator.fill(otp_value)
+    await _fill_otp_with_best_effort_fallback(otp_locator, otp_value)
     await submit_locator.click()
     return AcsActionResult(
         submitted=True,
         reason="otp_submitted",
         otp_resolution=resolution.evidence(),
+    )
+
+
+async def _fill_otp_with_best_effort_fallback(locator: SupportsAcsLocator, otp_value: str) -> None:
+    await _focus_locator(locator)
+    await locator.fill(otp_value)
+    await _set_locator_value(locator, otp_value)
+
+
+async def _focus_locator(locator: SupportsAcsLocator) -> None:
+    try:
+        await locator.click()
+    except Exception:
+        return
+
+
+async def _set_locator_value(locator: SupportsAcsLocator, otp_value: str) -> None:
+    await locator.evaluate(
+        """
+        (element, value) => {
+          element.focus();
+          element.value = value;
+          element.dispatchEvent(new Event("input", { bubbles: true }));
+          element.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        """,
+        otp_value,
     )

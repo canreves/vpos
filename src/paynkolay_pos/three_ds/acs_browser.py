@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from urllib.parse import SplitResult, urljoin, urlsplit, urlunsplit
 
 from playwright.async_api import Browser, BrowserContext, Frame, Locator, Page, async_playwright
@@ -244,6 +245,7 @@ async def complete_acs_browser_challenge(
                 configured_otp=configured_otp,
             )
             otp_submit_url = page.url
+            await _prepare_otp_target_for_input(page=page, otp_target=otp_target)
             action = await run_acs_otp_action(
                 otp_locator=otp_target.locator,
                 submit_locator=submit_target.locator,
@@ -423,6 +425,13 @@ async def _follow_acs_final_return_if_present(
 
     page = await _active_page(context=context, preferred_page=page)
     return page, await _any_page_reached_callback(context=context, callback_url=callback_url)
+
+
+async def _prepare_otp_target_for_input(*, page: Page, otp_target: SelectorTarget) -> None:
+    with suppress(PlaywrightError):
+        await page.bring_to_front()
+    with suppress(PlaywrightError):
+        await otp_target.locator.scroll_into_view_if_needed(timeout=2_000)
 
 
 async def _force_submit_otp_form_if_still_present(

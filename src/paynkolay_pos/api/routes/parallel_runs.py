@@ -59,7 +59,11 @@ from paynkolay_pos.models import (
     PaynkolayThreeDSInitializeResult,
 )
 from paynkolay_pos.reporting import evidence_json
-from paynkolay_pos.testing.card_behaviors import is_automatic_success_candidate
+from paynkolay_pos.testing.card_behaviors import (
+    CardAutomationStatus,
+    behavior_for_alias,
+    is_automatic_success_candidate,
+)
 
 router = APIRouter(prefix="/api/parallel-runs", tags=["parallel_runs"])
 FINAL_PAYMENT_LIST_STATUSES = {
@@ -179,6 +183,7 @@ async def _execute_parallel_run(
 ) -> None:
     semaphore = asyncio.Semaphore((await run_store.get(run_id)).concurrency)
     run = await run_store.get(run_id)
+    serial_3ds_locks = _serial_3ds_locks_for_run(run.items, cards_by_alias)
     tasks = [
         _execute_item(
             run_id=run_id,
@@ -194,6 +199,7 @@ async def _execute_parallel_run(
             three_ds_form_store=three_ds_form_store,
             run_store=run_store,
             semaphore=semaphore,
+            serial_3ds_locks=serial_3ds_locks,
         )
         for item in run.items
     ]
@@ -217,42 +223,43 @@ async def _execute_item(
     three_ds_form_store: ThreeDSFormStore,
     run_store: ParallelRunStore,
     semaphore: asyncio.Semaphore,
+    serial_3ds_locks: dict[str, asyncio.Lock],
 ) -> None:
     async with semaphore:
         await run_store.mutate(run_id, lambda run: _mark_item_running(run, item.item_id))
+        serial_lock = serial_3ds_locks.get(item.card_alias)
         try:
-            request = _payment_form_request(
-                card=card,
-                amount=amount,
-                currency=currency,
-            )
-            await session_store.create(
-                order_id=item.order_id,
-                amount=request.amount,
-                currency=request.currency,
-                pan=request.card_number.get_secret_value(),
-                card_holder=request.card_holder,
-                requires_3ds=request.requires_3ds,
-                installment_count=request.installment_count,
-            )
-            outcome = await initializer.initialize(
-                request,
-                order_id=item.order_id,
-                card_holder_ip=client_host,
-            )
-            await _record_provider_outcome(
-                run_id=run_id,
-                item_id=item.item_id,
-                outcome=outcome,
-                card=card,
-                auto_complete_3ds=auto_complete_3ds,
-                initializer=initializer,
-                automator=automator,
-                session_store=session_store,
-                three_ds_form_store=three_ds_form_store,
-                run_store=run_store,
-                currency=request.currency,
-            )
+            if serial_lock is None:
+                await _execute_item_attempt(
+                    run_id=run_id,
+                    item=item,
+                    card=card,
+                    amount=amount,
+                    currency=currency,
+                    client_host=client_host,
+                    auto_complete_3ds=auto_complete_3ds,
+                    initializer=initializer,
+                    automator=automator,
+                    session_store=session_store,
+                    three_ds_form_store=three_ds_form_store,
+                    run_store=run_store,
+                )
+            else:
+                async with serial_lock:
+                    await _execute_item_attempt(
+                        run_id=run_id,
+                        item=item,
+                        card=card,
+                        amount=amount,
+                        currency=currency,
+                        client_host=client_host,
+                        auto_complete_3ds=auto_complete_3ds,
+                        initializer=initializer,
+                        automator=automator,
+                        session_store=session_store,
+                        three_ds_form_store=three_ds_form_store,
+                        run_store=run_store,
+                    )
         except PaymentProviderInitializationError as exc:
             classification = _classify_initialization_error(exc)
             error_message = str(exc)
@@ -286,6 +293,55 @@ async def _execute_item(
                     error_message=error_message,
                 ),
         )
+
+
+async def _execute_item_attempt(
+    *,
+    run_id: str,
+    item: ParallelRunItemState,
+    card: TestCard,
+    amount: Decimal,
+    currency: Currency,
+    client_host: str,
+    auto_complete_3ds: bool,
+    initializer: SupportsPaymentInitializer,
+    automator: SupportsThreeDSAutomator,
+    session_store: PaymentSessionStore,
+    three_ds_form_store: ThreeDSFormStore,
+    run_store: ParallelRunStore,
+) -> None:
+    request = _payment_form_request(
+        card=card,
+        amount=amount,
+        currency=currency,
+    )
+    await session_store.create(
+        order_id=item.order_id,
+        amount=request.amount,
+        currency=request.currency,
+        pan=request.card_number.get_secret_value(),
+        card_holder=request.card_holder,
+        requires_3ds=request.requires_3ds,
+        installment_count=request.installment_count,
+    )
+    outcome = await initializer.initialize(
+        request,
+        order_id=item.order_id,
+        card_holder_ip=client_host,
+    )
+    await _record_provider_outcome(
+        run_id=run_id,
+        item_id=item.item_id,
+        outcome=outcome,
+        card=card,
+        auto_complete_3ds=auto_complete_3ds,
+        initializer=initializer,
+        automator=automator,
+        session_store=session_store,
+        three_ds_form_store=three_ds_form_store,
+        run_store=run_store,
+        currency=request.currency,
+    )
 
 
 async def _mark_session_failed(
@@ -484,6 +540,25 @@ def _load_card_map() -> dict[str, TestCard]:
             detail=f"runtime payment configuration is unavailable: {exc}",
         ) from exc
     return {card.alias: card for card in cards}
+
+
+def _serial_3ds_locks_for_run(
+    items: Sequence[ParallelRunItemState],
+    cards_by_alias: dict[str, TestCard],
+) -> dict[str, asyncio.Lock]:
+    locks: dict[str, asyncio.Lock] = {}
+    for item in items:
+        card = cards_by_alias[item.card_alias]
+        if _requires_serial_3ds_automation(card):
+            locks.setdefault(item.card_alias, asyncio.Lock())
+    return locks
+
+
+def _requires_serial_3ds_automation(card: TestCard) -> bool:
+    return (
+        card.requires_3ds
+        and behavior_for_alias(card.alias).status is CardAutomationStatus.AUTOMATION_DIAGNOSTIC
+    )
 
 
 def _select_cards(
