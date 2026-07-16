@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import random
 from collections import Counter
 from collections.abc import Sequence
 from decimal import Decimal
+from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
 
@@ -56,6 +58,7 @@ from paynkolay_pos.models import (
     PaynkolayPaymentResult,
     PaynkolayThreeDSInitializeResult,
 )
+from paynkolay_pos.reporting import evidence_json
 
 router = APIRouter(prefix="/api/parallel-runs", tags=["parallel_runs"])
 
@@ -613,9 +616,26 @@ def _finish_run(run: ParallelRunState) -> None:
     if failed_count or attention_count:
         run.status = "completed_with_failures"
         run.message = "Parallel run completed with failed items."
-        return
-    run.status = "completed"
-    run.message = "Parallel run completed."
+    else:
+        run.status = "completed"
+        run.message = "Parallel run completed."
+    _export_parallel_run_evidence(run)
+
+
+def _export_parallel_run_evidence(run: ParallelRunState) -> None:
+    evidence_dir = Path(os.getenv("PAYNKOLAY_PARALLEL_EVIDENCE_DIR", "reports/parallel-runs"))
+    evidence_path = evidence_dir / f"{run.run_id}.json"
+    run.evidence_path = str(evidence_path)
+    payload = {
+        "event": "parallel_run_evidence",
+        "run": run.response(include_items=True).model_dump(mode="json"),
+    }
+    try:
+        evidence_dir.mkdir(parents=True, exist_ok=True)
+        evidence_path.write_text(f"{evidence_json(payload)}\n", encoding="utf-8")
+    except OSError as exc:
+        run.evidence_path = None
+        run.message = f"{run.message} Evidence export failed: {exc}"
 
 
 def _item(run: ParallelRunState, item_id: str) -> ParallelRunItemState:

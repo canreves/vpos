@@ -469,6 +469,7 @@ class ParallelRunResponse(BaseModel):
     failed: int
     started_at: str | None = None
     finished_at: str | None = None
+    evidence_path: str | None = None
     message: str
     items: list[ParallelRunItemResponse] = Field(default_factory=list)
 

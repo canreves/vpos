@@ -358,6 +358,7 @@ async def test_parallel_page_renders_parallel_run_screen(client: httpx.AsyncClie
     assert 'id="parallel-3ds-mode-auto"' in response.text
     assert 'id="parallel-selection-body"' in response.text
     assert 'id="parallel-results-body"' in response.text
+    assert 'id="parallel-evidence-path"' in response.text
     assert "/static/js/parallel-runs.js" in response.text
 
 
@@ -824,6 +825,8 @@ async def test_parallel_run_manual_mode_repeats_selected_cards(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    evidence_dir = tmp_path / "parallel-evidence"
+    monkeypatch.setenv("PAYNKOLAY_PARALLEL_EVIDENCE_DIR", str(evidence_dir))
     _write_parallel_runtime_config(
         monkeypatch,
         tmp_path,
@@ -860,6 +863,12 @@ async def test_parallel_run_manual_mode_repeats_selected_cards(
     assert [item["attempt_index"] for item in payload["items"]] == [1, 2]
     assert {item["classification"] for item in payload["items"]} == {"completed"}
     assert all(item["payment_list_status"] == "captured" for item in payload["items"])
+    assert payload["evidence_path"] == str(evidence_dir / f"{payload['run_id']}.json")
+    evidence = json.loads(Path(payload["evidence_path"]).read_text(encoding="utf-8"))
+    assert evidence["event"] == "parallel_run_evidence"
+    assert evidence["run"]["run_id"] == payload["run_id"]
+    assert evidence["run"]["items"][0]["payment_list_status"] == "captured"
+    assert "4111111111111111" not in json.dumps(evidence)
     assert len(fake_initializer.calls) == 2
     assert "4111111111111111" not in response.text
 

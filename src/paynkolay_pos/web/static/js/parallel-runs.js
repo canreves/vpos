@@ -18,6 +18,7 @@
   const parallelProgress = document.getElementById("parallel-progress");
   const parallelSelectedTotal = document.getElementById("parallel-selected-total");
   const parallelMessage = document.getElementById("parallel-message");
+  const parallelEvidencePath = document.getElementById("parallel-evidence-path");
   const parallelResultsBody = document.getElementById("parallel-results-body");
   let parallelRunPoll = null;
   let parallelSelections = [];
@@ -112,6 +113,7 @@
     parallelRunId.textContent = run.run_id;
     parallelProgress.textContent = `${run.completed + run.failed}/${run.total}`;
     parallelMessage.textContent = run.message;
+    parallelEvidencePath.textContent = run.evidence_path || "-";
     parallelRunButton.disabled = run.status === "running";
     if (run.status === "running") {
       setParallelRunStatus("Running", "neutral");

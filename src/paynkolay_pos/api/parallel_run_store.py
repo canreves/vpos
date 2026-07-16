@@ -79,6 +79,7 @@ class ParallelRunState:
     status: ParallelRunStatus = "pending"
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    evidence_path: str | None = None
     message: str = "Parallel run is pending."
 
     def response(self, *, include_items: bool = True) -> ParallelRunResponse:
@@ -96,6 +97,7 @@ class ParallelRunState:
             failed=failed,
             started_at=_format_datetime(self.started_at),
             finished_at=_format_datetime(self.finished_at),
+            evidence_path=self.evidence_path,
             message=self.message,
             items=[item.response() for item in self.items] if include_items else [],
         )
