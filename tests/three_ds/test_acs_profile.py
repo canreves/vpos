@@ -98,6 +98,27 @@ def test_detect_acs_profile_classifies_garanti_security_policy_block() -> None:
 
 
 @pytest.mark.three_ds
+def test_detect_acs_profile_treats_continue_link_as_submit_control() -> None:
+    profile = detect_acs_profile(
+        AcsProfileEvidence(
+            brand=CardBrand.MASTERCARD,
+            title="Garanti",
+            final_url="https://gbemv3dsecure-integration-t.garanti.com.tr/web/pinvalidate",
+            frames=(
+                frame(
+                    url="https://gbemv3dsecure-integration-t.garanti.com.tr/web/pinvalidate",
+                    text_prefix="İşleminiz başarıyla gerçekleşmiştir. Devam",
+                    fields=(AcsFieldEvidence(tag="a", text="Devam"),),
+                ),
+            ),
+        )
+    )
+
+    assert profile.bank_profile is AcsBankProfile.GARANTI
+    assert profile.submit_control_found is True
+
+
+@pytest.mark.three_ds
 def test_detect_acs_profile_classifies_troy_redirect_error() -> None:
     profile = detect_acs_profile(
         AcsProfileEvidence(

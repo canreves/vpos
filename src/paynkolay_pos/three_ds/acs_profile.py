@@ -284,7 +284,18 @@ def _has_otp_input(frames: tuple[AcsFrameEvidence, ...]) -> bool:
 
 
 def _has_submit_control(frames: tuple[AcsFrameEvidence, ...]) -> bool:
-    markers = ("submit", "onay", "gönder", "gonder", "tamam")
+    markers = (
+        "submit",
+        "onay",
+        "gönder",
+        "gonder",
+        "tamam",
+        "devam",
+        "continue",
+        "merchant",
+        "işyerine",
+        "isyerine",
+    )
     for field in _fields(frames):
         field_text = " ".join(
             value.lower()

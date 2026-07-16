@@ -7,6 +7,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field, SecretStr
 
 from paynkolay_pos.three_ds.acs_profile import (
+    AcsBankProfile,
     AcsOtpStrategy,
     AcsProfile,
     AcsProfileEvidence,
@@ -77,6 +78,22 @@ def resolve_otp_source(
 ) -> OtpResolution:
     """Choose the OTP source and whether automatic submission is allowed."""
 
+    configured_value = configured_otp.get_secret_value().strip() if configured_otp else ""
+    if (
+        profile.bank_profile is AcsBankProfile.GARANTI
+        and profile.otp_input_found
+        and profile.submit_control_found
+        and configured_value
+        and configured_value != DYNAMIC_OTP_SENTINEL
+    ):
+        return OtpResolution(
+            status=OtpResolutionStatus.READY,
+            source_type=OtpSourceType.STATIC_CONFIG,
+            otp=configured_otp,
+            should_auto_submit=True,
+            reason="resolved Garanti OTP from configured test card metadata",
+        )
+
     if profile.otp_strategy is AcsOtpStrategy.VISIBLE_PAGE_OTP:
         visible_otp = _visible_otp_from_evidence(evidence)
         if visible_otp is None:
@@ -93,7 +110,6 @@ def resolve_otp_source(
         )
 
     if profile.otp_strategy is AcsOtpStrategy.STATIC_CONFIG_OTP:
-        configured_value = configured_otp.get_secret_value().strip() if configured_otp else ""
         if not configured_value or configured_value == DYNAMIC_OTP_SENTINEL:
             return OtpResolution(
                 status=OtpResolutionStatus.MISSING_SOURCE,
@@ -108,7 +124,6 @@ def resolve_otp_source(
         )
 
     if profile.otp_strategy is AcsOtpStrategy.SMS_MANUAL_REQUIRED:
-        configured_value = configured_otp.get_secret_value().strip() if configured_otp else ""
         if (
             profile.otp_input_found
             and profile.submit_control_found

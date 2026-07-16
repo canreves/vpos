@@ -93,6 +93,37 @@ def test_resolve_otp_source_uses_static_config_otp_for_sms_input_profiles() -> N
 
 
 @pytest.mark.three_ds
+def test_resolve_otp_source_prefers_configured_otp_for_garanti() -> None:
+    detected_profile = profile(AcsOtpStrategy.VISIBLE_PAGE_OTP).model_copy(
+        update={"bank_profile": AcsBankProfile.GARANTI}
+    )
+    evidence = AcsProfileEvidence(
+        brand=CardBrand.MASTERCARD,
+        title="Garanti",
+        frames=(
+            AcsFrameEvidence(
+                text_prefix="SMS şifreniz 123456 ile devam edin",
+                visible_fields=(
+                    AcsFieldEvidence(tag="input", type="password", name="password"),
+                    AcsFieldEvidence(tag="input", type="button", text="Devam"),
+                ),
+            ),
+        ),
+    )
+
+    resolution = resolve_otp_source(
+        profile=detected_profile,
+        evidence=evidence,
+        configured_otp=SecretStr("147852"),
+    )
+
+    assert resolution.status is OtpResolutionStatus.READY
+    assert resolution.source_type is OtpSourceType.STATIC_CONFIG
+    assert resolution.otp_value == "147852"
+    assert "147852" not in resolution.model_dump_json()
+
+
+@pytest.mark.three_ds
 def test_resolve_otp_source_keeps_sms_manual_when_config_otp_is_missing() -> None:
     resolution = resolve_otp_source(
         profile=profile(AcsOtpStrategy.SMS_MANUAL_REQUIRED),

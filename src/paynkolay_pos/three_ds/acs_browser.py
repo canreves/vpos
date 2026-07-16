@@ -41,13 +41,23 @@ OTP_SELECTORS = (
 )
 SUBMIT_SELECTORS = (
     'button:has-text("Onay")',
+    'button:has-text("Devam")',
     'button:has-text("Tamam")',
     'button:has-text("Gönder")',
+    'button:has-text("Continue")',
     'button:has-text("Submit")',
     'input[type="submit"][value*="Onay" i]',
+    'input[type="submit"][value*="Devam" i]',
     'input[type="submit"][value*="Tamam" i]',
     'input[type="submit"][value*="Gönder" i]',
+    'input[type="submit"][value*="Continue" i]',
     'input[type="submit"][value*="Submit" i]',
+    'input[type="button"][value*="Onay" i]',
+    'input[type="button"][value*="Devam" i]',
+    'input[type="button"][value*="Tamam" i]',
+    'input[type="button"][value*="Gönder" i]',
+    'input[type="button"][value*="Continue" i]',
+    'input[type="button"][value*="Submit" i]',
     'button[type="submit"]',
     'input[type="submit"]',
     "button",
@@ -69,13 +79,29 @@ GARANTI_CONTINUE_SELECTORS = (
 )
 ACS_FINAL_RETURN_SELECTORS = (
     'button:has-text("Üye işyerine dön")',
+    'a:has-text("Üye işyerine dön")',
+    '[role="button"]:has-text("Üye işyerine dön")',
     'button:has-text("Uye isyerine don")',
+    'a:has-text("Uye isyerine don")',
+    '[role="button"]:has-text("Uye isyerine don")',
     'button:has-text("İşyerine dön")',
+    'a:has-text("İşyerine dön")',
+    '[role="button"]:has-text("İşyerine dön")',
     'button:has-text("Isyerine don")',
+    'a:has-text("Isyerine don")',
+    '[role="button"]:has-text("Isyerine don")',
     'button:has-text("Merchant")',
+    'a:has-text("Merchant")',
+    '[role="button"]:has-text("Merchant")',
     'button:has-text("Devam")',
+    'a:has-text("Devam")',
+    '[role="button"]:has-text("Devam")',
     'button:has-text("Continue")',
+    'a:has-text("Continue")',
+    '[role="button"]:has-text("Continue")',
     'button:has-text("Tamam")',
+    'a:has-text("Tamam")',
+    '[role="button"]:has-text("Tamam")',
     'input[type="submit"][value*="Üye işyerine dön" i]',
     'input[type="submit"][value*="Uye isyerine don" i]',
     'input[type="submit"][value*="İşyerine dön" i]',
@@ -217,6 +243,7 @@ async def complete_acs_browser_challenge(
                 evidence=evidence,
                 configured_otp=configured_otp,
             )
+            otp_submit_url = page.url
             action = await run_acs_otp_action(
                 otp_locator=otp_target.locator,
                 submit_locator=submit_target.locator,
@@ -236,6 +263,13 @@ async def complete_acs_browser_challenge(
 
             page = await _active_page(context=context, preferred_page=page)
             await _wait_for_network_quiet(page)
+            page = await _force_submit_otp_form_if_still_present(
+                context=context,
+                page=page,
+                otp_target=otp_target,
+                submit_target=submit_target,
+                before_submit_url=otp_submit_url,
+            )
             page, returned_to_callback = await _follow_acs_final_return_if_present(
                 context=context,
                 page=page,
@@ -389,6 +423,64 @@ async def _follow_acs_final_return_if_present(
 
     page = await _active_page(context=context, preferred_page=page)
     return page, await _any_page_reached_callback(context=context, callback_url=callback_url)
+
+
+async def _force_submit_otp_form_if_still_present(
+    *,
+    context: BrowserContext,
+    page: Page,
+    otp_target: SelectorTarget,
+    submit_target: SelectorTarget,
+    before_submit_url: str,
+) -> Page:
+    page = await _active_page(context=context, preferred_page=page)
+    if page.url != before_submit_url:
+        return page
+    if not await _selector_still_visible(otp_target):
+        return page
+
+    try:
+        await otp_target.locator.press("Enter")
+        await _wait_for_network_quiet(page)
+    except PlaywrightError:
+        pass
+    page = await _active_page(context=context, preferred_page=page)
+    if page.url != before_submit_url or not await _selector_still_visible(otp_target):
+        return page
+
+    try:
+        submitted = await submit_target.locator.evaluate(
+            """
+            element => {
+              const form = element.closest("form");
+              if (!form) {
+                return false;
+              }
+              try {
+                if (typeof form.requestSubmit === "function") {
+                  form.requestSubmit(element);
+                } else {
+                  form.submit();
+                }
+              } catch {
+                form.submit();
+              }
+              return true;
+            }
+            """
+        )
+    except PlaywrightError:
+        submitted = False
+    if submitted:
+        await _wait_for_network_quiet(page)
+    return await _active_page(context=context, preferred_page=page)
+
+
+async def _selector_still_visible(target: SelectorTarget) -> bool:
+    try:
+        return await target.locator.count() > 0 and await target.locator.is_visible(timeout=500)
+    except PlaywrightError:
+        return False
 
 
 async def _submit_callback_form_if_present(
@@ -552,7 +644,7 @@ async def _frame_text_prefix(frame: Frame) -> str:
 
 async def _visible_field_metadata_for_frame(frame: Frame) -> list[AcsFieldEvidence]:
     fields: list[AcsFieldEvidence] = []
-    locators = frame.locator("input, button, select")
+    locators = frame.locator("input, button, select, a, [role='button']")
     count = min(await locators.count(), 20)
     for index in range(count):
         locator = locators.nth(index)

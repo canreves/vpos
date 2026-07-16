@@ -8,7 +8,9 @@ from paynkolay_pos.three_ds.acs_browser import (
     SUBMIT_SELECTORS,
     _advance_garanti_sms_method_if_present,
     _follow_acs_final_return_if_present,
+    _force_submit_otp_form_if_still_present,
     _visible_selector_in_frame,
+    _visible_selector_in_page_or_frames,
 )
 from paynkolay_pos.three_ds.acs_profile import AcsBankProfile, AcsOtpStrategy, AcsProfile
 
@@ -32,6 +34,27 @@ async def test_submit_selector_prefers_confirmation_over_resend(browser_page: Pa
 
     assert target is not None
     assert await target.locator.inner_text() == "Onayla"
+
+
+@pytest.mark.three_ds
+@pytest.mark.asyncio
+async def test_submit_selector_supports_devam_input_button(browser_page: Page) -> None:
+    await browser_page.set_content(
+        """
+        <!doctype html>
+        <html>
+          <body>
+            <input type="button" value="Devam" id="continue">
+            <button type="button">Yardım</button>
+          </body>
+        </html>
+        """,
+    )
+
+    target = await _visible_selector_in_frame(browser_page.main_frame, SUBMIT_SELECTORS)
+
+    assert target is not None
+    assert target.selector == 'input[type="button"][value*="Devam" i]'
 
 
 @pytest.mark.three_ds
@@ -103,6 +126,43 @@ async def test_garanti_sms_method_step_ignores_other_bank_profiles(browser_page:
 
 @pytest.mark.three_ds
 @pytest.mark.asyncio
+async def test_force_submit_otp_form_submits_when_click_leaves_same_page(
+    browser_page: Page,
+) -> None:
+    callback_url = "https://paynkolay.com.tr/test/callback"
+    await browser_page.route(callback_url, lambda route: route.fulfill(status=200, body="callback"))
+    await browser_page.set_content(
+        f"""
+        <!doctype html>
+        <html>
+          <body>
+            <form method="post" action="{callback_url}">
+              <input id="password" type="password" name="password" value="147852">
+              <input id="continue" type="button" value="Devam">
+            </form>
+          </body>
+        </html>
+        """,
+    )
+    otp_target = await _visible_selector_in_page_or_frames(browser_page, ("#password",))
+    submit_target = await _visible_selector_in_page_or_frames(browser_page, ("#continue",))
+    assert otp_target is not None
+    assert submit_target is not None
+
+    page = await _force_submit_otp_form_if_still_present(
+        context=browser_page.context,
+        page=browser_page,
+        otp_target=otp_target,
+        submit_target=submit_target,
+        before_submit_url=browser_page.url,
+    )
+
+    assert page is browser_page
+    assert browser_page.url == callback_url
+
+
+@pytest.mark.three_ds
+@pytest.mark.asyncio
 async def test_final_return_submits_callback_form(browser_page: Page) -> None:
     callback_url = "https://paynkolay.com.tr/test/callback"
     await browser_page.route(callback_url, lambda route: route.fulfill(status=200, body="callback"))
@@ -147,6 +207,48 @@ async def test_final_return_clicks_merchant_return_button(browser_page: Page) ->
             <script>
               document.getElementById("merchant-return").addEventListener("click", () => {{
                 window.location.href = "{callback_url}";
+              }});
+            </script>
+          </body>
+        </html>
+        """,
+    )
+
+    page, returned = await _follow_acs_final_return_if_present(
+        context=browser_page.context,
+        page=browser_page,
+        callback_url=callback_url,
+    )
+
+    assert page is browser_page
+    assert returned is True
+    assert browser_page.url == callback_url
+
+
+@pytest.mark.three_ds
+@pytest.mark.asyncio
+async def test_final_return_clicks_anchor_then_submits_callback_form(browser_page: Page) -> None:
+    callback_url = "https://paynkolay.com.tr/test/callback"
+    await browser_page.route(callback_url, lambda route: route.fulfill(status=200, body="callback"))
+    await browser_page.set_content(
+        f"""
+        <!doctype html>
+        <html>
+          <body>
+            <p>İşleminiz başarıyla gerçekleşmiştir.</p>
+            <a id="continue" href="#">Devam</a>
+            <script>
+              document.getElementById("continue").addEventListener("click", event => {{
+                event.preventDefault();
+                const form = document.createElement("form");
+                form.method = "post";
+                form.action = "{callback_url}";
+                const pares = document.createElement("input");
+                pares.type = "hidden";
+                pares.name = "PaRes";
+                pares.value = "secret-pares";
+                form.appendChild(pares);
+                document.body.appendChild(form);
               }});
             </script>
           </body>
