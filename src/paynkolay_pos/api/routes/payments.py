@@ -22,6 +22,7 @@ from paynkolay_pos.api.payment_initializer import (
     PaymentProviderStatusVerificationError,
     SupportsPaymentInitializer,
 )
+from paynkolay_pos.api.payment_list_retry import verify_transaction_status_with_retry
 from paynkolay_pos.api.schemas import (
     PaymentFormRequest,
     PaymentFormResponse,
@@ -280,7 +281,8 @@ async def _verify_payment_list_status(
     initializer: SupportsPaymentInitializer,
 ) -> PaymentSession:
     try:
-        payment_list_status = await initializer.verify_transaction_status(
+        payment_list_status = await verify_transaction_status_with_retry(
+            initializer,
             order_id,
             currency=request.currency,
         )

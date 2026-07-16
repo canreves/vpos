@@ -13,6 +13,7 @@ import httpx
 import pytest
 import pytest_asyncio
 
+from paynkolay_pos.api import payment_list_retry
 from paynkolay_pos.api.app import create_app
 from paynkolay_pos.api.dependencies import (
     get_external_payment_logger,
@@ -127,6 +128,7 @@ class FakePaymentInitializer:
             PaynkolayThreeDSInitializeResult | PaynkolayPaymentResult | BaseException
         ] | None = None,
         payment_list_status: TransactionStatusResponse | None = None,
+        status_outcomes: list[TransactionStatusResponse | BaseException] | None = None,
         fails: bool = False,
         status_fails: bool = False,
     ) -> None:
@@ -135,6 +137,7 @@ class FakePaymentInitializer:
         )
         self.outcomes = outcomes or []
         self.payment_list_status = payment_list_status
+        self.status_outcomes = status_outcomes or []
         self.fails = fails
         self.status_fails = status_fails
         self.calls: list[tuple[str, str]] = []
@@ -172,6 +175,11 @@ class FakePaymentInitializer:
         currency: Currency,
     ) -> TransactionStatusResponse:
         self.status_calls.append(order_id)
+        if self.status_outcomes:
+            outcome = self.status_outcomes.pop(0)
+            if isinstance(outcome, BaseException):
+                raise outcome
+            return outcome
         if self.status_fails:
             raise PaymentProviderStatusVerificationError(
                 "provider payment status verification failed"
@@ -1016,6 +1024,83 @@ async def test_parallel_run_completes_3ds_item_after_automation_submit(
 
 @pytest.mark.api
 @pytest.mark.asyncio
+async def test_parallel_run_retries_payment_list_after_3ds_automation_submit(
+    client: httpx.AsyncClient,
+    fake_initializer: FakePaymentInitializer,
+    fake_automator: FakeThreeDSAutomator,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr(payment_list_retry, "async_sleep", fake_sleep)
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="parallel_3ds",
+                pan="5555555555554444",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+        ],
+    )
+    fake_automator.result = AcsBrowserAutomationResult(
+        completed=True,
+        submitted=True,
+        returned_to_callback=True,
+        reason="otp_submitted",
+        screen_classification="static_config_otp",
+        otp_resolution={
+            "status": "ready",
+            "source_type": "static_config",
+            "otp_present": True,
+            "should_auto_submit": True,
+            "reason": "resolved OTP from configured test card metadata",
+        },
+    )
+    fake_initializer.status_outcomes = [
+        PaymentProviderStatusVerificationError("provider payment status verification failed"),
+        PaymentProviderStatusVerificationError("provider payment status verification failed"),
+        TransactionStatusResponse(
+            order_id="filled-by-test",
+            provider_transaction_id="list-ref-retry",
+            status=PaymentStatus.CAPTURED,
+            amount=Decimal("50.00"),
+            currency=Currency.TRY,
+            updated_at=datetime(2026, 7, 7, 12, 0, tzinfo=UTC),
+            authorization_code="LISTRETRY",
+        ),
+    ]
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "manual",
+            "amount": "50.00",
+            "currency": "TRY",
+            "concurrency": 1,
+            "auto_complete_3ds": True,
+            "manual_cards": [{"alias": "parallel_3ds", "repeat_count": 1}],
+        },
+    )
+
+    assert response.status_code == 202
+    payload = await _wait_parallel_run(client, response.json()["run_id"])
+    assert payload["status"] == "completed"
+    assert payload["items"][0]["classification"] == "completed"
+    assert payload["items"][0]["payment_list_status"] == "captured"
+    assert payload["items"][0]["payment_list_error"] is None
+    assert fake_initializer.status_calls == [payload["items"][0]["order_id"]] * 3
+    assert sleep_calls == [2.0, 5.0]
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
 async def test_parallel_run_continues_when_one_item_fails(
     client: httpx.AsyncClient,
     fake_initializer: FakePaymentInitializer,
@@ -1034,11 +1119,14 @@ async def test_parallel_run_continues_when_one_item_fails(
         ],
     )
     network_cause = OSError("[Errno 8] nodename nor servname provided")
+    initialization_error = PaymentProviderInitializationError(
+        "provider payment initialization failed"
+    )
+    initialization_error.__cause__ = network_cause
     fake_initializer.outcomes = [
-        PaymentProviderInitializationError("provider payment initialization failed"),
+        initialization_error,
         _payment_result(response_code="2", response_data="Islem Basarili"),
     ]
-    fake_initializer.outcomes[0].__cause__ = network_cause
 
     response = await client.post(
         "/api/parallel-runs",
@@ -1434,6 +1522,93 @@ async def test_payment_form_auto_completes_3ds_when_otp_automation_submits(
 
 @pytest.mark.api
 @pytest.mark.asyncio
+async def test_payment_form_retries_payment_list_after_auto_3ds_submit(
+    fake_automator: FakeThreeDSAutomator,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr(payment_list_retry, "async_sleep", fake_sleep)
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="ui_3ds_static",
+                pan="4111111111111111",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+        ],
+    )
+    fake_automator.result = AcsBrowserAutomationResult(
+        completed=True,
+        submitted=True,
+        returned_to_callback=True,
+        reason="otp_submitted",
+        screen_classification="static_config_otp",
+        otp_resolution={
+            "status": "ready",
+            "source_type": "static_config",
+            "otp_present": True,
+            "should_auto_submit": True,
+            "reason": "resolved OTP from configured test card metadata",
+        },
+    )
+    fake_initializer = FakePaymentInitializer(
+        status_outcomes=[
+            PaymentProviderStatusVerificationError(
+                "provider payment status verification failed"
+            ),
+            TransactionStatusResponse(
+                order_id="order-auto-3ds-retry",
+                provider_transaction_id="list-ref-retry",
+                status=PaymentStatus.CAPTURED,
+                amount=Decimal("100.00"),
+                currency=Currency.TRY,
+                updated_at=datetime(2026, 7, 7, 12, 0, tzinfo=UTC),
+                authorization_code="LISTRETRY",
+            ),
+        ],
+    )
+    app = create_app()
+    app.dependency_overrides[get_payment_initializer] = lambda: fake_initializer
+    app.dependency_overrides[get_three_ds_automator] = lambda: fake_automator
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/payments",
+            json={
+                "order_id": "order-auto-3ds-retry",
+                "amount": "100.00",
+                "currency": "TRY",
+                "card_number": "4111111111111111",
+                "card_holder": "PAYNKOLAY TEST",
+                "expiry_month": 12,
+                "expiry_year": 2030,
+                "cvv": "123",
+                "requires_3ds": True,
+                "installment_count": 1,
+                "auto_complete_3ds": True,
+            },
+        )
+        lookup_response = await client.get("/api/payments/order-auto-3ds-retry")
+
+    assert response.status_code == 202
+    payload = lookup_response.json()
+    assert payload["status"] == "completed"
+    assert payload["payment_list"]["status"] == "captured"
+    assert payload["payment_list"]["error"] is None
+    assert fake_initializer.status_calls == ["order-auto-3ds-retry", "order-auto-3ds-retry"]
+    assert sleep_calls == [2.0]
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
 async def test_payment_lookup_returns_stored_session(client: httpx.AsyncClient) -> None:
     create_response = await client.post(
         "/api/payments",
@@ -1643,7 +1818,9 @@ async def test_payment_form_records_paynkolay_moto_provider_result_variant() -> 
 
 @pytest.mark.api
 @pytest.mark.asyncio
-async def test_payment_form_records_provider_declined_init_result() -> None:
+async def test_payment_form_records_provider_declined_init_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     declined_result = PaynkolayPaymentResult.model_validate(
         {
             "RESPONSE_CODE": 0,
@@ -1654,6 +1831,11 @@ async def test_payment_form_records_provider_declined_init_result() -> None:
             "hashDatav2": "declined-hash",
         }
     )
+
+    async def fake_sleep(delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(payment_list_retry, "async_sleep", fake_sleep)
     app = create_app()
     app.dependency_overrides[get_payment_initializer] = lambda: FakePaymentInitializer(
         provider_result=declined_result,
@@ -1708,7 +1890,9 @@ async def test_payment_form_records_provider_declined_init_result() -> None:
 
 @pytest.mark.api
 @pytest.mark.asyncio
-async def test_payment_form_keeps_final_result_when_payment_list_verification_fails() -> None:
+async def test_payment_form_keeps_final_result_when_payment_list_verification_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     final_result = PaynkolayPaymentResult.model_validate(
         {
             "RESPONSE_CODE": "2",
@@ -1727,6 +1911,11 @@ async def test_payment_form_keeps_final_result_when_payment_list_verification_fa
             "hashDataV2": "hash",
         }
     )
+
+    async def fake_sleep(delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(payment_list_retry, "async_sleep", fake_sleep)
     app = create_app()
     app.dependency_overrides[get_payment_initializer] = lambda: FakePaymentInitializer(
         provider_result=final_result,

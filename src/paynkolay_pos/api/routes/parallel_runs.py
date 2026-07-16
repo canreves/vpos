@@ -33,6 +33,7 @@ from paynkolay_pos.api.payment_initializer import (
     PaymentProviderStatusVerificationError,
     SupportsPaymentInitializer,
 )
+from paynkolay_pos.api.payment_list_retry import verify_transaction_status_with_retry
 from paynkolay_pos.api.routes.payments import _provider_request_summary
 from paynkolay_pos.api.schemas import (
     ParallelRunCreateRequest,
@@ -413,7 +414,8 @@ async def _record_provider_outcome(
         try:
             session = await session_store.update_payment_list_status(
                 outcome.payment_request.order_id,
-                await initializer.verify_transaction_status(
+                await verify_transaction_status_with_retry(
+                    initializer,
                     outcome.payment_request.order_id,
                     currency=currency,
                 ),
@@ -452,7 +454,11 @@ async def _verify_parallel_payment_list(
     try:
         return await session_store.update_payment_list_status(
             order_id,
-            await initializer.verify_transaction_status(order_id, currency=currency),
+            await verify_transaction_status_with_retry(
+                initializer,
+                order_id,
+                currency=currency,
+            ),
         )
     except PaymentProviderStatusVerificationError as exc:
         return await session_store.update_payment_list_error(order_id, str(exc))

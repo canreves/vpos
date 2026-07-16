@@ -97,7 +97,7 @@ def test_runtime_settings_allows_3ds_card_without_otp() -> None:
 
     settings = RuntimeSettings.model_validate(payload)
 
-    assert settings.environments["dev"].cards[0].expected_otp is None
+    assert settings.environments[EnvironmentName.DEV].cards[0].expected_otp is None
 
 
 @pytest.mark.config
