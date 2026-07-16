@@ -54,6 +54,12 @@ from paynkolay_pos.reporting import (
 )
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
+FINAL_PAYMENT_LIST_STATUSES = {
+    PaymentStatus.AUTHENTICATED,
+    PaymentStatus.AUTHORIZED,
+    PaymentStatus.CAPTURED,
+    PaymentStatus.FAILED,
+}
 PaymentSessionStoreDependency = Annotated[
     PaymentSessionStore,
     Depends(get_payment_session_store),
@@ -279,12 +285,14 @@ async def _verify_payment_list_status(
     session: PaymentSession,
     session_store: PaymentSessionStore,
     initializer: SupportsPaymentInitializer,
+    accepted_statuses: set[PaymentStatus] | None = None,
 ) -> PaymentSession:
     try:
         payment_list_status = await verify_transaction_status_with_retry(
             initializer,
             order_id,
             currency=request.currency,
+            accepted_statuses=accepted_statuses,
         )
     except PaymentProviderStatusVerificationError as exc:
         return await session_store.update_payment_list_error(order_id, str(exc))
@@ -325,6 +333,7 @@ async def _auto_complete_three_ds_session(
         session=await session_store.get(order_id),
         session_store=session_store,
         initializer=initializer,
+        accepted_statuses=FINAL_PAYMENT_LIST_STATUSES,
     )
     if session.payment_list_status in {
         PaymentStatus.AUTHENTICATED,

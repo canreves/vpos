@@ -1247,6 +1247,163 @@ async def test_parallel_run_retries_payment_list_after_3ds_automation_submit(
 
 @pytest.mark.api
 @pytest.mark.asyncio
+async def test_parallel_run_retries_created_payment_list_after_3ds_automation_submit(
+    client: httpx.AsyncClient,
+    fake_initializer: FakePaymentInitializer,
+    fake_automator: FakeThreeDSAutomator,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr(payment_list_retry, "async_sleep", fake_sleep)
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="parallel_3ds",
+                pan="5555555555554444",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+        ],
+    )
+    fake_automator.result = AcsBrowserAutomationResult(
+        completed=True,
+        submitted=True,
+        returned_to_callback=False,
+        reason="otp_submitted",
+        screen_classification="static_config_otp",
+        final_url="https://gbemv3dsecure-integration-t.garanti.com.tr/web/pinvalidate",
+        otp_resolution={
+            "status": "ready",
+            "source_type": "static_config",
+            "otp_present": True,
+            "should_auto_submit": True,
+            "reason": "resolved OTP from configured test card metadata",
+        },
+    )
+    fake_initializer.status_outcomes = [
+        TransactionStatusResponse(
+            order_id="filled-by-test",
+            provider_transaction_id="list-ref-created",
+            status=PaymentStatus.CREATED,
+            amount=Decimal("50.00"),
+            currency=Currency.TRY,
+            updated_at=datetime(2026, 7, 7, 12, 0, tzinfo=UTC),
+        ),
+        TransactionStatusResponse(
+            order_id="filled-by-test",
+            provider_transaction_id="list-ref-captured",
+            status=PaymentStatus.CAPTURED,
+            amount=Decimal("50.00"),
+            currency=Currency.TRY,
+            updated_at=datetime(2026, 7, 7, 12, 0, tzinfo=UTC),
+            authorization_code="LISTRETRY",
+        ),
+    ]
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "manual",
+            "amount": "50.00",
+            "currency": "TRY",
+            "concurrency": 1,
+            "auto_complete_3ds": True,
+            "manual_cards": [{"alias": "parallel_3ds", "repeat_count": 1}],
+        },
+    )
+
+    assert response.status_code == 202
+    payload = await _wait_parallel_run(client, response.json()["run_id"])
+    assert payload["status"] == "completed"
+    assert payload["items"][0]["classification"] == "completed"
+    assert payload["items"][0]["payment_list_status"] == "captured"
+    assert fake_initializer.status_calls == [payload["items"][0]["order_id"]] * 2
+    assert sleep_calls == [2.0]
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_run_marks_created_payment_list_as_awaiting_provider_finalization(
+    client: httpx.AsyncClient,
+    fake_initializer: FakePaymentInitializer,
+    fake_automator: FakeThreeDSAutomator,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr(payment_list_retry, "async_sleep", fake_sleep)
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="parallel_3ds",
+                pan="5555555555554444",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+        ],
+    )
+    fake_automator.result = AcsBrowserAutomationResult(
+        completed=True,
+        submitted=True,
+        returned_to_callback=False,
+        reason="otp_submitted",
+        screen_classification="static_config_otp",
+        final_url="https://gbemv3dsecure-integration-t.garanti.com.tr/web/pinvalidate",
+        otp_resolution={
+            "status": "ready",
+            "source_type": "static_config",
+            "otp_present": True,
+            "should_auto_submit": True,
+            "reason": "resolved OTP from configured test card metadata",
+        },
+    )
+    fake_initializer.payment_list_status = TransactionStatusResponse(
+        order_id="filled-by-test",
+        provider_transaction_id="list-ref-created",
+        status=PaymentStatus.CREATED,
+        amount=Decimal("50.00"),
+        currency=Currency.TRY,
+        updated_at=datetime(2026, 7, 7, 12, 0, tzinfo=UTC),
+    )
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "manual",
+            "amount": "50.00",
+            "currency": "TRY",
+            "concurrency": 1,
+            "auto_complete_3ds": True,
+            "manual_cards": [{"alias": "parallel_3ds", "repeat_count": 1}],
+        },
+    )
+
+    assert response.status_code == 202
+    payload = await _wait_parallel_run(client, response.json()["run_id"])
+    assert payload["status"] == "completed_with_failures"
+    assert payload["items"][0]["classification"] == "awaiting_provider_finalization"
+    assert payload["items"][0]["payment_list_status"] == "created"
+    assert payload["items"][0]["three_ds_automation"]["submitted"] is True
+    assert payload["items"][0]["three_ds_automation"]["final_url"].endswith("/web/pinvalidate")
+    assert fake_initializer.status_calls == [payload["items"][0]["order_id"]] * 4
+    assert sleep_calls == [2.0, 5.0, 10.0]
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
 async def test_parallel_run_continues_when_one_item_fails(
     client: httpx.AsyncClient,
     fake_initializer: FakePaymentInitializer,
@@ -1850,6 +2007,89 @@ async def test_payment_form_retries_payment_list_after_auto_3ds_submit(
     assert payload["payment_list"]["error"] is None
     assert fake_initializer.status_calls == ["order-auto-3ds-retry", "order-auto-3ds-retry"]
     assert sleep_calls == [2.0]
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_payment_form_keeps_status_verified_when_created_payment_list_persists(
+    fake_automator: FakeThreeDSAutomator,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr(payment_list_retry, "async_sleep", fake_sleep)
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="ui_3ds_static",
+                pan="4111111111111111",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+        ],
+    )
+    fake_automator.result = AcsBrowserAutomationResult(
+        completed=True,
+        submitted=True,
+        returned_to_callback=False,
+        reason="otp_submitted",
+        screen_classification="static_config_otp",
+        final_url="https://gbemv3dsecure-integration-t.garanti.com.tr/web/pinvalidate",
+        otp_resolution={
+            "status": "ready",
+            "source_type": "static_config",
+            "otp_present": True,
+            "should_auto_submit": True,
+            "reason": "resolved OTP from configured test card metadata",
+        },
+    )
+    fake_initializer = FakePaymentInitializer(
+        payment_list_status=TransactionStatusResponse(
+            order_id="order-auto-3ds-created",
+            provider_transaction_id="list-ref-created",
+            status=PaymentStatus.CREATED,
+            amount=Decimal("100.00"),
+            currency=Currency.TRY,
+            updated_at=datetime(2026, 7, 7, 12, 0, tzinfo=UTC),
+        ),
+    )
+    app = create_app()
+    app.dependency_overrides[get_payment_initializer] = lambda: fake_initializer
+    app.dependency_overrides[get_three_ds_automator] = lambda: fake_automator
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/payments",
+            json={
+                "order_id": "order-auto-3ds-created",
+                "amount": "100.00",
+                "currency": "TRY",
+                "card_number": "4111111111111111",
+                "card_holder": "PAYNKOLAY TEST",
+                "expiry_month": 12,
+                "expiry_year": 2030,
+                "cvv": "123",
+                "requires_3ds": True,
+                "installment_count": 1,
+                "auto_complete_3ds": True,
+            },
+        )
+        lookup_response = await client.get("/api/payments/order-auto-3ds-created")
+
+    assert response.status_code == 202
+    payload = lookup_response.json()
+    assert payload["status"] == "status_verified"
+    assert payload["payment_list"]["status"] == "created"
+    assert payload["three_ds_automation"]["submitted"] is True
+    assert payload["three_ds_automation"]["final_url"].endswith("/web/pinvalidate")
+    assert fake_initializer.status_calls == ["order-auto-3ds-created"] * 4
+    assert sleep_calls == [2.0, 5.0, 10.0]
 
 
 @pytest.mark.api

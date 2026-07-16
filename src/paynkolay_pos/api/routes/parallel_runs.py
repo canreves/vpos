@@ -62,6 +62,12 @@ from paynkolay_pos.reporting import evidence_json
 from paynkolay_pos.testing.card_behaviors import is_automatic_success_candidate
 
 router = APIRouter(prefix="/api/parallel-runs", tags=["parallel_runs"])
+FINAL_PAYMENT_LIST_STATUSES = {
+    PaymentStatus.AUTHENTICATED,
+    PaymentStatus.AUTHORIZED,
+    PaymentStatus.CAPTURED,
+    PaymentStatus.FAILED,
+}
 
 PaymentInitializerDependency = Annotated[
     SupportsPaymentInitializer,
@@ -462,6 +468,7 @@ async def _verify_parallel_payment_list(
                 initializer,
                 order_id,
                 currency=currency,
+                accepted_statuses=FINAL_PAYMENT_LIST_STATUSES,
             ),
         )
     except PaymentProviderStatusVerificationError as exc:
@@ -695,6 +702,8 @@ def _classification_for_payment_list_status(payment_list_status: str | None) -> 
         return "completed"
     if payment_list_status == PaymentStatus.FAILED.value:
         return "provider_failed"
+    if payment_list_status == PaymentStatus.CREATED.value:
+        return "awaiting_provider_finalization"
     if payment_list_status is None:
         return "payment_list_missing"
     return "needs_investigation"

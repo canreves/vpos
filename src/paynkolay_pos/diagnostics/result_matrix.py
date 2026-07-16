@@ -94,6 +94,7 @@ class DiagnosticClassification(StrEnum):
     BLANK_OR_REDIRECT_ERROR = "blank_or_redirect_error"
     PAYMENT_LIST_MISSING = "payment_list_missing"
     PENDING_3DS = "pending_3ds"
+    AWAITING_PROVIDER_FINALIZATION = "awaiting_provider_finalization"
     NEEDS_INVESTIGATION = "needs_investigation"
 
 
@@ -220,6 +221,14 @@ class ResultMatrixEntry(StrictDiagnosticModel):
 
         if self.payment_list.status is PaymentStatus.FAILED:
             return DiagnosticClassification.PROVIDER_FAILED
+
+        if (
+            self.payment_list.status is PaymentStatus.CREATED
+            and self.otp_resolution is not None
+            and self.otp_resolution.status is OtpResolutionStatus.READY
+            and self.otp_resolution.should_auto_submit
+        ):
+            return DiagnosticClassification.AWAITING_PROVIDER_FINALIZATION
 
         if not self.requires_3ds:
             if self.init.outcome is InitOutcome.FINAL_SUCCESS:

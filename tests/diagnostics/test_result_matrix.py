@@ -165,6 +165,44 @@ def test_result_matrix_includes_otp_resolution_columns() -> None:
 
 
 @pytest.mark.api
+def test_result_matrix_classifies_submitted_3ds_created_status_as_awaiting_finalization() -> None:
+    entry = result_entry(
+        card_alias="credential_garanti_mastercard_6017",
+        flow=ResultMatrixFlow.THREE_DS,
+        requires_3ds=True,
+        init=InitObservation(
+            outcome=InitOutcome.THREE_DS_INITIALIZED,
+            parsed_result_type="PaynkolayThreeDSInitializeResult",
+            bank_request_message_present=True,
+        ),
+        acs=AcsObservation(
+            classification=AcsScreenClassification.VISIBLE_OTP_CODE,
+            safe_url="https://gbemv3dsecure-integration-t.garanti.com.tr/web/pinvalidate",
+            otp_input_found=True,
+            submit_control_found=True,
+        ),
+        otp_resolution=OtpResolutionObservation(
+            status=OtpResolutionStatus.READY,
+            source_type=OtpSourceType.VISIBLE_PAGE,
+            otp_present=True,
+            should_auto_submit=True,
+            reason="resolved OTP from visible ACS simulator text",
+        ),
+        payment_list=PaymentListObservation(
+            outcome=PaymentListOutcome.FOUND,
+            status=PaymentStatus.CREATED,
+            provider_transaction_id_present=True,
+        ),
+    )
+
+    row = entry.summary_row()
+
+    assert entry.classification is DiagnosticClassification.AWAITING_PROVIDER_FINALIZATION
+    assert row["payment_list_status"] == "created"
+    assert row["classification"] == "awaiting_provider_finalization"
+
+
+@pytest.mark.api
 def test_result_matrix_classifies_framework_parse_error() -> None:
     entry = result_entry(
         init=InitObservation(
