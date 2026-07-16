@@ -140,10 +140,30 @@ Confirmed flows:
 Known UAT notes:
 
 - 3D Secure ACS behavior may differ by issuer simulator and card profile.
+- Automatic 3D Secure success flows use a card automation behavior catalogue. Cards marked
+  `manual_only` or `quarantined` stay available for intentional diagnostics but are excluded
+  from random/default success smoke selection.
 - Reliable negative UAT testing requires official invalid card/CVV/OTP data from the
   provider.
 - PaymentList may continue to show the original sales row after cancel; the cancel service
   response is currently treated as the primary cancel evidence.
+
+### UAT Card Automation Policy
+
+The runtime card schema intentionally stays focused on payment data. Observed live-UAT
+automation behavior is tracked separately by alias in `src/paynkolay_pos/testing/card_behaviors.py`
+so private config JSON files remain compatible and no PAN/CVV/OTP values are committed.
+
+Automation statuses:
+
+- `success_auto`: eligible for default/random automatic success smoke runs.
+- `manual_only`: excluded from automatic success runs, still selectable for manual diagnosis.
+- `quarantined`: excluded from automatic success runs because the issuer/ACS behavior is
+  currently unstable or bank-side failing.
+- `unknown`: treated as eligible by default until a specific UAT behavior is recorded.
+
+Current automatic 3D Secure baseline aliases include `nkolay_dynamic_otp_visa_6111`,
+`garanti_bankasi_mastercard_6017`, `akbank_visa_5232`, and `akbank_visa_7068`.
 
 ## Reporting
 
@@ -197,6 +217,7 @@ Run guarded UAT smoke checks:
 
 ```bash
 make uat-3ds-smoke
+make uat-parallel-3ds-smoke
 make uat-cancel-smoke
 ```
 
@@ -217,7 +238,7 @@ Current validation status:
 ```text
 ruff check        passed
 mypy             passed
-pytest           251 passed, 5 skipped
+pytest           308 passed, 5 skipped
 ```
 
 Skipped tests are live/sandbox-gated tests that require private runtime configuration and
@@ -252,6 +273,7 @@ The project is presentation-ready for:
 - UAT payment demo through the web UI,
 - MoTo payment and PaymentList verification,
 - 3D Secure initialization and manual browser completion,
+- automated parallel 3D Secure smoke with sanitized evidence,
 - same-day cancel smoke checks,
 - card-list based tester workflows,
 - local installment option stubbing,
@@ -261,5 +283,5 @@ Remaining work is primarily provider-dependent:
 
 - connect the real installment service,
 - obtain reliable negative UAT test data,
-- finalize fully automated parallel 3D Secure OTP handling,
+- rerun live UAT parallel smoke after card behavior updates,
 - clarify final cancel reporting semantics with Paynkolay if needed.
