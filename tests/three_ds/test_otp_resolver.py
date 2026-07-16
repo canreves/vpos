@@ -78,20 +78,55 @@ def test_resolve_otp_source_uses_static_config_otp() -> None:
 
 
 @pytest.mark.three_ds
-def test_resolve_otp_source_blocks_sms_and_mobile_manual_profiles() -> None:
-    sms = resolve_otp_source(
+def test_resolve_otp_source_uses_static_config_otp_for_sms_input_profiles() -> None:
+    resolution = resolve_otp_source(
         profile=profile(AcsOtpStrategy.SMS_MANUAL_REQUIRED),
         evidence=AcsProfileEvidence(),
         configured_otp=SecretStr("654321"),
     )
+
+    assert resolution.status is OtpResolutionStatus.READY
+    assert resolution.source_type is OtpSourceType.STATIC_CONFIG
+    assert resolution.otp_value == "654321"
+    assert resolution.should_auto_submit is True
+    assert "654321" not in resolution.model_dump_json()
+
+
+@pytest.mark.three_ds
+def test_resolve_otp_source_keeps_sms_manual_when_config_otp_is_missing() -> None:
+    resolution = resolve_otp_source(
+        profile=profile(AcsOtpStrategy.SMS_MANUAL_REQUIRED),
+        evidence=AcsProfileEvidence(),
+        configured_otp=None,
+    )
+
+    assert resolution.status is OtpResolutionStatus.MANUAL_REQUIRED
+    assert resolution.should_auto_submit is False
+
+
+@pytest.mark.three_ds
+def test_resolve_otp_source_keeps_sms_manual_when_input_controls_are_missing() -> None:
+    detected_profile = profile(AcsOtpStrategy.SMS_MANUAL_REQUIRED).model_copy(
+        update={"otp_input_found": False}
+    )
+    resolution = resolve_otp_source(
+        profile=detected_profile,
+        evidence=AcsProfileEvidence(),
+        configured_otp=SecretStr("654321"),
+    )
+
+    assert resolution.status is OtpResolutionStatus.MANUAL_REQUIRED
+    assert resolution.should_auto_submit is False
+
+
+@pytest.mark.three_ds
+def test_resolve_otp_source_blocks_mobile_manual_profiles() -> None:
     mobile = resolve_otp_source(
         profile=profile(AcsOtpStrategy.MOBILE_APPROVAL_REQUIRED),
         evidence=AcsProfileEvidence(),
         configured_otp=SecretStr("654321"),
     )
 
-    assert sms.status is OtpResolutionStatus.MANUAL_REQUIRED
-    assert sms.should_auto_submit is False
     assert mobile.status is OtpResolutionStatus.MANUAL_REQUIRED
     assert mobile.should_auto_submit is False
 

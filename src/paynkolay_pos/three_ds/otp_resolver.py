@@ -107,10 +107,28 @@ def resolve_otp_source(
             reason="resolved OTP from configured test card metadata",
         )
 
-    if profile.otp_strategy in {
-        AcsOtpStrategy.SMS_MANUAL_REQUIRED,
-        AcsOtpStrategy.MOBILE_APPROVAL_REQUIRED,
-    }:
+    if profile.otp_strategy is AcsOtpStrategy.SMS_MANUAL_REQUIRED:
+        configured_value = configured_otp.get_secret_value().strip() if configured_otp else ""
+        if (
+            profile.otp_input_found
+            and profile.submit_control_found
+            and configured_value
+            and configured_value != DYNAMIC_OTP_SENTINEL
+        ):
+            return OtpResolution(
+                status=OtpResolutionStatus.READY,
+                source_type=OtpSourceType.STATIC_CONFIG,
+                otp=configured_otp,
+                should_auto_submit=True,
+                reason="resolved OTP from configured test card metadata",
+            )
+        return OtpResolution(
+            status=OtpResolutionStatus.MANUAL_REQUIRED,
+            should_auto_submit=False,
+            reason=f"ACS profile requires manual completion: {profile.otp_strategy.value}",
+        )
+
+    if profile.otp_strategy is AcsOtpStrategy.MOBILE_APPROVAL_REQUIRED:
         return OtpResolution(
             status=OtpResolutionStatus.MANUAL_REQUIRED,
             should_auto_submit=False,
