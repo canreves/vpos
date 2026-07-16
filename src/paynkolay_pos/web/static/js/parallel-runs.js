@@ -177,7 +177,14 @@
     }
     const source = automation.otp_source_type || "no-source";
     const submitted = automation.submitted ? "submitted" : "not-submitted";
-    return `${automation.status} ${submitted} ${source}`;
+    const details = [
+      automation.status,
+      submitted,
+      `source=${source}`,
+      automation.classification ? `class=${automation.classification}` : null,
+      automation.reason ? `reason=${automation.reason}` : null,
+    ].filter(Boolean);
+    return details.join(" ");
   }
 
   function setParallelThreeDsMode(mode) {

@@ -359,6 +359,7 @@ async def test_parallel_page_renders_parallel_run_screen(client: httpx.AsyncClie
     assert 'id="parallel-selection-body"' in response.text
     assert 'id="parallel-results-body"' in response.text
     assert 'id="parallel-evidence-path"' in response.text
+    assert "Auto mode records sanitized ACS automation evidence." in response.text
     assert "/static/js/parallel-runs.js" in response.text
 
 
