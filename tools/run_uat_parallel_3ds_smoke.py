@@ -6,7 +6,7 @@ import argparse
 import asyncio
 import os
 from collections.abc import Sequence
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 
 import httpx
 
@@ -15,6 +15,11 @@ from paynkolay_pos.config import TestCard, load_runtime_settings
 from paynkolay_pos.reporting import evidence_json
 
 DEFAULT_CARD_ALIAS = "nkolay_dynamic_otp_visa_6111"
+
+
+class ManualCardSelection(TypedDict):
+    alias: str
+    repeat_count: int
 
 
 def main() -> None:
@@ -27,6 +32,18 @@ def main() -> None:
         help=(
             "3DS card alias to run. Defaults to the known dynamic OTP Visa/QNB card; "
             "falls back to the first configured 3DS card when the default is absent."
+        ),
+    )
+    parser.add_argument(
+        "--manual-card",
+        action="append",
+        default=[],
+        metavar="ALIAS:COUNT",
+        help=(
+            "Manual card selection for mixed parallel runs. Can be repeated, for example "
+            "--manual-card nkolay_dynamic_otp_visa_6111:5 "
+            "--manual-card garanti_bankasi_mastercard_6017:5. "
+            "When provided, --card-alias and --count are ignored."
         ),
     )
     parser.add_argument(
@@ -58,23 +75,36 @@ def main() -> None:
         default=180.0,
         help="Maximum seconds to wait for the run to finish.",
     )
+    parser.add_argument(
+        "--allow-attention",
+        action="store_true",
+        help=(
+            "Exit successfully for completed_with_failures runs. Useful for diagnostic mixed "
+            "runs where awaiting_provider_finalization is expected."
+        ),
+    )
     args = parser.parse_args()
+
+    manual_cards = _parse_manual_cards(args.manual_card)
+    total_count = sum(item["repeat_count"] for item in manual_cards) if manual_cards else args.count
 
     if os.getenv("PAYNKOLAY_ENABLE_LIVE_E2E") != "1":
         raise SystemExit("Set PAYNKOLAY_ENABLE_LIVE_E2E=1 before real UAT calls.")
-    if args.count < 1 or args.count > 10:
-        raise SystemExit("--count must be between 1 and 10.")
+    if total_count < 1 or total_count > 10:
+        raise SystemExit("total item count must be between 1 and 10.")
     if args.concurrency < 1 or args.concurrency > 10:
         raise SystemExit("--concurrency must be between 1 and 10.")
 
     asyncio.run(
         _run_parallel_smoke(
             requested_card_alias=args.card_alias,
-            count=args.count,
+            count=total_count,
             concurrency=args.concurrency,
             amount=args.amount,
             poll_interval=args.poll_interval,
             timeout=args.timeout,
+            manual_cards=manual_cards,
+            allow_attention=args.allow_attention,
         )
     )
 
@@ -87,9 +117,23 @@ async def _run_parallel_smoke(
     amount: str,
     poll_interval: float,
     timeout: float,
+    manual_cards: list[ManualCardSelection],
+    allow_attention: bool,
 ) -> None:
     settings = load_runtime_settings()
-    card = _select_3ds_card(settings.current.cards, requested_card_alias=requested_card_alias)
+    selected_cards = (
+        _select_manual_3ds_cards(settings.current.cards, manual_cards=manual_cards)
+        if manual_cards
+        else [
+            {
+                "alias": _select_3ds_card(
+                    settings.current.cards,
+                    requested_card_alias=requested_card_alias,
+                ).alias,
+                "repeat_count": count,
+            }
+        ]
+    )
     print(
         evidence_json(
             {
@@ -98,7 +142,7 @@ async def _run_parallel_smoke(
                 "provider_base_url": settings.current.base_url,
                 "callback_url": settings.current.callback_base_url,
                 "requested_card_alias": requested_card_alias,
-                "selected_card_alias": card.alias,
+                "selected_cards": selected_cards,
                 "count": count,
                 "concurrency": concurrency,
                 "amount": amount,
@@ -122,7 +166,7 @@ async def _run_parallel_smoke(
                 "currency": "TRY",
                 "concurrency": concurrency,
                 "auto_complete_3ds": True,
-                "manual_cards": [{"alias": card.alias, "repeat_count": count}],
+                "manual_cards": selected_cards,
             },
         )
         if response.status_code != httpx.codes.ACCEPTED:
@@ -156,6 +200,10 @@ async def _run_parallel_smoke(
         )
 
     print(evidence_json({"event": "uat_parallel_3ds_smoke_finished", "run": final_run}))
+    if final_run["status"] == "completed":
+        return
+    if allow_attention and final_run["status"] == "completed_with_failures":
+        return
     if final_run["status"] != "completed":
         raise SystemExit(1)
 
@@ -230,6 +278,41 @@ def _select_3ds_card(
         if card.requires_3ds:
             return card
     raise SystemExit("No configured 3DS card was found.")
+
+
+def _select_manual_3ds_cards(
+    cards: Sequence[TestCard],
+    *,
+    manual_cards: list[ManualCardSelection],
+) -> list[ManualCardSelection]:
+    cards_by_alias = {card.alias: card for card in cards}
+    selected: list[ManualCardSelection] = []
+    for item in manual_cards:
+        alias = item["alias"]
+        repeat_count = item["repeat_count"]
+        card = cards_by_alias.get(alias)
+        if card is None:
+            raise SystemExit(f"3DS card alias is not configured: {alias}")
+        if not card.requires_3ds:
+            raise SystemExit(f"Selected card does not require 3DS: {alias}")
+        selected.append({"alias": alias, "repeat_count": repeat_count})
+    return selected
+
+
+def _parse_manual_cards(values: Sequence[str]) -> list[ManualCardSelection]:
+    selections: list[ManualCardSelection] = []
+    for value in values:
+        alias, separator, count_value = value.partition(":")
+        if not separator or not alias.strip() or not count_value.strip():
+            raise SystemExit("--manual-card must use ALIAS:COUNT format.")
+        try:
+            repeat_count = int(count_value)
+        except ValueError as exc:
+            raise SystemExit("--manual-card COUNT must be an integer.") from exc
+        if repeat_count < 1 or repeat_count > 10:
+            raise SystemExit("--manual-card COUNT must be between 1 and 10.")
+        selections.append({"alias": alias.strip(), "repeat_count": repeat_count})
+    return selections
 
 
 def _classification_counts(run: dict[str, Any]) -> dict[str, int]:
