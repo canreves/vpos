@@ -1,4 +1,4 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs credential-matrix credential-config credential-scenarios uat-scenarios credential-inputs uat-config uat-inputs uat-3ds-smoke uat-parallel-3ds-smoke uat-cancel-smoke credential-scenario-test credential-scenario-report synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web uat-web web-test web-check allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs credential-matrix credential-config credential-scenarios uat-scenarios credential-inputs uat-config uat-inputs uat-3ds-smoke uat-parallel-3ds-smoke uat-cancel-smoke credential-scenario-test credential-scenario-report synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel parallel-evidence-summary web uat-web web-test web-check allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
@@ -40,6 +40,9 @@ WEB_PORT ?= 8000
 WEB_RELOAD ?=
 WEB_3DS_HEADED ?= 0
 WEB_3DS_CLOSE_DELAY ?= 0
+PARALLEL_EVIDENCE_DIR ?= reports/parallel-runs
+PARALLEL_EVIDENCE_LIMIT ?= 10
+PARALLEL_EVIDENCE_RUN_ID ?=
 
 help:
 	@echo "Paynkolay Sanal POS automation commands"
@@ -84,6 +87,7 @@ help:
 	@echo "  make synthetic-scenarios Generate a synthetic scenario catalogue"
 	@echo "  make scale-demo      Generate 100 cards, 1000 scenarios, then run scenarios"
 	@echo "  make scale-demo-parallel Run generated scenarios with pytest-xdist"
+	@echo "  make parallel-evidence-summary Summarize persisted parallel run evidence"
 	@echo ""
 	@echo "Web UI:"
 	@echo "  make web             Run the FastAPI web UI"
@@ -236,6 +240,10 @@ scale-demo-parallel:
 	$(MAKE) synthetic-cards COUNT=$(COUNT) OUT=$(OUT)
 	poetry run python tools/generate_synthetic_scenarios.py --count $(SCENARIO_COUNT) --card-count $(COUNT) --output $(SCENARIO_OUT)
 	PAYNKOLAY_SCENARIO_CATALOG=$(SCENARIO_OUT) $(PYTEST) -m scenario -n auto
+
+parallel-evidence-summary:
+	@test -z "$(PARALLEL_EVIDENCE_RUN_ID)" || { PAYNKOLAY_PARALLEL_EVIDENCE_DIR=$(PARALLEL_EVIDENCE_DIR) poetry run python tools/summarize_parallel_evidence.py --evidence-dir $(PARALLEL_EVIDENCE_DIR) --run-id $(PARALLEL_EVIDENCE_RUN_ID); exit $$?; }
+	PAYNKOLAY_PARALLEL_EVIDENCE_DIR=$(PARALLEL_EVIDENCE_DIR) poetry run python tools/summarize_parallel_evidence.py --evidence-dir $(PARALLEL_EVIDENCE_DIR) --limit $(PARALLEL_EVIDENCE_LIMIT)
 
 web:
 	PAYNKOLAY_3DS_AUTOMATION_HEADED=$(WEB_3DS_HEADED) PAYNKOLAY_3DS_AUTOMATION_CLOSE_DELAY=$(WEB_3DS_CLOSE_DELAY) $(UVICORN) paynkolay_pos.api.app:create_app --factory $(WEB_RELOAD) --host $(WEB_HOST) --port $(WEB_PORT)
