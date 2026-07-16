@@ -25,6 +25,8 @@ def test_known_uat_card_behaviors_classify_success_and_quarantine_aliases() -> N
         is CardAutomationStatus.QUARANTINED
     )
     assert is_automatic_success_candidate("denizbank_mastercard_8608") is False
+    assert behavior_for_alias("is_bankas_troy_1396").status is CardAutomationStatus.QUARANTINED
+    assert is_automatic_success_candidate("is_bankas_troy_1396") is False
 
 
 def test_unknown_card_behaviors_remain_eligible_by_default() -> None:

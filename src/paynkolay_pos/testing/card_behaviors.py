@@ -72,6 +72,11 @@ KNOWN_CARD_BEHAVIORS: dict[str, CardAutomationBehavior] = {
         reason="Provider returns a final payment result before a successful 3DS flow.",
         diagnostic_class="provider_final_result",
     ),
+    "is_bankas_troy_1396": CardAutomationBehavior(
+        status=CardAutomationStatus.QUARANTINED,
+        reason="Provider returns a final payment result before a successful 3DS flow.",
+        diagnostic_class="provider_final_result",
+    ),
     "yabanc_kart_troy_8548": CardAutomationBehavior(
         status=CardAutomationStatus.QUARANTINED,
         reason="3DS flow remains on a local blank page, indicating ACS/bank-side failure.",
