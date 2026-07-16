@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import SplitResult, urljoin, urlsplit, urlunsplit
 
 from playwright.async_api import Browser, BrowserContext, Frame, Locator, Page, async_playwright
 from playwright.async_api import Error as PlaywrightError
@@ -66,6 +66,24 @@ GARANTI_CONTINUE_SELECTORS = (
     'input[type="submit"][value*="Continue" i]',
     'button[type="submit"]',
     'input[type="submit"]',
+)
+ACS_FINAL_RETURN_SELECTORS = (
+    'button:has-text("Üye işyerine dön")',
+    'button:has-text("Uye isyerine don")',
+    'button:has-text("İşyerine dön")',
+    'button:has-text("Isyerine don")',
+    'button:has-text("Merchant")',
+    'button:has-text("Devam")',
+    'button:has-text("Continue")',
+    'button:has-text("Tamam")',
+    'input[type="submit"][value*="Üye işyerine dön" i]',
+    'input[type="submit"][value*="Uye isyerine don" i]',
+    'input[type="submit"][value*="İşyerine dön" i]',
+    'input[type="submit"][value*="Isyerine don" i]',
+    'input[type="submit"][value*="Merchant" i]',
+    'input[type="submit"][value*="Devam" i]',
+    'input[type="submit"][value*="Continue" i]',
+    'input[type="submit"][value*="Tamam" i]',
 )
 DEFAULT_FORM_BASE_URL = "https://vpostest.qnb.com.tr/PayforACSSimulator/"
 
@@ -216,15 +234,25 @@ async def complete_acs_browser_challenge(
                     otp_resolution=action.otp_resolution,
                 )
 
+            page = await _active_page(context=context, preferred_page=page)
             await _wait_for_network_quiet(page)
+            page, returned_to_callback = await _follow_acs_final_return_if_present(
+                context=context,
+                page=page,
+                callback_url=callback_url,
+            )
             final_evidence = await _profile_evidence_for_page(page, brand=brand)
             if headed and close_delay_seconds > 0:
                 await asyncio.sleep(close_delay_seconds)
             return _result(
                 completed=True,
                 submitted=True,
-                returned_to_callback=_same_origin_path(page.url, callback_url),
-                reason="otp_submitted",
+                returned_to_callback=returned_to_callback,
+                reason=(
+                    "otp_submitted"
+                    if returned_to_callback
+                    else "otp_submitted_callback_not_reached"
+                ),
                 evidence=final_evidence,
                 profile=profile,
                 otp_selector=otp_target.selector,
@@ -318,6 +346,128 @@ async def _advance_garanti_sms_method_if_present(
         page=page,
         locator=continue_target.locator,
     )
+
+
+async def _follow_acs_final_return_if_present(
+    *,
+    context: BrowserContext,
+    page: Page,
+    callback_url: str,
+) -> tuple[Page, bool]:
+    page = await _active_page(context=context, preferred_page=page)
+    if await _any_page_reached_callback(context=context, callback_url=callback_url):
+        return page, True
+
+    attempted_form_urls: set[str] = set()
+    for _ in range(3):
+        page = await _active_page(context=context, preferred_page=page)
+        if await _submit_callback_form_if_present(
+            page=page,
+            callback_url=callback_url,
+            attempted_form_urls=attempted_form_urls,
+        ):
+            page = await _active_page(context=context, preferred_page=page)
+            await _wait_for_network_quiet(page)
+            if await _any_page_reached_callback(context=context, callback_url=callback_url):
+                return page, True
+            continue
+
+        final_return_target = await _visible_selector_in_page_or_frames(
+            page,
+            ACS_FINAL_RETURN_SELECTORS,
+        )
+        if final_return_target is None:
+            break
+
+        page = await _click_and_follow_page(
+            context=context,
+            page=page,
+            locator=final_return_target.locator,
+        )
+        if await _any_page_reached_callback(context=context, callback_url=callback_url):
+            return page, True
+
+    page = await _active_page(context=context, preferred_page=page)
+    return page, await _any_page_reached_callback(context=context, callback_url=callback_url)
+
+
+async def _submit_callback_form_if_present(
+    *,
+    page: Page,
+    callback_url: str,
+    attempted_form_urls: set[str],
+) -> bool:
+    callback_parts = urlsplit(callback_url)
+    for frame in page.frames:
+        forms = frame.locator("form")
+        try:
+            count = min(await forms.count(), 10)
+        except PlaywrightError:
+            continue
+        for index in range(count):
+            form = forms.nth(index)
+            try:
+                action = await form.get_attribute("action")
+                method = (await form.get_attribute("method") or "get").lower()
+            except PlaywrightError:
+                continue
+            absolute_action = urljoin(frame.url, action or "")
+            safe_action = _safe_url(absolute_action)
+            form_key = f"{frame.url}|{safe_action}|{index}"
+            if (
+                safe_action is None
+                or form_key in attempted_form_urls
+                or method not in {"get", "post"}
+                or not _is_callback_or_merchant_return_url(safe_action, callback_parts)
+            ):
+                continue
+            attempted_form_urls.add(form_key)
+            try:
+                await form.evaluate("form => form.submit()")
+                return True
+            except PlaywrightError:
+                continue
+    return False
+
+
+def _is_callback_or_merchant_return_url(url: str, callback_parts: SplitResult) -> bool:
+    parts = urlsplit(url)
+    if not parts.scheme or not parts.netloc:
+        return False
+    if (
+        parts.scheme == callback_parts.scheme
+        and parts.netloc == callback_parts.netloc
+        and parts.path.rstrip("/") == callback_parts.path.rstrip("/")
+    ):
+        return True
+    host = parts.netloc.lower()
+    path = parts.path.lower()
+    return "paynkolay" in host and any(
+        marker in path for marker in ("callback", "three", "3d", "payment")
+    )
+
+
+async def _any_page_reached_callback(*, context: BrowserContext, callback_url: str) -> bool:
+    for candidate in context.pages:
+        if candidate.is_closed():
+            continue
+        try:
+            if _same_origin_path(candidate.url, callback_url):
+                await candidate.bring_to_front()
+                return True
+        except PlaywrightError:
+            continue
+    return False
+
+
+async def _active_page(*, context: BrowserContext, preferred_page: Page) -> Page:
+    if not preferred_page.is_closed():
+        return preferred_page
+    for candidate in reversed(context.pages):
+        if not candidate.is_closed():
+            await candidate.bring_to_front()
+            return candidate
+    return preferred_page
 
 
 async def _click_and_follow_page(

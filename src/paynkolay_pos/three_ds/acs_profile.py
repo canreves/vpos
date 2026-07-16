@@ -316,6 +316,10 @@ def _looks_like_acs_error(text: str) -> bool:
         "gerçekleştiremiyoruz",
         "gerceklestiremiyoruz",
         "tekrar deneyiniz",
+        "güvenlik politikalarımız",
+        "guvenlik politikalarimiz",
+        "gereği engellenmiştir",
+        "geregi engellenmistir",
         "error",
         "hata",
     )

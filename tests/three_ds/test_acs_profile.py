@@ -74,6 +74,30 @@ def test_detect_acs_profile_classifies_acs_error_screen() -> None:
 
 
 @pytest.mark.three_ds
+def test_detect_acs_profile_classifies_garanti_security_policy_block() -> None:
+    profile = detect_acs_profile(
+        AcsProfileEvidence(
+            brand=CardBrand.MASTERCARD,
+            title="",
+            final_url="https://sanalposprovtest.garantibbva.com.tr/servlet/gt3dengine",
+            frames=(
+                frame(
+                    url="https://sanalposprovtest.garantibbva.com.tr/servlet/gt3dengine",
+                    text_prefix=(
+                        "Üzgünüz yapmış olduğunuz işlem güvenlik politikalarımız "
+                        "gereği engellenmiştir."
+                    ),
+                ),
+            ),
+        )
+    )
+
+    assert profile.bank_profile is AcsBankProfile.GARANTI
+    assert profile.screen_classification is AcsScreenClassification.ACS_ERROR_SCREEN
+    assert profile.otp_strategy is AcsOtpStrategy.NOT_APPLICABLE
+
+
+@pytest.mark.three_ds
 def test_detect_acs_profile_classifies_troy_redirect_error() -> None:
     profile = detect_acs_profile(
         AcsProfileEvidence(
