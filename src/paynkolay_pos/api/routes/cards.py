@@ -16,6 +16,7 @@ from paynkolay_pos.api.schemas import (
     TestCardListResponse,
 )
 from paynkolay_pos.config import RuntimeSettings, TestCard, load_runtime_settings
+from paynkolay_pos.testing.card_behaviors import behavior_for_alias
 
 router = APIRouter(prefix="/api/cards", tags=["cards"])
 CONFIG_FILE_ENV = "PAYNKOLAY_CONFIG_FILE"
@@ -145,6 +146,7 @@ def _runtime_card_payload(request: TestCardCreateRequest) -> dict[str, object]:
 
 
 def _form_fill_from_card(card: TestCard) -> TestCardFormFill:
+    behavior = behavior_for_alias(card.alias)
     return TestCardFormFill(
         alias=card.alias,
         brand=card.brand.value,
@@ -155,4 +157,8 @@ def _form_fill_from_card(card: TestCard) -> TestCardFormFill:
         expiry_year=card.expiry_year,
         requires_3ds=card.requires_3ds,
         has_expected_otp=card.expected_otp is not None,
+        automation_status=behavior.status.value,
+        automation_reason=behavior.reason,
+        diagnostic_class=behavior.diagnostic_class,
+        automatic_success_candidate=behavior.eligible_for_automatic_success,
     )

@@ -59,6 +59,7 @@ from paynkolay_pos.models import (
 )
 from paynkolay_pos.reporting import evidence_json
 from paynkolay_pos.scenarios import PaymentScenario, load_payment_scenario_catalog_from_env
+from paynkolay_pos.testing.card_behaviors import is_automatic_success_candidate
 from paynkolay_pos.three_ds import (
     AcsFieldEvidence,
     AcsFrameEvidence,
@@ -603,11 +604,12 @@ def _first_3ds_scenario(
             scenario.requires_3ds
             and card is not None
             and card.expected_otp is not None
+            and is_automatic_success_candidate(card.alias)
             and "wrong_otp" not in scenario.tags
             and "expired_card" not in scenario.tags
         ):
             return scenario
-    raise LookupError("No 3DS scenario with expected_otp was found.")
+    raise LookupError("No automatic success candidate 3DS scenario with expected_otp was found.")
 
 
 def _card_for_alias(environment: PaymentEnvironment, alias: str) -> TestCard:

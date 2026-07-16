@@ -92,19 +92,35 @@
     cardTable.append(
       ...cards.map((card) => {
         const row = document.createElement("tr");
-        for (const value of [
-          card.alias,
-          card.brand.toUpperCase(),
-          yesNo(card.requires_3ds),
-          yesNo(card.has_expected_otp),
-        ]) {
+        const values = [
+          { text: card.alias },
+          { text: card.brand.toUpperCase() },
+          { text: yesNo(card.requires_3ds) },
+          { text: yesNo(card.has_expected_otp) },
+          { text: automationLabel(card), title: card.automation_reason || "" },
+        ];
+        for (const value of values) {
           const cell = document.createElement("td");
-          cell.textContent = value;
+          cell.textContent = value.text;
+          cell.title = value.title || "";
           row.append(cell);
         }
         return row;
       }),
     );
+  }
+
+  function automationLabel(card) {
+    if (card.automation_status === "success_auto") {
+      return "Auto";
+    }
+    if (card.automation_status === "manual_only") {
+      return "Manual";
+    }
+    if (card.automation_status === "quarantined") {
+      return "Quarantine";
+    }
+    return "Unknown";
   }
 
   function renderOverview(overview) {

@@ -59,6 +59,7 @@ from paynkolay_pos.models import (
     PaynkolayThreeDSInitializeResult,
 )
 from paynkolay_pos.reporting import evidence_json
+from paynkolay_pos.testing.card_behaviors import is_automatic_success_candidate
 
 router = APIRouter(prefix="/api/parallel-runs", tags=["parallel_runs"])
 
@@ -498,11 +499,12 @@ def _select_cards(
         card
         for card in cards.values()
         if not card.alias.startswith("synthetic_")
+        and is_automatic_success_candidate(card.alias)
     ]
     if not real_cards:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="random mode requires at least one non-synthetic card",
+            detail="random mode requires at least one automatic success candidate card",
         )
     count = request.random_count or 1
     return [random.choice(real_cards) for _ in range(count)]

@@ -81,7 +81,8 @@
           ...payload.cards.map((card) => {
             const option = document.createElement("option");
             option.value = card.alias;
-            option.textContent = `${card.alias} (${card.brand.toUpperCase()} ${card.flow_type})`;
+            option.textContent = `${card.alias} (${card.brand.toUpperCase()} ${card.flow_type}, ${automationLabel(card)})`;
+            option.title = card.automation_reason || "";
             return option;
           }),
         );
@@ -90,6 +91,19 @@
         parallelMessage.textContent = error.message;
         setParallelRunStatus("Config error", "error");
       });
+  }
+
+  function automationLabel(card) {
+    if (card.automation_status === "success_auto") {
+      return "auto";
+    }
+    if (card.automation_status === "manual_only") {
+      return "manual";
+    }
+    if (card.automation_status === "quarantined") {
+      return "quarantine";
+    }
+    return "unknown";
   }
 
   function parallelPayload() {

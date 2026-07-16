@@ -17,7 +17,7 @@ from paynkolay_pos.api.schemas import (
     ConfigScenarioCoverage,
     ConfigScenarioSummary,
 )
-from paynkolay_pos.config import CardBrand, load_runtime_settings
+from paynkolay_pos.config import CardBrand, TestCard, load_runtime_settings
 from paynkolay_pos.models import Currency, PaymentChannel
 from paynkolay_pos.sandbox import check_sandbox_readiness
 from paynkolay_pos.scenarios import (
@@ -25,6 +25,7 @@ from paynkolay_pos.scenarios import (
     load_payment_scenario_catalog_from_env,
     scenario_catalog_path_from_env,
 )
+from paynkolay_pos.testing.card_behaviors import behavior_for_alias
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -110,16 +111,25 @@ async def get_config_overview() -> ConfigOverviewResponse:
         ),
         card_count=len(current.cards),
         cards=[
-            ConfigCardSummary(
-                alias=card.alias,
-                brand=card.brand.value,
-                requires_3ds=card.requires_3ds,
-                has_expected_otp=card.expected_otp is not None,
-            )
+            _card_summary(card)
             for card in current.cards
         ],
         scenarios=scenario_summary,
         readiness=readiness,
+    )
+
+
+def _card_summary(card: TestCard) -> ConfigCardSummary:
+    behavior = behavior_for_alias(card.alias)
+    return ConfigCardSummary(
+        alias=card.alias,
+        brand=card.brand.value,
+        requires_3ds=card.requires_3ds,
+        has_expected_otp=card.expected_otp is not None,
+        automation_status=behavior.status.value,
+        automation_reason=behavior.reason,
+        diagnostic_class=behavior.diagnostic_class,
+        automatic_success_candidate=behavior.eligible_for_automatic_success,
     )
 
 

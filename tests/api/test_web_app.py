@@ -770,11 +770,16 @@ async def test_cards_route_returns_form_fill_test_cards(
         "card_holder": "PAYNKOLAY TEST",
         "requires_3ds": True,
         "has_expected_otp": True,
+        "automation_status": "unknown",
+        "automation_reason": "No live UAT automation behavior has been recorded for this alias.",
+        "diagnostic_class": "unknown",
+        "automatic_success_candidate": True,
     }
     assert payload["cards"][1]["alias"] == "ui_card_moto"
     assert payload["cards"][1]["flow_type"] == "moto"
     assert payload["cards"][1]["requires_3ds"] is False
     assert payload["cards"][1]["has_expected_otp"] is False
+    assert payload["cards"][1]["automation_status"] == "unknown"
 
 
 @pytest.mark.api
@@ -919,6 +924,8 @@ async def test_cards_route_appends_new_3ds_card_without_otp(
     assert payload["flow_type"] == "secure"
     assert payload["requires_3ds"] is True
     assert payload["has_expected_otp"] is False
+    assert payload["automation_status"] == "unknown"
+    assert payload["automatic_success_candidate"] is True
     updated = json.loads(config_path.read_text(encoding="utf-8"))
     cards = updated["environments"]["dev"]["cards"]
     assert "expected_otp" not in cards[-1]
@@ -1371,6 +1378,101 @@ async def test_parallel_run_random_mode_excludes_synthetic_cards(
 
 @pytest.mark.api
 @pytest.mark.asyncio
+async def test_parallel_run_random_mode_excludes_quarantined_and_manual_only_cards(
+    client: httpx.AsyncClient,
+    fake_initializer: FakePaymentInitializer,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="akbank_visa_5232",
+                pan="4111111111111111",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+            _runtime_card(
+                alias="denizbank_mastercard_8608",
+                pan="5555555555554444",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+            _runtime_card(
+                alias="yapikredi_visa_9085",
+                pan="4000000000000002",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+        ],
+    )
+    fake_initializer.provider_result = _payment_result(
+        response_code="2",
+        response_data="Islem Basarili",
+    )
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "random",
+            "amount": "100.00",
+            "currency": "TRY",
+            "concurrency": 2,
+            "random_count": 5,
+        },
+    )
+
+    assert response.status_code == 202
+    payload = await _wait_parallel_run(client, response.json()["run_id"])
+    assert {item["card_alias"] for item in payload["items"]} == {"akbank_visa_5232"}
+    assert len(fake_initializer.calls) == 5
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_run_manual_mode_allows_quarantined_card(
+    client: httpx.AsyncClient,
+    fake_initializer: FakePaymentInitializer,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="denizbank_mastercard_8608",
+                pan="5555555555554444",
+                requires_3ds=False,
+            ),
+        ],
+    )
+    fake_initializer.provider_result = _payment_result(
+        response_code="2",
+        response_data="Islem Basarili",
+    )
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "manual",
+            "amount": "100.00",
+            "currency": "TRY",
+            "concurrency": 1,
+            "manual_cards": [{"alias": "denizbank_mastercard_8608", "repeat_count": 1}],
+        },
+    )
+
+    assert response.status_code == 202
+    payload = await _wait_parallel_run(client, response.json()["run_id"])
+    assert payload["items"][0]["card_alias"] == "denizbank_mastercard_8608"
+    assert payload["status"] == "completed"
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
 async def test_parallel_run_validation_limits_manual_items(client: httpx.AsyncClient) -> None:
     response = await client.post(
         "/api/parallel-runs",
@@ -1534,6 +1636,10 @@ async def test_config_overview_exposes_safe_runtime_metadata(
         "brand": "visa",
         "requires_3ds": True,
         "has_expected_otp": True,
+        "automation_status": "unknown",
+        "automation_reason": "No live UAT automation behavior has been recorded for this alias.",
+        "diagnostic_class": "unknown",
+        "automatic_success_candidate": True,
     }
 
 
