@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, SecretStr
 from paynkolay_pos.config import CardBrand
 from paynkolay_pos.three_ds.acs_action import run_acs_otp_action
 from paynkolay_pos.three_ds.acs_profile import (
+    AcsBankProfile,
     AcsFieldEvidence,
     AcsFrameEvidence,
     AcsProfile,
@@ -50,6 +51,21 @@ SUBMIT_SELECTORS = (
     'button[type="submit"]',
     'input[type="submit"]',
     "button",
+)
+GARANTI_SMS_METHOD_SELECTORS = (
+    'label:has-text("SMS")',
+    'button:has-text("SMS")',
+    'input[value*="SMS" i]',
+    'input[id*="sms" i]',
+    'input[name*="sms" i]',
+)
+GARANTI_CONTINUE_SELECTORS = (
+    'button:has-text("Devam")',
+    'button:has-text("Continue")',
+    'input[type="submit"][value*="Devam" i]',
+    'input[type="submit"][value*="Continue" i]',
+    'button[type="submit"]',
+    'input[type="submit"]',
 )
 DEFAULT_FORM_BASE_URL = "https://vpostest.qnb.com.tr/PayforACSSimulator/"
 
@@ -144,9 +160,20 @@ async def complete_acs_browser_challenge(
                     profile=profile,
                 )
 
-            otp_target = await _visible_selector_in_page_or_frames(page, OTP_SELECTORS)
             evidence = await _profile_evidence_for_page(page, brand=brand)
             profile = detect_acs_profile(evidence)
+            otp_target = await _visible_selector_in_page_or_frames(page, OTP_SELECTORS)
+            if otp_target is None:
+                advanced_page = await _advance_garanti_sms_method_if_present(
+                    context=context,
+                    page=page,
+                    profile=profile,
+                )
+                if advanced_page is not None:
+                    page = advanced_page
+                    evidence = await _profile_evidence_for_page(page, brand=brand)
+                    profile = detect_acs_profile(evidence)
+                    otp_target = await _visible_selector_in_page_or_frames(page, OTP_SELECTORS)
             if otp_target is None:
                 return _result(
                     completed=False,
@@ -264,6 +291,51 @@ async def _submit_gateway_form_if_present(page: Page) -> None:
     if form_count == 0:
         return
     await page.locator("form").first.evaluate("form => form.submit()")
+
+
+async def _advance_garanti_sms_method_if_present(
+    *,
+    context: BrowserContext,
+    page: Page,
+    profile: AcsProfile,
+) -> Page | None:
+    if profile.bank_profile is not AcsBankProfile.GARANTI:
+        return None
+
+    sms_target = await _visible_selector_in_page_or_frames(page, GARANTI_SMS_METHOD_SELECTORS)
+    if sms_target is not None:
+        try:
+            await sms_target.locator.click()
+        except PlaywrightError:
+            return None
+
+    continue_target = await _visible_selector_in_page_or_frames(page, GARANTI_CONTINUE_SELECTORS)
+    if continue_target is None:
+        return page
+
+    return await _click_and_follow_page(
+        context=context,
+        page=page,
+        locator=continue_target.locator,
+    )
+
+
+async def _click_and_follow_page(
+    *,
+    context: BrowserContext,
+    page: Page,
+    locator: Locator,
+) -> Page:
+    try:
+        async with context.expect_page(timeout=3_000) as page_info:
+            await locator.click()
+        opened_page = await page_info.value
+        await opened_page.bring_to_front()
+        await _wait_for_network_quiet(opened_page)
+        return opened_page
+    except PlaywrightTimeoutError:
+        await _wait_for_network_quiet(page)
+        return page
 
 
 async def _wait_for_network_quiet(page: Page) -> None:
