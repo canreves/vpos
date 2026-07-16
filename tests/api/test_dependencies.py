@@ -84,6 +84,41 @@ async def test_playwright_automator_retries_headed_when_headless_missing_source(
     assert calls == [False, True]
 
 
+async def test_playwright_automator_retries_headed_when_headless_otp_selector_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[bool] = []
+
+    async def fake_complete(**kwargs: Any) -> AcsBrowserAutomationResult:
+        calls.append(bool(kwargs["headed"]))
+        if len(calls) == 1:
+            return automation_result(submitted=False, reason="otp_selector_not_found")
+        return automation_result(
+            submitted=True,
+            reason="otp_submitted",
+            otp_resolution={
+                "status": "ready",
+                "source_type": "visible_page",
+                "otp_present": True,
+                "should_auto_submit": True,
+                "reason": "resolved OTP from visible ACS simulator text",
+            },
+        )
+
+    monkeypatch.setattr(dependencies, "complete_acs_browser_challenge", fake_complete)
+    automator = PlaywrightThreeDSAutomator(
+        form_base_url="https://acs.example.test/",
+        headed=False,
+        close_delay_seconds=0.0,
+        headed_fallback=True,
+    )
+
+    result = await complete_with(automator)
+
+    assert result.submitted is True
+    assert calls == [False, True]
+
+
 async def test_playwright_automator_does_not_retry_when_fallback_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -95,7 +95,7 @@ class PlaywrightThreeDSAutomator:
             return False
         resolution = result.otp_resolution or {}
         return (
-            result.reason == "otp_resolution_missing_source"
+            result.reason in {"otp_resolution_missing_source", "otp_selector_not_found"}
             or resolution.get("status") == "missing_source"
         )
 

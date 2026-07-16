@@ -1,4 +1,4 @@
-.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs credential-matrix credential-config credential-scenarios uat-scenarios credential-inputs uat-config uat-inputs uat-3ds-smoke uat-cancel-smoke credential-scenario-test credential-scenario-report synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web uat-web web-test web-check allure-results report clean
+.PHONY: help install check lint type test smoke api three-ds callback scenarios scenarios-file negative sandbox-ready sandbox sandbox-3ds sandbox-moto sandbox-report parallel private-config private-scenarios private-inputs credential-matrix credential-config credential-scenarios uat-scenarios credential-inputs uat-config uat-inputs uat-3ds-smoke uat-parallel-3ds-smoke uat-cancel-smoke credential-scenario-test credential-scenario-report synthetic-cards synthetic-scenarios scale-demo scale-demo-parallel web uat-web web-test web-check allure-results report clean
 
 PYTEST ?= poetry run pytest
 RUFF ?= poetry run ruff check .
@@ -29,6 +29,10 @@ UAT_3DS_SCENARIO_ID ?= credential_yapikredi_visa_9085_3ds_success
 UAT_3DS_CARD_FILE ?= credentials/uat_3ds_card.json
 UAT_3DS_FORM_BASE_URL ?= https://vpostest.qnb.com.tr/PayforACSSimulator/
 UAT_3DS_BROWSER ?=
+UAT_PARALLEL_3DS_CARD_ALIAS ?= nkolay_dynamic_otp_visa_6111
+UAT_PARALLEL_3DS_COUNT ?= 10
+UAT_PARALLEL_3DS_CONCURRENCY ?= 10
+UAT_PARALLEL_3DS_AMOUNT ?= 100.00
 UAT_CANCEL_SCENARIO_ID ?= credential_ziraat_bankas_visa_7894_moto_authorized
 SCENARIO_FILE ?=
 WEB_HOST ?= 127.0.0.1
@@ -72,6 +76,7 @@ help:
 	@echo "  make uat-config      Build UAT config from ignored credentials and provided merchant values"
 	@echo "  make uat-inputs      Build UAT config and credential scenario catalogue"
 	@echo "  make uat-3ds-smoke   Run one guarded live UAT 3DS browser smoke"
+	@echo "  make uat-parallel-3ds-smoke Run guarded live UAT parallel auto-3DS smoke"
 	@echo "  make uat-cancel-smoke Run one guarded live UAT MoTo payment and cancel smoke"
 	@echo "  make credential-scenario-test Run scenario tests from credential scenarios"
 	@echo "  make credential-scenario-report Generate Allure report for credential scenarios"
@@ -200,6 +205,9 @@ uat-inputs: uat-config uat-scenarios
 
 uat-3ds-smoke: uat-inputs
 	PAYNKOLAY_CONFIG_FILE=$(UAT_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) PAYNKOLAY_ENV=uat PAYNKOLAY_ENABLE_LIVE_E2E=1 poetry run python tools/run_uat_3ds_smoke.py --scenario-id $(UAT_3DS_SCENARIO_ID) --card-file $(UAT_3DS_CARD_FILE) --form-base-url $(UAT_3DS_FORM_BASE_URL) $(UAT_3DS_BROWSER)
+
+uat-parallel-3ds-smoke: uat-inputs
+	PAYNKOLAY_CONFIG_FILE=$(UAT_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) PAYNKOLAY_ENV=uat PAYNKOLAY_ENABLE_LIVE_E2E=1 poetry run python tools/run_uat_parallel_3ds_smoke.py --card-alias $(UAT_PARALLEL_3DS_CARD_ALIAS) --count $(UAT_PARALLEL_3DS_COUNT) --concurrency $(UAT_PARALLEL_3DS_CONCURRENCY) --amount $(UAT_PARALLEL_3DS_AMOUNT)
 
 uat-cancel-smoke: uat-inputs
 	PAYNKOLAY_CONFIG_FILE=$(UAT_CONFIG_OUT) PAYNKOLAY_SCENARIO_CATALOG=$(CREDENTIAL_SCENARIO_OUT) PAYNKOLAY_ENV=uat PAYNKOLAY_ENABLE_LIVE_E2E=1 poetry run python tools/run_uat_cancel_smoke.py --scenario-id $(UAT_CANCEL_SCENARIO_ID)
