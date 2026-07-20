@@ -601,6 +601,7 @@ def _parallel_items(
     items: list[ParallelRunItemState] = []
     for index, card in enumerate(selected_cards, start=1):
         attempts_by_alias[card.alias] += 1
+        behavior = behavior_for_alias(card.alias)
         items.append(
             ParallelRunItemState(
                 item_id=f"item-{index:03d}",
@@ -608,6 +609,10 @@ def _parallel_items(
                 attempt_index=attempts_by_alias[card.alias],
                 order_id=f"batch-{run_id[:8]}-{index:03d}",
                 requires_3ds=card.requires_3ds,
+                automation_status=behavior.status.value,
+                automation_reason=behavior.reason,
+                diagnostic_class=behavior.diagnostic_class,
+                automatic_success_candidate=behavior.eligible_for_automatic_success,
             )
         )
     return items

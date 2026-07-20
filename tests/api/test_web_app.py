@@ -1015,11 +1015,21 @@ async def test_parallel_run_manual_mode_repeats_selected_cards(
     assert [item["attempt_index"] for item in payload["items"]] == [1, 2]
     assert {item["classification"] for item in payload["items"]} == {"completed"}
     assert all(item["payment_list_status"] == "captured" for item in payload["items"])
+    assert all(item["automation_status"] == "unknown" for item in payload["items"])
+    assert all(item["diagnostic_class"] == "unknown" for item in payload["items"])
+    assert all(item["automatic_success_candidate"] is True for item in payload["items"])
     assert payload["evidence_path"] == str(evidence_dir / f"{payload['run_id']}.json")
     evidence = json.loads(Path(payload["evidence_path"]).read_text(encoding="utf-8"))
     assert evidence["event"] == "parallel_run_evidence"
     assert evidence["run"]["run_id"] == payload["run_id"]
-    assert evidence["run"]["items"][0]["payment_list_status"] == "captured"
+    evidence_item = evidence["run"]["items"][0]
+    assert evidence_item["payment_list_status"] == "captured"
+    assert evidence_item["automation_status"] == "unknown"
+    assert evidence_item["automation_reason"] == (
+        "No live UAT automation behavior has been recorded for this alias."
+    )
+    assert evidence_item["diagnostic_class"] == "unknown"
+    assert evidence_item["automatic_success_candidate"] is True
     assert "4111111111111111" not in json.dumps(evidence)
     assert len(fake_initializer.calls) == 2
     assert "4111111111111111" not in response.text
@@ -1245,6 +1255,13 @@ async def test_parallel_run_serializes_diagnostic_3ds_card_repeats(
     payload = await _wait_parallel_run(client, response.json()["run_id"])
     assert payload["status"] == "completed"
     assert payload["completed"] == 3
+    assert {item["automation_status"] for item in payload["items"]} == {
+        "automation_diagnostic"
+    }
+    assert {item["diagnostic_class"] for item in payload["items"]} == {
+        "awaiting_provider_finalization"
+    }
+    assert {item["automatic_success_candidate"] for item in payload["items"]} == {False}
     assert len(fake_automator.calls) == 3
     assert fake_automator.max_active_calls == 1
 
@@ -1476,6 +1493,8 @@ async def test_parallel_run_marks_created_payment_list_as_awaiting_provider_fina
     payload = await _wait_parallel_run(client, response.json()["run_id"])
     assert payload["status"] == "completed_with_failures"
     assert payload["items"][0]["classification"] == "awaiting_provider_finalization"
+    assert payload["items"][0]["automation_status"] == "unknown"
+    assert payload["items"][0]["automatic_success_candidate"] is True
     assert payload["items"][0]["payment_list_status"] == "created"
     assert payload["items"][0]["three_ds_automation"]["submitted"] is True
     assert payload["items"][0]["three_ds_automation"]["final_url"].endswith("/web/pinvalidate")

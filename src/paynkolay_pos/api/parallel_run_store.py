@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
-from paynkolay_pos.api.schemas import ParallelRunItemResponse, ParallelRunResponse
+from paynkolay_pos.api.schemas import (
+    ParallelRunItemAutomationStatus,
+    ParallelRunItemResponse,
+    ParallelRunResponse,
+)
 from paynkolay_pos.api.session_models import ProviderRequestSummary, ThreeDSAutomationSummary
 
 ParallelRunStatus = Literal["pending", "running", "completed", "completed_with_failures", "failed"]
@@ -24,6 +28,10 @@ class ParallelRunItemState:
     attempt_index: int
     order_id: str
     requires_3ds: bool
+    automation_status: ParallelRunItemAutomationStatus
+    automation_reason: str
+    diagnostic_class: str
+    automatic_success_candidate: bool
     status: ParallelRunItemStatus = "pending"
     classification: str = "pending"
     provider_request: ProviderRequestSummary | None = None
@@ -56,6 +64,10 @@ class ParallelRunItemState:
             status=self.status,
             classification=self.classification,
             requires_3ds=self.requires_3ds,
+            automation_status=self.automation_status,
+            automation_reason=self.automation_reason,
+            diagnostic_class=self.diagnostic_class,
+            automatic_success_candidate=self.automatic_success_candidate,
             provider_request=self.provider_request,
             provider_response_code=self.provider_response_code,
             provider_response_data=self.provider_response_data,

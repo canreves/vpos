@@ -456,6 +456,15 @@ class ParallelRunCreateRequest(BaseModel):
         return self
 
 
+ParallelRunItemAutomationStatus = Literal[
+    "success_auto",
+    "automation_diagnostic",
+    "manual_only",
+    "quarantined",
+    "unknown",
+]
+
+
 class ParallelRunItemResponse(BaseModel):
     """One item result in a parallel payment initialization run."""
 
@@ -466,6 +475,10 @@ class ParallelRunItemResponse(BaseModel):
     status: Literal["pending", "running", "completed", "failed"]
     classification: str
     requires_3ds: bool
+    automation_status: ParallelRunItemAutomationStatus
+    automation_reason: str
+    diagnostic_class: str
+    automatic_success_candidate: bool
     provider_request: ProviderRequestSummary | None = None
     provider_response_code: str | None = None
     provider_response_data: str | None = None
