@@ -45,14 +45,17 @@ KNOWN_CARD_BEHAVIORS: dict[str, CardAutomationBehavior] = {
         diagnostic_class="visible_otp",
     ),
     "garanti_bankasi_mastercard_6017": CardAutomationBehavior(
-        status=CardAutomationStatus.SUCCESS_AUTO,
-        reason="Embedded password 3DS automation now completes with captured PaymentList evidence.",
-        diagnostic_class="static_config_otp",
+        status=CardAutomationStatus.AUTOMATION_DIAGNOSTIC,
+        reason=(
+            "Static OTP flow can reach submit, but live UAT shows browser validation and "
+            "provider finalization failures under automation."
+        ),
+        diagnostic_class="static_config_otp_unstable",
     ),
     "akbank_visa_5232": CardAutomationBehavior(
-        status=CardAutomationStatus.SUCCESS_AUTO,
-        reason="Playwright OTP detection completes successfully.",
-        diagnostic_class="visible_otp",
+        status=CardAutomationStatus.AUTOMATION_DIAGNOSTIC,
+        reason="Visible OTP automation submits, but live UAT PaymentList returns failed.",
+        diagnostic_class="provider_failed_after_otp",
     ),
     "akbank_visa_7068": CardAutomationBehavior(
         status=CardAutomationStatus.SUCCESS_AUTO,

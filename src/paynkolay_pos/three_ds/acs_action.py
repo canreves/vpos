@@ -79,9 +79,12 @@ async def run_acs_otp_action(
 
 
 async def _fill_otp_with_best_effort_fallback(locator: SupportsAcsLocator, otp_value: str) -> None:
-    await _focus_locator(locator)
-    await locator.fill(otp_value)
-    await _set_locator_value(locator, otp_value)
+    for _ in range(2):
+        await _focus_locator(locator)
+        await locator.fill(otp_value)
+        await _set_locator_value(locator, otp_value)
+        if await _locator_value_matches(locator, otp_value):
+            return
 
 
 async def _focus_locator(locator: SupportsAcsLocator) -> None:
@@ -96,10 +99,25 @@ async def _set_locator_value(locator: SupportsAcsLocator, otp_value: str) -> Non
         """
         (element, value) => {
           element.focus();
-          element.value = value;
+          const prototype = Object.getPrototypeOf(element);
+          const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+          if (descriptor && typeof descriptor.set === "function") {
+            descriptor.set.call(element, value);
+          } else {
+            element.value = value;
+          }
+          element.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true }));
+          element.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
           element.dispatchEvent(new Event("input", { bubbles: true }));
           element.dispatchEvent(new Event("change", { bubbles: true }));
         }
         """,
         otp_value,
     )
+
+
+async def _locator_value_matches(locator: SupportsAcsLocator, otp_value: str) -> bool:
+    try:
+        return await locator.input_value() == otp_value
+    except Exception:
+        return True

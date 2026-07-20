@@ -69,6 +69,70 @@ def test_select_manual_3ds_cards_rejects_moto_card() -> None:
         )
 
 
+def test_parallel_run_request_payload_uses_random_mode() -> None:
+    payload = UAT_PARALLEL_3DS_SMOKE._parallel_run_request_payload(
+        random_mode=True,
+        amount="22.00",
+        concurrency=10,
+        count=10,
+        selected_cards=[],
+    )
+
+    assert payload == {
+        "mode": "random",
+        "amount": "22.00",
+        "currency": "TRY",
+        "concurrency": 10,
+        "auto_complete_3ds": True,
+        "random_count": 10,
+    }
+
+
+def test_parallel_run_request_payload_uses_manual_cards() -> None:
+    selected_cards = [{"alias": "nkolay_dynamic_otp_visa_6111", "repeat_count": 2}]
+
+    payload = UAT_PARALLEL_3DS_SMOKE._parallel_run_request_payload(
+        random_mode=False,
+        amount="22.00",
+        concurrency=2,
+        count=2,
+        selected_cards=selected_cards,
+    )
+
+    assert payload == {
+        "mode": "manual",
+        "amount": "22.00",
+        "currency": "TRY",
+        "concurrency": 2,
+        "auto_complete_3ds": True,
+        "manual_cards": selected_cards,
+    }
+
+
+def test_progress_summaries_include_card_alias_and_automation_status_counts() -> None:
+    run = {
+        "items": [
+            {
+                "card_alias": "nkolay_dynamic_otp_visa_6111",
+                "classification": "completed",
+                "automation_status": "success_auto",
+            },
+            {
+                "card_alias": "garanti_bankasi_mastercard_6017",
+                "classification": "completed",
+                "automation_status": "success_auto",
+            },
+        ]
+    }
+
+    assert UAT_PARALLEL_3DS_SMOKE._classification_counts(run) == {"completed": 2}
+    assert UAT_PARALLEL_3DS_SMOKE._card_alias_counts(run) == {
+        "nkolay_dynamic_otp_visa_6111": 1,
+        "garanti_bankasi_mastercard_6017": 1,
+    }
+    assert UAT_PARALLEL_3DS_SMOKE._automation_status_counts(run) == {"success_auto": 2}
+
+
 def _card(alias: str, *, requires_3ds: bool) -> ConfigTestCard:
     payload: dict[str, object] = {
         "alias": alias,

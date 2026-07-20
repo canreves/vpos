@@ -1589,7 +1589,7 @@ async def test_parallel_run_rejects_unknown_manual_card(
 
 @pytest.mark.api
 @pytest.mark.asyncio
-async def test_parallel_run_random_mode_excludes_synthetic_cards(
+async def test_parallel_run_random_mode_excludes_synthetic_and_unknown_cards(
     client: httpx.AsyncClient,
     fake_initializer: FakePaymentInitializer,
     monkeypatch: pytest.MonkeyPatch,
@@ -1600,8 +1600,14 @@ async def test_parallel_run_random_mode_excludes_synthetic_cards(
         tmp_path,
         [
             _runtime_card(
-                alias="real_moto",
+                alias="akbank_visa_7068",
                 pan="4111111111111111",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+            _runtime_card(
+                alias="unknown_real_moto",
+                pan="4000000000000002",
                 requires_3ds=False,
             ),
             _runtime_card(
@@ -1629,7 +1635,7 @@ async def test_parallel_run_random_mode_excludes_synthetic_cards(
 
     assert response.status_code == 202
     payload = await _wait_parallel_run(client, response.json()["run_id"])
-    assert {item["card_alias"] for item in payload["items"]} == {"real_moto"}
+    assert {item["card_alias"] for item in payload["items"]} == {"akbank_visa_7068"}
     assert len(fake_initializer.calls) == 3
 
 
@@ -1646,7 +1652,7 @@ async def test_parallel_run_random_mode_excludes_manual_and_quarantined_cards(
         tmp_path,
         [
             _runtime_card(
-                alias="akbank_visa_5232",
+                alias="akbank_visa_7068",
                 pan="4111111111111111",
                 requires_3ds=True,
                 expected_otp="123456",
@@ -1669,6 +1675,11 @@ async def test_parallel_run_random_mode_excludes_manual_and_quarantined_cards(
                 requires_3ds=True,
                 expected_otp="147852",
             ),
+            _runtime_card(
+                alias="unknown_uat_card",
+                pan="4000000000000044",
+                requires_3ds=False,
+            ),
         ],
     )
     fake_initializer.provider_result = _payment_result(
@@ -1689,10 +1700,7 @@ async def test_parallel_run_random_mode_excludes_manual_and_quarantined_cards(
 
     assert response.status_code == 202
     payload = await _wait_parallel_run(client, response.json()["run_id"])
-    assert {item["card_alias"] for item in payload["items"]} <= {
-        "akbank_visa_5232",
-        "garanti_bankasi_mastercard_6017",
-    }
+    assert {item["card_alias"] for item in payload["items"]} == {"akbank_visa_7068"}
     assert len(fake_initializer.calls) == 5
 
 

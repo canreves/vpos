@@ -96,7 +96,7 @@ async def test_run_acs_otp_action_uses_js_fill_fallback_before_submit() -> None:
 
 @pytest.mark.three_ds
 @pytest.mark.asyncio
-async def test_run_acs_otp_action_submits_when_fill_verification_is_inconclusive() -> None:
+async def test_run_acs_otp_action_retries_fill_before_submit_when_value_stays_empty() -> None:
     otp_locator = FakeLocator(
         name="otp",
         fill_persists_value=False,
@@ -118,7 +118,14 @@ async def test_run_acs_otp_action_submits_when_fill_verification_is_inconclusive
 
     assert result.submitted is True
     assert result.reason == "otp_submitted"
-    assert otp_locator.actions == ["click:otp", "fill:<redacted>:6", "evaluate:set_value"]
+    assert otp_locator.actions == [
+        "click:otp",
+        "fill:<redacted>:6",
+        "evaluate:set_value",
+        "click:otp",
+        "fill:<redacted>:6",
+        "evaluate:set_value",
+    ]
     assert submit_locator.actions == ["click:submit"]
     assert "147852" not in result.model_dump_json()
 

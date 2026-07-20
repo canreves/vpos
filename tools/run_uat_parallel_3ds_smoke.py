@@ -47,6 +47,11 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--random",
+        action="store_true",
+        help="Use the API random mode instead of manual card selection.",
+    )
+    parser.add_argument(
         "--count",
         type=int,
         default=10,
@@ -88,6 +93,8 @@ def main() -> None:
     manual_cards = _parse_manual_cards(args.manual_card)
     total_count = sum(item["repeat_count"] for item in manual_cards) if manual_cards else args.count
 
+    if args.random and manual_cards:
+        raise SystemExit("--random cannot be combined with --manual-card.")
     if os.getenv("PAYNKOLAY_ENABLE_LIVE_E2E") != "1":
         raise SystemExit("Set PAYNKOLAY_ENABLE_LIVE_E2E=1 before real UAT calls.")
     if total_count < 1 or total_count > 10:
@@ -105,6 +112,7 @@ def main() -> None:
             timeout=args.timeout,
             manual_cards=manual_cards,
             allow_attention=args.allow_attention,
+            random_mode=args.random,
         )
     )
 
@@ -119,12 +127,19 @@ async def _run_parallel_smoke(
     timeout: float,
     manual_cards: list[ManualCardSelection],
     allow_attention: bool,
+    random_mode: bool,
 ) -> None:
     settings = load_runtime_settings()
-    selected_cards = (
-        _select_manual_3ds_cards(settings.current.cards, manual_cards=manual_cards)
-        if manual_cards
-        else [
+    selected_cards: list[ManualCardSelection]
+    if random_mode:
+        selected_cards = []
+    elif manual_cards:
+        selected_cards = _select_manual_3ds_cards(
+            settings.current.cards,
+            manual_cards=manual_cards,
+        )
+    else:
+        selected_cards = [
             {
                 "alias": _select_3ds_card(
                     settings.current.cards,
@@ -133,7 +148,6 @@ async def _run_parallel_smoke(
                 "repeat_count": count,
             }
         ]
-    )
     print(
         evidence_json(
             {
@@ -147,6 +161,7 @@ async def _run_parallel_smoke(
                 "concurrency": concurrency,
                 "amount": amount,
                 "auto_complete_3ds": True,
+                "mode": "random" if random_mode else "manual",
             }
         )
     )
@@ -160,14 +175,13 @@ async def _run_parallel_smoke(
     ) as client:
         response = await client.post(
             "/api/parallel-runs",
-            json={
-                "mode": "manual",
-                "amount": amount,
-                "currency": "TRY",
-                "concurrency": concurrency,
-                "auto_complete_3ds": True,
-                "manual_cards": selected_cards,
-            },
+            json=_parallel_run_request_payload(
+                random_mode=random_mode,
+                amount=amount,
+                concurrency=concurrency,
+                count=count,
+                selected_cards=selected_cards,
+            ),
         )
         if response.status_code != httpx.codes.ACCEPTED:
             print(
@@ -208,6 +222,28 @@ async def _run_parallel_smoke(
         raise SystemExit(1)
 
 
+def _parallel_run_request_payload(
+    *,
+    random_mode: bool,
+    amount: str,
+    concurrency: int,
+    count: int,
+    selected_cards: list[ManualCardSelection],
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "mode": "random" if random_mode else "manual",
+        "amount": amount,
+        "currency": "TRY",
+        "concurrency": concurrency,
+        "auto_complete_3ds": True,
+    }
+    if random_mode:
+        payload["random_count"] = count
+    else:
+        payload["manual_cards"] = selected_cards
+    return payload
+
+
 async def _poll_run(
     *,
     client: httpx.AsyncClient,
@@ -243,6 +279,8 @@ async def _poll_run(
                     "failed": payload["failed"],
                     "total": payload["total"],
                     "classifications": _classification_counts(payload),
+                    "card_aliases": _card_alias_counts(payload),
+                    "automation_statuses": _automation_status_counts(payload),
                 }
             )
         )
@@ -316,12 +354,29 @@ def _parse_manual_cards(values: Sequence[str]) -> list[ManualCardSelection]:
 
 
 def _classification_counts(run: dict[str, Any]) -> dict[str, int]:
+    return _item_value_counts(run, "classification", default="unknown")
+
+
+def _card_alias_counts(run: dict[str, Any]) -> dict[str, int]:
+    return _item_value_counts(run, "card_alias", default="unknown")
+
+
+def _automation_status_counts(run: dict[str, Any]) -> dict[str, int]:
+    return _item_value_counts(run, "automation_status", default="unknown")
+
+
+def _item_value_counts(
+    run: dict[str, Any],
+    key: str,
+    *,
+    default: str,
+) -> dict[str, int]:
     counts: dict[str, int] = {}
     for item in run.get("items", []):
         if not isinstance(item, dict):
             continue
-        classification = str(item.get("classification") or "unknown")
-        counts[classification] = counts.get(classification, 0) + 1
+        value = str(item.get(key) or default)
+        counts[value] = counts.get(value, 0) + 1
     return counts
 
 

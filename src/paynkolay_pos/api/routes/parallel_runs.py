@@ -62,7 +62,6 @@ from paynkolay_pos.reporting import evidence_json
 from paynkolay_pos.testing.card_behaviors import (
     CardAutomationStatus,
     behavior_for_alias,
-    is_automatic_success_candidate,
 )
 
 router = APIRouter(prefix="/api/parallel-runs", tags=["parallel_runs"])
@@ -581,7 +580,7 @@ def _select_cards(
         card
         for card in cards.values()
         if not card.alias.startswith("synthetic_")
-        and is_automatic_success_candidate(card.alias)
+        and behavior_for_alias(card.alias).status is CardAutomationStatus.SUCCESS_AUTO
     ]
     if not real_cards:
         raise HTTPException(

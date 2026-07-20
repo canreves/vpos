@@ -29,7 +29,7 @@ def test_first_3ds_scenario_skips_non_auto_success_candidates() -> None:
     scenarios = (
         _scenario("credential_denizbank_mastercard_8608_3ds_success", "denizbank_mastercard_8608"),
         _scenario("credential_yapikredi_visa_9085_3ds_success", "yapikredi_visa_9085"),
-        _scenario("credential_akbank_visa_5232_3ds_success", "akbank_visa_5232"),
+        _scenario("credential_akbank_visa_7068_3ds_success", "akbank_visa_7068"),
     )
     environment = PaymentEnvironment(
         name=EnvironmentName.DEV,
@@ -46,13 +46,13 @@ def test_first_3ds_scenario_skips_non_auto_success_candidates() -> None:
         cards=[
             _card("denizbank_mastercard_8608"),
             _card("yapikredi_visa_9085"),
-            _card("akbank_visa_5232"),
+            _card("akbank_visa_7068"),
         ],
     )
 
     selected = cast(PaymentScenario, UAT_3DS_SMOKE._first_3ds_scenario(scenarios, environment))
 
-    assert selected.card_alias == "akbank_visa_5232"
+    assert selected.card_alias == "akbank_visa_7068"
 
 
 def _scenario(scenario_id: str, card_alias: str) -> PaymentScenario:
