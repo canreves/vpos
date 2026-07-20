@@ -25,7 +25,7 @@ from paynkolay_pos.api.payment_initializer import (
     PaymentProviderInitializationError,
     PaymentProviderStatusVerificationError,
 )
-from paynkolay_pos.api.routes import reports
+from paynkolay_pos.api.routes import parallel_runs, reports
 from paynkolay_pos.api.schemas import PaymentFormRequest
 from paynkolay_pos.config import build_private_runtime_config_payload
 from paynkolay_pos.models import (
@@ -39,6 +39,11 @@ from paynkolay_pos.models import (
 )
 from paynkolay_pos.reporting import PaymentLogEvent
 from paynkolay_pos.scenarios import build_private_scenario_catalog_payload
+from paynkolay_pos.testing.card_behaviors import (
+    DEFAULT_CARD_BEHAVIOR,
+    CardAutomationBehavior,
+    CardAutomationStatus,
+)
 from paynkolay_pos.three_ds import AcsBrowserAutomationResult
 
 
@@ -1186,12 +1191,22 @@ async def test_parallel_run_serializes_diagnostic_3ds_card_repeats(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    def fake_behavior_for_alias(alias: str) -> CardAutomationBehavior:
+        if alias == "diagnostic_3ds_card":
+            return CardAutomationBehavior(
+                status=CardAutomationStatus.AUTOMATION_DIAGNOSTIC,
+                reason="test diagnostic behavior",
+                diagnostic_class="awaiting_provider_finalization",
+            )
+        return DEFAULT_CARD_BEHAVIOR
+
+    monkeypatch.setattr(parallel_runs, "behavior_for_alias", fake_behavior_for_alias)
     _write_parallel_runtime_config(
         monkeypatch,
         tmp_path,
         [
             _runtime_card(
-                alias="garanti_bankasi_mastercard_6017",
+                alias="diagnostic_3ds_card",
                 pan="5549603469426017",
                 requires_3ds=True,
                 expected_otp="147852",
@@ -1222,7 +1237,7 @@ async def test_parallel_run_serializes_diagnostic_3ds_card_repeats(
             "currency": "TRY",
             "concurrency": 3,
             "auto_complete_3ds": True,
-            "manual_cards": [{"alias": "garanti_bankasi_mastercard_6017", "repeat_count": 3}],
+            "manual_cards": [{"alias": "diagnostic_3ds_card", "repeat_count": 3}],
         },
     )
 
@@ -1601,7 +1616,7 @@ async def test_parallel_run_random_mode_excludes_synthetic_cards(
 
 @pytest.mark.api
 @pytest.mark.asyncio
-async def test_parallel_run_random_mode_excludes_non_success_auto_cards(
+async def test_parallel_run_random_mode_excludes_manual_and_quarantined_cards(
     client: httpx.AsyncClient,
     fake_initializer: FakePaymentInitializer,
     monkeypatch: pytest.MonkeyPatch,
@@ -1655,7 +1670,10 @@ async def test_parallel_run_random_mode_excludes_non_success_auto_cards(
 
     assert response.status_code == 202
     payload = await _wait_parallel_run(client, response.json()["run_id"])
-    assert {item["card_alias"] for item in payload["items"]} == {"akbank_visa_5232"}
+    assert {item["card_alias"] for item in payload["items"]} <= {
+        "akbank_visa_5232",
+        "garanti_bankasi_mastercard_6017",
+    }
     assert len(fake_initializer.calls) == 5
 
 

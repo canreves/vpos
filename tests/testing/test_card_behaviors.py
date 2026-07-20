@@ -13,9 +13,9 @@ def test_known_uat_card_behaviors_classify_success_and_quarantine_aliases() -> N
 
     assert (
         behavior_for_alias("garanti_bankasi_mastercard_6017").status
-        is CardAutomationStatus.AUTOMATION_DIAGNOSTIC
+        is CardAutomationStatus.SUCCESS_AUTO
     )
-    assert is_automatic_success_candidate("garanti_bankasi_mastercard_6017") is False
+    assert is_automatic_success_candidate("garanti_bankasi_mastercard_6017") is True
 
     assert behavior_for_alias("yapikredi_visa_9085").status is CardAutomationStatus.MANUAL_ONLY
     assert is_automatic_success_candidate("yapikredi_visa_9085") is False

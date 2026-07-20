@@ -45,12 +45,9 @@ KNOWN_CARD_BEHAVIORS: dict[str, CardAutomationBehavior] = {
         diagnostic_class="visible_otp",
     ),
     "garanti_bankasi_mastercard_6017": CardAutomationBehavior(
-        status=CardAutomationStatus.AUTOMATION_DIAGNOSTIC,
-        reason=(
-            "Embedded password 3DS automation submits successfully, but PaymentList can remain "
-            "created while the provider awaits finalization."
-        ),
-        diagnostic_class="awaiting_provider_finalization",
+        status=CardAutomationStatus.SUCCESS_AUTO,
+        reason="Embedded password 3DS automation now completes with captured PaymentList evidence.",
+        diagnostic_class="static_config_otp",
     ),
     "akbank_visa_5232": CardAutomationBehavior(
         status=CardAutomationStatus.SUCCESS_AUTO,

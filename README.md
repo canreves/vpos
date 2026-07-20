@@ -165,9 +165,9 @@ Automation statuses:
 - `unknown`: treated as eligible by default until a specific UAT behavior is recorded.
 
 Current automatic 3D Secure baseline aliases include `nkolay_dynamic_otp_visa_6111`,
-`akbank_visa_5232`, and `akbank_visa_7068`. `garanti_bankasi_mastercard_6017` is kept as
-an automation diagnostic card because OTP submission works but PaymentList can remain
-`created`.
+`garanti_bankasi_mastercard_6017`, `akbank_visa_5232`, and `akbank_visa_7068`.
+`garanti_bankasi_mastercard_6017` uses configured/static OTP metadata and was promoted
+after live UAT runs completed with captured PaymentList evidence on July 20, 2026.
 
 ## Reporting
 
