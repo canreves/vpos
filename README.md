@@ -162,12 +162,15 @@ Automation statuses:
 - `manual_only`: excluded from automatic success runs, still selectable for manual diagnosis.
 - `quarantined`: excluded from automatic success runs because the issuer/ACS behavior is
   currently unstable or bank-side failing.
-- `unknown`: treated as eligible by default until a specific UAT behavior is recorded.
+- `unknown`: available for manual/explicit diagnostics until a specific UAT behavior is
+  recorded; default random success runs use only explicit `success_auto` cards.
 
 Current automatic 3D Secure baseline aliases include `nkolay_dynamic_otp_visa_6111` and
 `akbank_visa_7068`. `garanti_bankasi_mastercard_6017` and `akbank_visa_5232` are kept as
 automation diagnostics after July 20, 2026 live UAT random-mode evidence showed OTP
-submission followed by browser-validation or provider-finalization failure.
+submission followed by browser-validation or provider-finalization failure. Garanti remains
+usable for intentional diagnostic/manual runs; the OTP fill path includes a retry/native
+input fallback and the latest focused 5-item UAT run completed 5/5 captured.
 Persisted parallel run evidence includes each item's `automation_status`,
 `automation_reason`, `diagnostic_class`, and `automatic_success_candidate` values so reports
 can explain automatic card selection decisions without exposing card secrets.
@@ -245,7 +248,7 @@ Current validation status:
 ```text
 ruff check        passed
 mypy             passed
-pytest           308 passed, 5 skipped
+pytest           336 passed, 5 skipped
 ```
 
 Skipped tests are live/sandbox-gated tests that require private runtime configuration and
@@ -272,23 +275,29 @@ explicit live execution flags.
 - Mypy
 - Poetry
 
-## Current Scope
+## Final Project State
 
-The project is presentation-ready for:
+As of July 20, 2026, active feature work is considered complete. The project is
+presentation-ready for:
 
 - local/mock validation,
 - UAT payment demo through the web UI,
 - MoTo payment and PaymentList verification,
 - 3D Secure initialization and manual browser completion,
-- automated parallel 3D Secure smoke with sanitized evidence,
+- automated parallel 3D Secure smoke with sanitized evidence and card automation metadata,
 - same-day cancel smoke checks,
 - card-list based tester workflows,
 - local installment option stubbing,
 - sanitized Allure reporting.
 
-Remaining work is primarily provider-dependent:
+Final live UAT evidence retained in `reports/parallel-runs/` includes:
+
+- `dc29effa82d0`: random automatic 3D Secure smoke, 10/10 completed, every item captured.
+- `23b1c79a2d25`: Garanti Mastercard diagnostic run, 5/5 completed, every item captured.
+
+Remaining work is primarily provider-dependent or optional future polish:
 
 - connect the real installment service,
 - obtain reliable negative UAT test data,
-- rerun live UAT parallel smoke after card behavior updates,
+- rerun live UAT smoke only when Paynkolay/card behavior changes,
 - clarify final cancel reporting semantics with Paynkolay if needed.
