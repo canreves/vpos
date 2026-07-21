@@ -1,303 +1,196 @@
-# Paynkolay Sanal POS Automation
+# Paynkolay Virtual POS Test Automation
 
-Paynkolay Sanal POS Automation is a test automation and validation framework for
-Paynkolay virtual POS payment flows. The project supports local/mock validation,
-data-driven scenario execution, browser-based 3D Secure handling, UAT smoke testing,
-transaction verification, cancel/refund checks, and sanitized reporting.
+Paynkolay Virtual POS Test Automation is a quality and validation platform for testing
+Paynkolay payment flows in a controlled, repeatable, and reportable way.
 
-The system is designed for integration testing and QA workflows. It is not a production
-payment gateway.
+The project gives testers a browser-based workspace where they can start payments, complete
+3D Secure flows, run many card tests in parallel, inspect results, and review sanitized
+evidence without reading logs or touching application code.
 
-## Project Purpose
+It is designed for QA teams, business analysts, and engineers who need to understand whether
+Paynkolay payment scenarios work as expected across cards, banks, and payment flows.
 
-The framework was built to automate and observe the lifecycle of Sanal POS transactions
-across different cards, payment flows, environments, and expected outcomes. It provides a
-tester-facing web UI and a repeatable test suite so payment scenarios can be executed,
-verified, and reported without changing application code.
+## What It Does
 
-Main objectives:
+- Runs MoTo and 3D Secure payment tests against local/mock or UAT environments.
+- Lets users select saved test cards from a UI and execute payment checks.
+- Supports parallel card testing for larger validation runs.
+- Completes supported 3D Secure simulator flows automatically in the background.
+- Verifies payment outcomes through PaymentList.
+- Captures cancel/refund smoke evidence.
+- Produces sanitized reports and evidence files.
+- Keeps card data, OTPs, merchant secrets, hashes, and raw 3DS HTML out of committed files.
 
-- Validate Paynkolay payment initialization through configured environments.
-- Support MoTo and 3D Secure payment flows.
-- Verify final transaction state through PaymentList.
-- Exercise cancel/refund endpoint behavior.
-- Manage test cards and scenarios from external configuration.
-- Produce sanitized test evidence and Allure reports.
-- Keep private merchant credentials, PAN, CVV, OTP, and secrets outside the repository.
+## Who Uses It
 
-## High-Level Architecture
+Business analysts can use the web UI to run repeatable payment checks and read the result
+status in plain terms.
 
-```text
-Browser UI / Test Runner
-        |
-        v
-FastAPI Web/API Layer
-        |
-        v
-Payment Initializer / Flow Orchestration
-        |
-        v
-Paynkolay Client
-        |
-        v
-Paynkolay UAT / Mock Provider Responses
-```
+QA teams can run baseline regression checks such as 10, 50, or larger parallel batches and
+compare pass/fail evidence.
 
-Core modules:
+Developers can use the API, CLI tools, and test suite to diagnose provider responses, 3D
+Secure behavior, and PaymentList timing issues.
 
-- `api/` exposes the tester UI, payment routes, result pages, card management, report
-  endpoints, and 3D Secure rendering.
-- `clients/` contains the Paynkolay HTTP boundary for payment, PaymentList, and
-  cancel/refund form endpoints.
-- `models/` defines typed payment, provider result, callback, and status objects.
-- `security/` implements Paynkolay SHA-512/Base64 hash helpers and generic signature
-  verification utilities.
-- `config/` loads runtime environment, merchant, callback, and card settings.
-- `scenarios/` defines data-driven payment scenario metadata.
-- `three_ds/` renders provider 3D Secure forms and supports browser automation helpers.
-- `reporting/` sanitizes evidence before terminal output or Allure reporting.
+## Main Screens
 
-## Payment Lifecycle
+The web UI is split into four practical areas:
 
-A payment starts from the browser UI or an automated test. The request is validated,
-mapped to a typed payment model, signed according to the Paynkolay form contract, and
-sent to the selected provider environment.
+- **Payment**: single payment testing, card selection, MoTo/3DS flow, provider result,
+  PaymentList result, and authorization evidence.
+- **Parallel**: multi-card parallel test execution with manual or random card selection.
+- **Settings**: runtime environment and configured card overview.
+- **Reports**: Allure status, latest test run summary, credential report execution, and
+  saved parallel evidence.
 
-For MoTo payments, Paynkolay returns a final provider result. The framework parses the
-response, evaluates the payment status, stores sanitized session state, and verifies the
-transaction through PaymentList.
+The Payment and Settings screens are intentionally kept operational and compact. Parallel
+and Reports are wider and easier to scan for business-facing review sessions.
 
-For 3D Secure payments, Paynkolay returns `BANK_REQUEST_MESSAGE`. The framework stores
-that provider form transiently and exposes it through the browser so the bank/ACS
-challenge can be completed. After the provider return, the result payload is verified with
-`hashDataV2`, then the session is marked as completed or failed.
+## 3D Secure Automation
 
-## Supported Paynkolay Services
+The project supports browser-based 3D Secure automation through Playwright. For normal UI
+and parallel testing, automation runs headless by default, so large runs do not open one
+visible browser tab per payment.
 
-The implementation is aligned with these Paynkolay form endpoints:
+Supported automatic 3DS behavior includes:
 
-- `POST /v1/Payment`
-- `POST /Payment/PaymentList`
-- `POST /v1/CancelRefundPayment`
+- visible OTP codes rendered on simulator pages,
+- configured static OTP values for known test cards,
+- controlled form submission after the OTP source is verified,
+- safe failure classification when the page requires manual approval or cannot be automated.
 
-Request hash generation and response hash verification are implemented with the documented
-field order and SHA-512/Base64 format.
+The automation does not invent OTPs. If no safe OTP source is available, the payment is left
+with a clear diagnostic reason.
 
-## Tester UI
+## Parallel Testing
 
-The web UI provides a practical payment test dashboard:
+Parallel testing is intended for confidence runs and UAT regression checks. The UI supports
+manual card selection and random selection from cards that are marked safe for automatic
+success testing.
 
-- payment form for MoTo and 3D Secure flows,
-- runtime card list with alias, brand, card, expiry, flow, and action columns,
-- test card addition from the UI,
-- secure/MoTo filtering and search,
-- automatic form-fill from selected test cards,
-- local installment option stub until the real installment service is available,
-- result panel with provider reference, PaymentList status, and authorization code,
-- 3D Secure render link when Paynkolay returns a browser challenge,
-- report page for generated Allure output.
+Current practical baseline:
 
-The card list intentionally exposes test PAN/CVV to the local tester UI. It should only be
-used with private UAT/test card data.
+- `nkolay_dynamic_otp_visa_6111` is the primary baseline card.
+- This card has completed a 50/50 parallel UAT validation successfully.
+- `akbank_visa_7068` is also in the automatic success pool, with strong but not perfect
+  observed stability across repeated 10-item parallel runs.
+- Diagnostic cards remain selectable for investigation, but are not used by random success
+  runs unless their behavior is explicitly promoted.
 
-## Runtime Configuration
+Each parallel item records its own result, so one provider or ACS failure does not hide the
+outcome of the rest of the batch.
 
-Runtime configuration is externalized through JSON and environment variables. The active
-config supplies:
+## Result Language
 
-- provider base URL,
-- callback/final return URL,
-- merchant identifiers,
-- Paynkolay `sx` values,
-- merchant secret key,
-- test card catalogue,
-- selected environment: `dev`, `uat`, or `test`.
+The system separates framework failures from provider or bank-side behavior. This matters
+because not every failed payment is an application bug.
 
-Private files are expected to live outside Git or under ignored local paths such as
-`credentials/` and `/tmp`.
+Common result meanings:
 
-Typical runtime variables:
+- `completed`: payment completed and PaymentList confirmed the expected state.
+- `provider_failed`: Paynkolay or the bank returned a failed payment outcome.
+- `pending_3ds`: payment initialized and is waiting for 3D Secure completion.
+- `acs_manual_required`: the 3D Secure page requires human approval or SMS handling.
+- `acs_browser_client_rejected`: the bank simulator rejected the browser client.
+- `payment_list_missing`: provider flow completed, but PaymentList did not confirm the row.
+- `network_error`: request failed before a reliable provider response was available.
+- `framework_error`: application-side unexpected error.
 
-```bash
-PAYNKOLAY_CONFIG_FILE=/tmp/paynkolay-uat-settings.json
-PAYNKOLAY_SCENARIO_CATALOG=/tmp/paynkolay-credential-scenarios.json
-PAYNKOLAY_ENV=uat
-```
+## Evidence And Reports
 
-## UAT Status
+The project writes human-readable evidence for test runs and supports Allure reports for
+formal review.
 
-The framework has been exercised against the Paynkolay UAT/test environment.
+Evidence includes:
 
-Confirmed flows:
+- order IDs and request references,
+- card aliases and masked card information,
+- provider status and response summaries,
+- PaymentList status,
+- 3DS automation status and reason,
+- diagnostic classifications,
+- timing information.
 
-- MoTo payment initialization and approval.
-- PaymentList verification after successful payment.
-- 3D Secure initialization through `BANK_REQUEST_MESSAGE`.
-- Manual browser 3D Secure completion through the tester UI.
-- Headless Playwright 3D Secure OTP automation for web and parallel tester flows.
-- Same-day cancel request through `/v1/CancelRefundPayment`.
+Sensitive values are redacted before evidence is printed or saved.
 
-Known UAT notes:
+## Current Completion State
 
-- 3D Secure ACS behavior may differ by issuer simulator and card profile.
-- Automatic 3D Secure success flows use a card automation behavior catalogue. Cards marked
-  `automation_diagnostic`, `manual_only`, or `quarantined` stay available for intentional
-  diagnostics but are excluded from random/default success smoke selection.
-- Reliable negative UAT testing requires official invalid card/CVV/OTP data from the
-  provider.
-- PaymentList may continue to show the original sales row after cancel; the cancel service
-  response is currently treated as the primary cancel evidence.
+As of July 21, 2026, active feature work is complete and the project is ready for
+presentation and handoff.
 
-### UAT Card Automation Policy
+Confirmed capabilities:
 
-The runtime card schema intentionally stays focused on payment data. Observed live-UAT
-automation behavior is tracked separately by alias in `src/paynkolay_pos/testing/card_behaviors.py`
-so private config JSON files remain compatible and no PAN/CVV/OTP values are committed.
+- local/mock payment validation,
+- UAT MoTo payment validation,
+- UAT 3D Secure initialization,
+- headless automatic 3D Secure completion for supported simulator cards,
+- parallel 3D Secure test runs,
+- PaymentList verification with retry/backoff,
+- same-day cancel smoke checks,
+- sanitized JSON evidence,
+- Allure report integration,
+- tester-friendly web UI for Payment, Parallel, Settings, and Reports.
 
-Automation statuses:
-
-- `success_auto`: eligible for default/random automatic success smoke runs.
-- `automation_diagnostic`: ACS/OTP automation works, but provider finalization is not a
-  stable captured result.
-- `manual_only`: excluded from automatic success runs, still selectable for manual diagnosis.
-- `quarantined`: excluded from automatic success runs because the issuer/ACS behavior is
-  currently unstable or bank-side failing.
-- `unknown`: available for manual/explicit diagnostics until a specific UAT behavior is
-  recorded; default random success runs use only explicit `success_auto` cards.
-
-Current automatic 3D Secure baseline aliases include `nkolay_dynamic_otp_visa_6111` and
-`akbank_visa_7068`. `garanti_bankasi_mastercard_6017` and `akbank_visa_5232` are kept as
-automation diagnostics after July 20, 2026 live UAT random-mode evidence showed OTP
-submission followed by browser-validation or provider-finalization failure. Garanti remains
-usable for intentional diagnostic/manual runs; the OTP fill path includes a retry/native
-input fallback and the latest focused 5-item UAT run completed 5/5 captured.
-Persisted parallel run evidence includes each item's `automation_status`,
-`automation_reason`, `diagnostic_class`, and `automatic_success_candidate` values so reports
-can explain automatic card selection decisions without exposing card secrets.
-
-## Reporting
-
-The project supports Allure reporting for local and credential-driven validation. Evidence
-is sanitized before being attached or printed. Sensitive fields such as PAN, CVV, OTP,
-merchant secrets, hashes, signatures, and raw 3D Secure HTML are redacted.
-
-Generate a report:
-
-```bash
-make report
-```
-
-Open the generated report:
-
-```bash
-allure open allure-report
-```
-
-## Common Commands
-
-Install dependencies:
-
-```bash
-make install
-```
-
-Run the local quality gate:
-
-```bash
-make check
-```
-
-Start the local web UI:
-
-```bash
-make web
-```
-
-Start the UAT tester UI:
-
-```bash
-make uat-web
-```
-
-The tester UI runs 3D Secure automation headless by default so parallel runs do not open
-one visible browser window per card. For visual debugging, pass
-`WEB_3DS_HEADED=1 WEB_3DS_CLOSE_DELAY=5`.
-
-Run guarded UAT smoke checks:
-
-```bash
-make uat-3ds-smoke
-make uat-parallel-3ds-smoke
-make uat-cancel-smoke
-```
-
-Generate credential scenario report:
-
-```bash
-make credential-scenario-report
-```
-
-## Validation
-
-The standard local validation suite covers API routes, models, provider client behavior,
-hash generation, callback handling, scenario catalogues, mocked end-to-end flows, reporting
-sanitization, and 3D Secure helpers.
-
-Current validation status:
+Latest local validation:
 
 ```text
 ruff check        passed
 mypy             passed
-pytest           336 passed, 5 skipped
+pytest           342 passed, 5 skipped
+git diff check   passed
 ```
 
-Skipped tests are live/sandbox-gated tests that require private runtime configuration and
-explicit live execution flags.
+Latest live UAT highlights:
 
-## Security And Data Handling
+- N Kolay Visa baseline: 50/50 parallel run passed.
+- Headless web 3DS test: completed, PaymentList captured, OTP source read from visible page.
+- Parallel evidence is persisted under `reports/parallel-runs/`.
 
-- Private credentials and card data are not committed.
-- `credentials/` is ignored by Git.
-- PAN, CVV, OTP, secrets, hashes, signatures, and raw 3DS HTML are sanitized in evidence.
-- Runtime card data is loaded from external configuration.
-- UAT/live tests are guarded to avoid accidental provider calls.
+## Safe Data Policy
 
-## Technology Stack
+This repository must not contain private card or merchant data.
 
-- Python 3.11+
+Kept outside Git:
+
+- PAN,
+- CVV,
+- OTP,
+- merchant secrets,
+- Paynkolay SX values,
+- raw 3D Secure HTML,
+- provider hashes and signatures.
+
+Private runtime files are expected under ignored locations such as `credentials/` or `/tmp`.
+
+## Technology
+
+- Python 3.11
 - FastAPI
-- HTTPX
 - Pydantic v2
-- Pytest
+- HTTPX
 - Playwright
-- Allure Pytest
+- Pytest
+- Allure
 - Ruff
 - Mypy
 - Poetry
 
-## Final Project State
+## Repository Map
 
-As of July 20, 2026, active feature work is considered complete. The project is
-presentation-ready for:
+- `src/paynkolay_pos/api/`: web app, API routes, session state, and parallel run handling.
+- `src/paynkolay_pos/clients/`: Paynkolay HTTP/form boundary.
+- `src/paynkolay_pos/config/`: runtime settings and card configuration.
+- `src/paynkolay_pos/models/`: typed payment, callback, and provider result models.
+- `src/paynkolay_pos/security/`: Paynkolay hash and signature helpers.
+- `src/paynkolay_pos/three_ds/`: 3D Secure rendering, profiling, OTP resolution, and automation.
+- `src/paynkolay_pos/testing/`: card behavior metadata and generated test data helpers.
+- `src/paynkolay_pos/web/`: tester-facing HTML, CSS, and JavaScript.
+- `tools/`: guarded UAT smoke tools and config/scenario builders.
+- `tests/`: unit, API, mocked E2E, reporting, and 3D Secure coverage.
+- `reports/parallel-runs/`: sanitized parallel run evidence.
+- `guide/`: project memory and handoff notes.
 
-- local/mock validation,
-- UAT payment demo through the web UI,
-- MoTo payment and PaymentList verification,
-- 3D Secure initialization and manual browser completion,
-- automated parallel 3D Secure smoke with sanitized evidence and card automation metadata,
-- same-day cancel smoke checks,
-- card-list based tester workflows,
-- local installment option stubbing,
-- sanitized Allure reporting.
+## Operating Note
 
-Final live UAT evidence retained in `reports/parallel-runs/` includes:
-
-- `dc29effa82d0`: random automatic 3D Secure smoke, 10/10 completed, every item captured.
-- `23b1c79a2d25`: Garanti Mastercard diagnostic run, 5/5 completed, every item captured.
-
-Remaining work is primarily provider-dependent or optional future polish:
-
-- connect the real installment service,
-- obtain reliable negative UAT test data,
-- rerun live UAT smoke only when Paynkolay/card behavior changes,
-- clarify final cancel reporting semantics with Paynkolay if needed.
+The project is a test automation and validation framework. It is not a production payment
+gateway and should only be used with approved test/UAT credentials and cards.

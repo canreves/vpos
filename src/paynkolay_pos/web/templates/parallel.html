@@ -23,13 +23,13 @@
           <a class="nav-link" href="/reports">Reports</a>
         </nav>
       </header>
-      <main class="workspace single">
-        <section class="panel report-command-panel">
+      <main class="workspace single parallel-workspace">
+        <section class="panel report-command-panel parallel-panel">
           <div class="panel-heading">
             <h2>Parallel Test</h2>
             <span class="status-pill neutral" id="parallel-run-status">Idle</span>
           </div>
-          <div class="card-add-form">
+          <div class="card-add-form parallel-controls">
             <label class="field">
               <span>Mode</span>
               <select id="parallel-mode">
@@ -56,7 +56,7 @@
             </label>
           </div>
           <div id="parallel-manual-panel">
-            <div class="card-add-form">
+            <div class="card-add-form parallel-manual-controls">
               <label class="field">
                 <span>Card</span>
                 <select id="parallel-card-select"></select>
@@ -69,8 +69,8 @@
                 <button class="secondary-action" id="parallel-add-card" type="button">Add card</button>
               </div>
             </div>
-            <div class="table-wrap">
-              <table class="data-table">
+            <div class="table-wrap parallel-selection-wrap">
+              <table class="data-table parallel-selection-table">
                 <thead>
                   <tr>
                     <th>Card</th>
@@ -87,7 +87,7 @@
               Start parallel run
             </button>
           </div>
-          <dl class="result-list">
+          <dl class="result-list parallel-summary-list">
             <div>
               <dt>Run ID</dt>
               <dd id="parallel-run-id">-</dd>
@@ -109,8 +109,8 @@
               <dd id="parallel-evidence-path">-</dd>
             </div>
           </dl>
-          <div class="table-wrap">
-            <table class="data-table">
+          <div class="table-wrap parallel-results-wrap">
+            <table class="data-table parallel-results-table">
               <thead>
                 <tr>
                   <th>Card</th>
