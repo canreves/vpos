@@ -188,7 +188,6 @@ Private runtime files are expected under ignored locations such as `credentials/
 - `tools/`: guarded UAT smoke tools and config/scenario builders.
 - `tests/`: unit, API, mocked E2E, reporting, and 3D Secure coverage.
 - `reports/parallel-runs/`: sanitized parallel run evidence.
-- `guide/`: project memory and handoff notes.
 
 ## Operating Note
 
