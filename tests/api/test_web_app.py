@@ -1015,6 +1015,15 @@ async def test_parallel_run_manual_mode_repeats_selected_cards(
     assert [item["attempt_index"] for item in payload["items"]] == [1, 2]
     assert {item["classification"] for item in payload["items"]} == {"completed"}
     assert all(item["payment_list_status"] == "captured" for item in payload["items"])
+    assert all(item["payment_list"]["status"] == "captured" for item in payload["items"])
+    assert all(
+        item["payment_list"]["provider_transaction_id"] == "list-ref-1001"
+        for item in payload["items"]
+    )
+    assert all(
+        item["payment_list"]["authorization_code"] == "LISTAUTH"
+        for item in payload["items"]
+    )
     assert all(item["automation_status"] == "unknown" for item in payload["items"])
     assert all(item["diagnostic_class"] == "unknown" for item in payload["items"])
     assert all(item["automatic_success_candidate"] is True for item in payload["items"])
@@ -1024,6 +1033,14 @@ async def test_parallel_run_manual_mode_repeats_selected_cards(
     assert evidence["run"]["run_id"] == payload["run_id"]
     evidence_item = evidence["run"]["items"][0]
     assert evidence_item["payment_list_status"] == "captured"
+    assert evidence_item["payment_list"] == {
+        "status": "captured",
+        "provider_transaction_id": "list-ref-1001",
+        "authorization_code": "LISTAUTH",
+        "failure_code": None,
+        "updated_at": "2026-07-07T12:00:00+00:00",
+        "error": None,
+    }
     assert evidence_item["automation_status"] == "unknown"
     assert evidence_item["automation_reason"] == (
         "No live UAT automation behavior has been recorded for this alias."
@@ -1496,10 +1513,90 @@ async def test_parallel_run_marks_created_payment_list_as_awaiting_provider_fina
     assert payload["items"][0]["automation_status"] == "unknown"
     assert payload["items"][0]["automatic_success_candidate"] is True
     assert payload["items"][0]["payment_list_status"] == "created"
+    assert payload["items"][0]["payment_list"] == {
+        "status": "created",
+        "provider_transaction_id": "list-ref-created",
+        "authorization_code": None,
+        "failure_code": None,
+        "updated_at": "2026-07-07T12:00:00+00:00",
+        "error": None,
+    }
     assert payload["items"][0]["three_ds_automation"]["submitted"] is True
     assert payload["items"][0]["three_ds_automation"]["final_url"].endswith("/web/pinvalidate")
     assert fake_initializer.status_calls == [payload["items"][0]["order_id"]] * 4
     assert sleep_calls == [2.0, 5.0, 10.0]
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_run_records_failed_payment_list_detail_after_3ds_submit(
+    client: httpx.AsyncClient,
+    fake_initializer: FakePaymentInitializer,
+    fake_automator: FakeThreeDSAutomator,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="parallel_3ds",
+                pan="5555555555554444",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+        ],
+    )
+    fake_automator.result = AcsBrowserAutomationResult(
+        completed=True,
+        submitted=True,
+        returned_to_callback=True,
+        reason="otp_submitted",
+        screen_classification="visible_otp_code",
+        otp_resolution={
+            "status": "ready",
+            "source_type": "static_config",
+            "otp_present": True,
+            "should_auto_submit": True,
+            "reason": "resolved OTP from configured test card metadata",
+        },
+    )
+    fake_initializer.payment_list_status = TransactionStatusResponse(
+        order_id="filled-by-test",
+        provider_transaction_id="IKSIRPF533461",
+        status=PaymentStatus.FAILED,
+        amount=Decimal("100.00"),
+        currency=Currency.TRY,
+        updated_at=datetime(2026, 7, 21, 6, 18, 56, tzinfo=UTC),
+        failure_code="ERROR",
+    )
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "manual",
+            "amount": "100.00",
+            "currency": "TRY",
+            "concurrency": 1,
+            "auto_complete_3ds": True,
+            "manual_cards": [{"alias": "parallel_3ds", "repeat_count": 1}],
+        },
+    )
+
+    assert response.status_code == 202
+    payload = await _wait_parallel_run(client, response.json()["run_id"])
+    assert payload["status"] == "completed_with_failures"
+    assert payload["items"][0]["classification"] == "provider_failed"
+    assert payload["items"][0]["payment_list_status"] == "failed"
+    assert payload["items"][0]["payment_list"] == {
+        "status": "failed",
+        "provider_transaction_id": "IKSIRPF533461",
+        "authorization_code": None,
+        "failure_code": "ERROR",
+        "updated_at": "2026-07-21T06:18:56+00:00",
+        "error": None,
+    }
 
 
 @pytest.mark.api

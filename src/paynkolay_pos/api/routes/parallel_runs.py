@@ -42,6 +42,7 @@ from paynkolay_pos.api.schemas import (
     ParallelRunItemResponse,
     ParallelRunResponse,
     PaymentFormRequest,
+    PaymentListStatusSummary,
 )
 from paynkolay_pos.api.session_models import (
     PaymentSession,
@@ -447,6 +448,7 @@ async def _record_provider_outcome(
                 item_id,
                 provider_request=provider_request,
                 classification=classification,
+                payment_list=PaymentListStatusSummary.from_session(session),
                 payment_list_status=(
                     session.payment_list_status.value
                     if session.payment_list_status is not None
@@ -498,6 +500,7 @@ async def _record_provider_outcome(
                 provider_request=provider_request,
                 provider_response_code=provider_result.response_code,
                 provider_response_data=provider_result.response_data,
+                payment_list=PaymentListStatusSummary.from_session(session),
                 payment_list_status=(
                     session.payment_list_status.value
                     if session.payment_list_status is not None
@@ -652,6 +655,7 @@ def _mark_item_completed(
     classification: str,
     provider_response_code: str | None = None,
     provider_response_data: str | None = None,
+    payment_list: PaymentListStatusSummary | None = None,
     payment_list_status: str | None = None,
     payment_list_error: str | None = None,
     three_ds_automation: ThreeDSAutomationSummary | None = None,
@@ -663,6 +667,7 @@ def _mark_item_completed(
     item.provider_request = provider_request
     item.provider_response_code = provider_response_code
     item.provider_response_data = provider_response_data
+    item.payment_list = payment_list
     item.payment_list_status = payment_list_status
     item.payment_list_error = payment_list_error
     item.three_ds_automation = three_ds_automation

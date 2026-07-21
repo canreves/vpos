@@ -12,6 +12,7 @@ from paynkolay_pos.api.schemas import (
     ParallelRunItemAutomationStatus,
     ParallelRunItemResponse,
     ParallelRunResponse,
+    PaymentListStatusSummary,
 )
 from paynkolay_pos.api.session_models import ProviderRequestSummary, ThreeDSAutomationSummary
 
@@ -37,6 +38,7 @@ class ParallelRunItemState:
     provider_request: ProviderRequestSummary | None = None
     provider_response_code: str | None = None
     provider_response_data: str | None = None
+    payment_list: PaymentListStatusSummary | None = None
     payment_list_status: str | None = None
     payment_list_error: str | None = None
     three_ds_automation: ThreeDSAutomationSummary | None = None
@@ -71,6 +73,7 @@ class ParallelRunItemState:
             provider_request=self.provider_request,
             provider_response_code=self.provider_response_code,
             provider_response_data=self.provider_response_data,
+            payment_list=self.payment_list,
             payment_list_status=self.payment_list_status,
             payment_list_error=self.payment_list_error,
             three_ds_automation=self.three_ds_automation,

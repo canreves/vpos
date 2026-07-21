@@ -482,6 +482,7 @@ class ParallelRunItemResponse(BaseModel):
     provider_request: ProviderRequestSummary | None = None
     provider_response_code: str | None = None
     provider_response_data: str | None = None
+    payment_list: PaymentListStatusSummary | None = None
     payment_list_status: str | None = None
     payment_list_error: str | None = None
     three_ds_automation: ThreeDSAutomationSummary | None = None
