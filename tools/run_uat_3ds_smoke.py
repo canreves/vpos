@@ -191,9 +191,6 @@ async def _run_3ds_smoke(
     )
     if not scenario.requires_3ds:
         raise SystemExit("Selected scenario must require 3DS.")
-    if card.expected_otp is None:
-        raise SystemExit("3DS card must define expected_otp.")
-
     order_id = f"uat-3ds-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}"
     request = _payment_request_for(
         environment=environment,
@@ -322,7 +319,7 @@ async def _run_3ds_smoke(
 async def _complete_browser_challenge(
     *,
     html: str,
-    otp: SecretStr,
+    otp: SecretStr | None,
     brand: CardBrand,
     headed: bool,
     form_base_url: str,
@@ -346,7 +343,7 @@ async def _complete_browser_challenge(
 async def _complete_browser_challenge_legacy(
     *,
     html: str,
-    otp: SecretStr,
+    otp: SecretStr | None,
     headed: bool,
     form_base_url: str,
     callback_url: str,
@@ -603,13 +600,12 @@ def _first_3ds_scenario(
         if (
             scenario.requires_3ds
             and card is not None
-            and card.expected_otp is not None
             and is_automatic_success_candidate(card.alias)
             and "wrong_otp" not in scenario.tags
             and "expired_card" not in scenario.tags
         ):
             return scenario
-    raise LookupError("No automatic success candidate 3DS scenario with expected_otp was found.")
+    raise LookupError("No automatic success candidate 3DS scenario was found.")
 
 
 def _card_for_alias(environment: PaymentEnvironment, alias: str) -> TestCard:
@@ -876,10 +872,7 @@ def _result_matrix_event(entry: ResultMatrixEntry) -> str:
 
 
 def _expected_otp_from_page(card: TestCard) -> bool:
-    return (
-        card.expected_otp is not None
-        and card.expected_otp.get_secret_value() == OTP_FROM_FORM_SENTINEL
-    )
+    return card.expected_otp is None or _expected_otp_from_form(card.expected_otp)
 
 
 def _optional_text(value: object) -> str | None:
@@ -1000,8 +993,8 @@ def _has_auto_submit(html: str) -> bool:
     return "onload" in lowered and ".submit(" in lowered
 
 
-def _expected_otp_from_form(otp: SecretStr) -> bool:
-    return otp.get_secret_value() == OTP_FROM_FORM_SENTINEL
+def _expected_otp_from_form(otp: SecretStr | None) -> bool:
+    return otp is None or otp.get_secret_value() == OTP_FROM_FORM_SENTINEL
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from contextlib import suppress
 from urllib.parse import SplitResult, urljoin, urlsplit, urlunsplit
 
@@ -113,6 +114,12 @@ ACS_FINAL_RETURN_SELECTORS = (
     'input[type="submit"][value*="Tamam" i]',
 )
 DEFAULT_FORM_BASE_URL = "https://vpostest.qnb.com.tr/PayforACSSimulator/"
+_SENSITIVE_FRAME_LINE = re.compile(
+    r"(?im)^(\s*(?:hashdata(?:v2)?|sx|signature|token|cvv|cvc|pan|card[_ ]?number|"
+    r"otp|password)\b)[:=]?\s*.*$"
+)
+_SIX_DIGIT_VALUE = re.compile(r"(?<!\d)\d{6}(?!\d)")
+_LONG_CARD_VALUE = re.compile(r"(?<!\d)\d{12,19}(?!\d)")
 
 
 class AcsBrowserAutomationResult(BaseModel):
@@ -183,7 +190,7 @@ async def complete_acs_browser_challenge(
         context: BrowserContext | None = None
         try:
             browser = await playwright.chromium.launch(headless=not headed)
-            context = await browser.new_context(ignore_https_errors=True)
+            context = await _new_browser_context(browser=browser, headed=headed)
             page = await context.new_page()
             await page.set_content(
                 _html_with_base_url(document.html, form_base_url=form_base_url),
@@ -223,7 +230,11 @@ async def complete_acs_browser_challenge(
                 return _result(
                     completed=False,
                     submitted=False,
-                    reason="otp_selector_not_found",
+                    reason=(
+                        "acs_browser_client_rejected"
+                        if _looks_like_browser_client_rejection(evidence)
+                        else "otp_selector_not_found"
+                    ),
                     evidence=evidence,
                     profile=profile,
                 )
@@ -346,8 +357,44 @@ def _result(
         otp_selector=otp_selector,
         submit_selector=submit_selector,
         otp_resolution=otp_resolution,
-        frames=evidence.frames,
+        frames=tuple(_sanitized_frame_evidence(frame) for frame in evidence.frames),
     )
+
+
+async def _new_browser_context(*, browser: Browser, headed: bool) -> BrowserContext:
+    if headed:
+        return await browser.new_context(ignore_https_errors=True)
+    return await browser.new_context(
+        ignore_https_errors=True,
+        user_agent=_chromium_user_agent(browser.version),
+    )
+
+
+def _chromium_user_agent(version: str) -> str:
+    normalized_version = version.strip()
+    if re.fullmatch(r"\d+(?:\.\d+){0,3}", normalized_version) is None:
+        normalized_version = "120.0.0.0"
+    return (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        f"Chrome/{normalized_version} Safari/537.36"
+    )
+
+
+def _looks_like_browser_client_rejection(evidence: AcsProfileEvidence) -> bool:
+    title = (evidence.title or "").strip().lower()
+    text = " ".join(frame.text_prefix.lower() for frame in evidence.frames)
+    return title == "_404" or "404-qpg97-status" in text
+
+
+def _sanitized_frame_evidence(frame: AcsFrameEvidence) -> AcsFrameEvidence:
+    return frame.model_copy(update={"text_prefix": _sanitize_frame_text(frame.text_prefix)})
+
+
+def _sanitize_frame_text(text: str) -> str:
+    sanitized = _SENSITIVE_FRAME_LINE.sub(r"\1 <redacted>", text)
+    sanitized = _SIX_DIGIT_VALUE.sub("<redacted>", sanitized)
+    return _LONG_CARD_VALUE.sub("<redacted>", sanitized)
 
 
 async def _submit_gateway_form_if_present(page: Page) -> None:

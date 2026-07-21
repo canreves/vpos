@@ -7,12 +7,52 @@ from paynkolay_pos.diagnostics import AcsScreenClassification
 from paynkolay_pos.three_ds.acs_browser import (
     SUBMIT_SELECTORS,
     _advance_garanti_sms_method_if_present,
+    _chromium_user_agent,
     _follow_acs_final_return_if_present,
     _force_submit_otp_form_if_still_present,
+    _looks_like_browser_client_rejection,
+    _sanitize_frame_text,
     _visible_selector_in_frame,
     _visible_selector_in_page_or_frames,
 )
-from paynkolay_pos.three_ds.acs_profile import AcsBankProfile, AcsOtpStrategy, AcsProfile
+from paynkolay_pos.three_ds.acs_profile import (
+    AcsBankProfile,
+    AcsFrameEvidence,
+    AcsOtpStrategy,
+    AcsProfile,
+    AcsProfileEvidence,
+)
+
+
+def test_headless_user_agent_uses_normal_chrome_product() -> None:
+    user_agent = _chromium_user_agent("141.0.7390.0")
+
+    assert "Chrome/141.0.7390.0" in user_agent
+    assert "HeadlessChrome" not in user_agent
+
+
+def test_qnb_status_404_is_classified_as_browser_client_rejection() -> None:
+    evidence = AcsProfileEvidence(
+        title="_404",
+        final_url="https://vpostest.qnb.com.tr/PayforACSSimulator/Default.aspx",
+        frames=(AcsFrameEvidence(text_prefix="404-QPG97-STATUS"),),
+    )
+
+    assert _looks_like_browser_client_rejection(evidence) is True
+
+
+def test_frame_text_redacts_otp_hash_and_card_values() -> None:
+    text = _sanitize_frame_text(
+        "OTP code: 123456\n"
+        "hashData secret-signature-value\n"
+        "CARD_NUMBER 4155650000006111\n"
+        "BANK_MESSAGE Onaylandı"
+    )
+
+    assert "123456" not in text
+    assert "secret-signature-value" not in text
+    assert "4155650000006111" not in text
+    assert "BANK_MESSAGE Onaylandı" in text
 
 
 @pytest.mark.three_ds

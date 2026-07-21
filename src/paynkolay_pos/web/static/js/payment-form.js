@@ -76,8 +76,9 @@
     }
     const source = automation.otp_source_type || "no-source";
     const submitted = automation.submitted ? "submitted" : "not-submitted";
+    const reason = automation.reason ? ` reason=${automation.reason}` : "";
     resultFields.threeDsAutomation.textContent =
-      `${automation.status} ${submitted} source=${source}`;
+      `${automation.status} ${submitted} source=${source}${reason}`;
   }
 
   function renderPaymentState(response) {

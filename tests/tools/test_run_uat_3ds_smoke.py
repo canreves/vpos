@@ -55,6 +55,35 @@ def test_first_3ds_scenario_skips_non_auto_success_candidates() -> None:
     assert selected.card_alias == "akbank_visa_7068"
 
 
+def test_first_3ds_scenario_accepts_dynamic_page_otp_without_configured_otp() -> None:
+    scenario = _scenario(
+        "credential_nkolay_dynamic_otp_visa_6111_3ds_success",
+        "nkolay_dynamic_otp_visa_6111",
+    )
+    environment = PaymentEnvironment(
+        name=EnvironmentName.DEV,
+        base_url="https://local-mock.payments.invalid",
+        callback_base_url="https://local-mock.callbacks.invalid",
+        merchant=MerchantProfile.model_validate(
+            {
+                "merchant_id": "merchant",
+                "terminal_id": "terminal",
+                "api_key": "payment-key",
+                "secret_key": "secret-key",
+            }
+        ),
+        cards=[_card("nkolay_dynamic_otp_visa_6111", expected_otp=None)],
+    )
+
+    selected = cast(
+        PaymentScenario,
+        UAT_3DS_SMOKE._first_3ds_scenario((scenario,), environment),
+    )
+
+    assert selected.card_alias == "nkolay_dynamic_otp_visa_6111"
+    assert UAT_3DS_SMOKE._expected_otp_from_page(environment.cards[0]) is True
+
+
 def _scenario(scenario_id: str, card_alias: str) -> PaymentScenario:
     return PaymentScenario.model_validate(
         {
@@ -71,7 +100,7 @@ def _scenario(scenario_id: str, card_alias: str) -> PaymentScenario:
     )
 
 
-def _card(alias: str) -> ConfigTestCard:
+def _card(alias: str, *, expected_otp: str | None = "123456") -> ConfigTestCard:
     return ConfigTestCard.model_validate(
         {
             "alias": alias,
@@ -81,6 +110,6 @@ def _card(alias: str) -> ConfigTestCard:
             "expiry_year": 2030,
             "cvv": "123",
             "requires_3ds": True,
-            "expected_otp": "123456",
+            "expected_otp": expected_otp,
         }
     )
