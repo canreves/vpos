@@ -377,8 +377,11 @@ async def test_parallel_page_renders_parallel_run_screen(client: httpx.AsyncClie
     assert 'id="parallel-selection-body"' in response.text
     assert 'id="parallel-results-body"' in response.text
     assert 'id="parallel-evidence-path"' in response.text
+    assert 'id="parallel-concurrency" type="number" min="1" max="50"' in response.text
+    assert 'id="parallel-random-count" type="number" min="1" max="50"' in response.text
+    assert 'id="parallel-repeat-count" type="number" min="1" max="50"' in response.text
     assert "Auto mode records sanitized ACS automation evidence." in response.text
-    assert "/static/js/parallel-runs.js" in response.text
+    assert "/static/js/parallel-runs.js?v=parallel-limit-50" in response.text
 
 
 @pytest.mark.api
@@ -1050,6 +1053,50 @@ async def test_parallel_run_manual_mode_repeats_selected_cards(
     assert "4111111111111111" not in json.dumps(evidence)
     assert len(fake_initializer.calls) == 2
     assert "4111111111111111" not in response.text
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_parallel_run_manual_mode_accepts_twenty_items(
+    client: httpx.AsyncClient,
+    fake_initializer: FakePaymentInitializer,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="parallel_moto",
+                pan="4111111111111111",
+                requires_3ds=False,
+            ),
+        ],
+    )
+    fake_initializer.provider_result = _payment_result(
+        response_code="2",
+        response_data="Islem Basarili",
+    )
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "manual",
+            "amount": "100.00",
+            "currency": "TRY",
+            "concurrency": 20,
+            "manual_cards": [{"alias": "parallel_moto", "repeat_count": 20}],
+        },
+    )
+
+    assert response.status_code == 202
+    payload = await _wait_parallel_run(client, response.json()["run_id"])
+    assert payload["status"] == "completed"
+    assert payload["total"] == 20
+    assert payload["completed"] == 20
+    assert payload["failed"] == 0
+    assert len(fake_initializer.calls) == 20
 
 
 @pytest.mark.api
@@ -1852,14 +1899,14 @@ async def test_parallel_run_validation_limits_manual_items(client: httpx.AsyncCl
             "amount": "100.00",
             "currency": "TRY",
             "manual_cards": [
-                {"alias": "a", "repeat_count": 6},
-                {"alias": "b", "repeat_count": 5},
+                {"alias": "a", "repeat_count": 26},
+                {"alias": "b", "repeat_count": 25},
             ],
         },
     )
 
     assert response.status_code == 422
-    assert "manual mode can create at most 10 test items" in response.text
+    assert "manual mode can create at most 50 test items" in response.text
 
 
 @pytest.mark.api

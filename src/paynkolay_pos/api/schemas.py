@@ -416,19 +416,19 @@ class ParallelRunManualCardSelection(BaseModel):
     """One card selection for a manual parallel run."""
 
     alias: str = Field(min_length=1, max_length=120)
-    repeat_count: int = Field(ge=1, le=10)
+    repeat_count: int = Field(ge=1, le=50)
 
 
 class ParallelRunCreateRequest(BaseModel):
     """Browser request to start a parallel payment initialization run."""
 
     mode: Literal["manual", "random"]
-    concurrency: int = Field(default=10, ge=1, le=10)
+    concurrency: int = Field(default=10, ge=1, le=50)
     amount: Decimal = Field(gt=Decimal("0"), max_digits=12, decimal_places=2)
     currency: Currency = Currency.TRY
     auto_complete_3ds: bool = False
     manual_cards: list[ParallelRunManualCardSelection] = Field(default_factory=list)
-    random_count: int | None = Field(default=None, ge=1, le=10)
+    random_count: int | None = Field(default=None, ge=1, le=50)
 
     @field_validator("amount")
     @classmethod
@@ -444,8 +444,8 @@ class ParallelRunCreateRequest(BaseModel):
         if self.mode == "manual":
             if not self.manual_cards:
                 raise ValueError("manual mode requires at least one card selection")
-            if sum(item.repeat_count for item in self.manual_cards) > 10:
-                raise ValueError("manual mode can create at most 10 test items")
+            if sum(item.repeat_count for item in self.manual_cards) > 50:
+                raise ValueError("manual mode can create at most 50 test items")
             if self.random_count is not None:
                 raise ValueError("manual mode must not define random_count")
         if self.mode == "random":

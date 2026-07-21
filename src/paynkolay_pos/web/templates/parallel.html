@@ -7,7 +7,7 @@
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/css/app.css">
     <script src="/static/js/api-client.js" defer></script>
-    <script src="/static/js/parallel-runs.js" defer></script>
+    <script src="/static/js/parallel-runs.js?v=parallel-limit-50" defer></script>
   </head>
   <body>
     <div class="shell">
@@ -43,7 +43,7 @@
             </label>
             <label class="field">
               <span>Concurrency</span>
-              <input id="parallel-concurrency" type="number" min="1" max="10" value="10">
+              <input id="parallel-concurrency" type="number" min="1" max="50" value="10">
             </label>
             <fieldset class="flow-toggle">
               <legend>3DS Completion</legend>
@@ -52,7 +52,7 @@
             </fieldset>
             <label class="field" id="parallel-random-count-field">
               <span>Random count</span>
-              <input id="parallel-random-count" type="number" min="1" max="10" value="10">
+              <input id="parallel-random-count" type="number" min="1" max="50" value="10">
             </label>
           </div>
           <div id="parallel-manual-panel">
@@ -63,7 +63,7 @@
               </label>
               <label class="field">
                 <span>Repeat</span>
-                <input id="parallel-repeat-count" type="number" min="1" max="10" value="1">
+                <input id="parallel-repeat-count" type="number" min="1" max="50" value="1">
               </label>
               <div class="result-actions">
                 <button class="secondary-action" id="parallel-add-card" type="button">Add card</button>

@@ -55,13 +55,13 @@ def main() -> None:
         "--count",
         type=int,
         default=10,
-        help="Number of repeated attempts for the selected card. Max 10.",
+        help="Number of repeated attempts for the selected card. Max 50.",
     )
     parser.add_argument(
         "--concurrency",
         type=int,
         default=10,
-        help="Parallel run concurrency. Max 10.",
+        help="Parallel run concurrency. Max 50.",
     )
     parser.add_argument(
         "--amount",
@@ -97,10 +97,10 @@ def main() -> None:
         raise SystemExit("--random cannot be combined with --manual-card.")
     if os.getenv("PAYNKOLAY_ENABLE_LIVE_E2E") != "1":
         raise SystemExit("Set PAYNKOLAY_ENABLE_LIVE_E2E=1 before real UAT calls.")
-    if total_count < 1 or total_count > 10:
-        raise SystemExit("total item count must be between 1 and 10.")
-    if args.concurrency < 1 or args.concurrency > 10:
-        raise SystemExit("--concurrency must be between 1 and 10.")
+    if total_count < 1 or total_count > 50:
+        raise SystemExit("total item count must be between 1 and 50.")
+    if args.concurrency < 1 or args.concurrency > 50:
+        raise SystemExit("--concurrency must be between 1 and 50.")
 
     asyncio.run(
         _run_parallel_smoke(
@@ -347,8 +347,8 @@ def _parse_manual_cards(values: Sequence[str]) -> list[ManualCardSelection]:
             repeat_count = int(count_value)
         except ValueError as exc:
             raise SystemExit("--manual-card COUNT must be an integer.") from exc
-        if repeat_count < 1 or repeat_count > 10:
-            raise SystemExit("--manual-card COUNT must be between 1 and 10.")
+        if repeat_count < 1 or repeat_count > 50:
+            raise SystemExit("--manual-card COUNT must be between 1 and 50.")
         selections.append({"alias": alias.strip(), "repeat_count": repeat_count})
     return selections
 
