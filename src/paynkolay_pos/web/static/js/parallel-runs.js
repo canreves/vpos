@@ -3,9 +3,6 @@
   const parallelMode = document.getElementById("parallel-mode");
   const parallelAmount = document.getElementById("parallel-amount");
   const parallelConcurrency = document.getElementById("parallel-concurrency");
-  const parallelThreeDsModeOptions = Array.from(
-    document.querySelectorAll("[id^='parallel-3ds-mode-']"),
-  );
   const parallelRandomCountField = document.getElementById("parallel-random-count-field");
   const parallelRandomCount = document.getElementById("parallel-random-count");
   const parallelManualPanel = document.getElementById("parallel-manual-panel");
@@ -22,7 +19,6 @@
   const parallelResultsBody = document.getElementById("parallel-results-body");
   let parallelRunPoll = null;
   let parallelSelections = [];
-  let parallelThreeDsMode = "manual";
 
   function setParallelRunStatus(text, kind) {
     parallelRunStatus.textContent = text;
@@ -116,7 +112,7 @@
       amount: parallelAmount.value,
       currency: "TRY",
       concurrency: Number(parallelConcurrency.value),
-      auto_complete_3ds: parallelThreeDsMode === "auto",
+      auto_complete_3ds: true,
     };
     if (mode === "random") {
       payload.random_count = Number(parallelRandomCount.value);
@@ -151,44 +147,40 @@
     parallelResultsBody.replaceChildren(
       ...items.map((item) => {
         const row = document.createElement("tr");
-        const provider = [item.provider_response_code, item.provider_response_data]
-          .filter(Boolean)
-          .join(" ");
+        row.className = parallelItemOutcomeClass(item);
         const values = [
           item.card_alias,
-          String(item.attempt_index),
-          item.order_id,
           item.status,
           item.classification,
-          provider || item.error_message || "-",
           item.payment_list_status || item.payment_list_error || "-",
-          formatAutomation(item.three_ds_automation),
+          formatAutomationSummary(item.three_ds_automation),
+          formatDuration(item.duration_ms),
         ];
         for (const value of values) {
           const cell = document.createElement("td");
           cell.textContent = value;
+          cell.title = value;
           row.append(cell);
         }
-        const threeDsCell = document.createElement("td");
-        if (item.three_ds_url) {
-          const link = document.createElement("a");
-          link.href = item.three_ds_url;
-          link.textContent = "Open";
-          threeDsCell.append(link);
-        } else {
-          threeDsCell.textContent = "-";
-        }
-        row.append(threeDsCell);
-
-        const durationCell = document.createElement("td");
-        durationCell.textContent = formatDuration(item.duration_ms);
-        row.append(durationCell);
         return row;
       }),
     );
   }
 
-  function formatAutomation(automation) {
+  function parallelItemOutcomeClass(item) {
+    if (item.classification === "completed") {
+      return "parallel-item-success";
+    }
+    if (item.status === "failed" || item.classification === "provider_failed") {
+      return "parallel-item-failure";
+    }
+    if (["pending", "running", "pending_3ds"].includes(item.classification)) {
+      return "";
+    }
+    return item.classification ? "parallel-item-failure" : "";
+  }
+
+  function formatAutomationSummary(automation) {
     if (!automation) {
       return "-";
     }
@@ -197,18 +189,10 @@
     const details = [
       automation.status,
       submitted,
-      `source=${source}`,
-      automation.classification ? `class=${automation.classification}` : null,
-      automation.reason ? `reason=${automation.reason}` : null,
+      source,
+      automation.reason,
     ].filter(Boolean);
     return details.join(" ");
-  }
-
-  function setParallelThreeDsMode(mode) {
-    parallelThreeDsMode = mode;
-    parallelThreeDsModeOptions.forEach((option) => {
-      option.classList.toggle("active", option.dataset.mode === mode);
-    });
   }
 
   function startParallelPolling(runId) {
@@ -237,11 +221,6 @@
 
   parallelMode.addEventListener("change", renderParallelMode);
   parallelRandomCount.addEventListener("input", renderParallelSelections);
-  parallelThreeDsModeOptions.forEach((option) => {
-    option.addEventListener("click", () => {
-      setParallelThreeDsMode(option.dataset.mode);
-    });
-  });
 
   parallelAddCard.addEventListener("click", () => {
     if (!parallelCardSelect.value) {
@@ -280,7 +259,6 @@
   });
 
   renderParallelMode();
-  setParallelThreeDsMode("manual");
   renderParallelSelections();
   loadParallelCards();
 })();

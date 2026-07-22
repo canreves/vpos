@@ -45,11 +45,6 @@
               <span>Concurrency</span>
               <input id="parallel-concurrency" type="number" min="1" max="50" value="10">
             </label>
-            <fieldset class="flow-toggle">
-              <legend>3DS Completion</legend>
-              <button id="parallel-3ds-mode-manual" class="flow-option active" type="button" data-mode="manual">Manual</button>
-              <button id="parallel-3ds-mode-auto" class="flow-option" type="button" data-mode="auto">Auto</button>
-            </fieldset>
             <label class="field" id="parallel-random-count-field">
               <span>Random count</span>
               <input id="parallel-random-count" type="number" min="1" max="50" value="10">
@@ -114,14 +109,10 @@
               <thead>
                 <tr>
                   <th>Card</th>
-                  <th>Attempt</th>
-                  <th>Order</th>
                   <th>Status</th>
                   <th>Class</th>
-                  <th>Provider</th>
                   <th>PaymentList</th>
                   <th>3DS Auto</th>
-                  <th>3DS</th>
                   <th>Duration</th>
                 </tr>
               </thead>
@@ -129,7 +120,7 @@
             </table>
           </div>
           <p class="inline-message">
-            Manual mode leaves 3D Secure at pending authentication; Auto mode records sanitized ACS automation evidence.
+            Parallel 3D Secure runs complete automatically and record sanitized ACS automation evidence.
           </p>
         </section>
       </main>

@@ -372,15 +372,15 @@ async def test_parallel_page_renders_parallel_run_screen(client: httpx.AsyncClie
     assert "text/html" in response.headers["content-type"]
     assert 'class="nav-link active" href="/parallel"' in response.text
     assert 'id="parallel-run-button"' in response.text
-    assert 'id="parallel-3ds-mode-manual"' in response.text
-    assert 'id="parallel-3ds-mode-auto"' in response.text
+    assert 'id="parallel-3ds-mode-manual"' not in response.text
+    assert 'id="parallel-3ds-mode-auto"' not in response.text
     assert 'id="parallel-selection-body"' in response.text
     assert 'id="parallel-results-body"' in response.text
     assert 'id="parallel-evidence-path"' in response.text
     assert 'id="parallel-concurrency" type="number" min="1" max="50"' in response.text
     assert 'id="parallel-random-count" type="number" min="1" max="50"' in response.text
     assert 'id="parallel-repeat-count" type="number" min="1" max="50"' in response.text
-    assert "Auto mode records sanitized ACS automation evidence." in response.text
+    assert "Parallel 3D Secure runs complete automatically" in response.text
     assert "/static/js/parallel-runs.js?v=parallel-limit-50" in response.text
 
 

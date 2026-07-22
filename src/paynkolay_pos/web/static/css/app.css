@@ -434,7 +434,7 @@ select {
 
 .parallel-controls {
   grid-template-columns: minmax(180px, 1.2fr) minmax(130px, 0.8fr) minmax(130px, 0.8fr)
-    minmax(220px, 1fr) minmax(150px, 0.8fr);
+    minmax(150px, 0.8fr);
 }
 
 .parallel-manual-controls {
@@ -500,27 +500,47 @@ select {
 
 .parallel-results-table th:nth-child(1),
 .parallel-results-table td:nth-child(1) {
-  width: 16%;
+  width: 28%;
+}
+
+.parallel-results-table th:nth-child(2),
+.parallel-results-table td:nth-child(2) {
+  width: 12%;
 }
 
 .parallel-results-table th:nth-child(3),
 .parallel-results-table td:nth-child(3) {
-  width: 14%;
+  width: 16%;
 }
 
-.parallel-results-table th:nth-child(7),
-.parallel-results-table td:nth-child(7) {
-  width: 10%;
+.parallel-results-table th:nth-child(4),
+.parallel-results-table td:nth-child(4) {
+  width: 13%;
 }
 
-.parallel-results-table th:nth-child(8),
-.parallel-results-table td:nth-child(8) {
-  width: 14%;
+.parallel-results-table th:nth-child(5),
+.parallel-results-table td:nth-child(5) {
+  width: 23%;
+  line-height: 1.35;
 }
 
-.parallel-results-table th:nth-child(10),
-.parallel-results-table td:nth-child(10) {
+.parallel-results-table th:nth-child(6),
+.parallel-results-table td:nth-child(6) {
   width: 8%;
+}
+
+.parallel-results-table th,
+.parallel-results-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.parallel-results-table tr.parallel-item-success td {
+  background: #edf9f0;
+}
+
+.parallel-results-table tr.parallel-item-failure td {
+  background: #fff1f2;
 }
 
 .report-history-table th:nth-child(1),
