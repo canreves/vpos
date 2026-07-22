@@ -1570,8 +1570,8 @@ async def test_parallel_run_marks_created_payment_list_as_awaiting_provider_fina
     }
     assert payload["items"][0]["three_ds_automation"]["submitted"] is True
     assert payload["items"][0]["three_ds_automation"]["final_url"].endswith("/web/pinvalidate")
-    assert fake_initializer.status_calls == [payload["items"][0]["order_id"]] * 4
-    assert sleep_calls == [2.0, 5.0, 10.0]
+    assert fake_initializer.status_calls == [payload["items"][0]["order_id"]] * 5
+    assert sleep_calls == [2.0, 5.0, 10.0, 20.0]
 
 
 @pytest.mark.api
