@@ -114,6 +114,7 @@ ACS_FINAL_RETURN_SELECTORS = (
     'input[type="submit"][value*="Tamam" i]',
 )
 DEFAULT_FORM_BASE_URL = "https://vpostest.qnb.com.tr/PayforACSSimulator/"
+INITIAL_CONTENT_TIMEOUT_MS = 60_000
 _SENSITIVE_FRAME_LINE = re.compile(
     r"(?im)^(\s*(?:hashdata(?:v2)?|sx|signature|token|cvv|cvc|pan|card[_ ]?number|"
     r"otp|password)\b)[:=]?\s*.*$"
@@ -192,10 +193,7 @@ async def complete_acs_browser_challenge(
             browser = await playwright.chromium.launch(headless=not headed)
             context = await _new_browser_context(browser=browser, headed=headed)
             page = await context.new_page()
-            await page.set_content(
-                _html_with_base_url(document.html, form_base_url=form_base_url),
-                wait_until="domcontentloaded",
-            )
+            await _set_initial_content(page, document.html, form_base_url=form_base_url)
             if not _has_auto_submit(document.html):
                 await _submit_gateway_form_if_present(page)
             await _wait_for_network_quiet(page)
@@ -367,6 +365,14 @@ async def _new_browser_context(*, browser: Browser, headed: bool) -> BrowserCont
     return await browser.new_context(
         ignore_https_errors=True,
         user_agent=_chromium_user_agent(browser.version),
+    )
+
+
+async def _set_initial_content(page: Page, html: str, *, form_base_url: str) -> None:
+    await page.set_content(
+        _html_with_base_url(html, form_base_url=form_base_url),
+        wait_until="domcontentloaded",
+        timeout=INITIAL_CONTENT_TIMEOUT_MS,
     )
 
 

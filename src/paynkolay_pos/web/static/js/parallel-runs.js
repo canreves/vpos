@@ -13,6 +13,7 @@
   const parallelRunButton = document.getElementById("parallel-run-button");
   const parallelRunId = document.getElementById("parallel-run-id");
   const parallelProgress = document.getElementById("parallel-progress");
+  const parallelSuccessRate = document.getElementById("parallel-success-rate");
   const parallelSelectedTotal = document.getElementById("parallel-selected-total");
   const parallelMessage = document.getElementById("parallel-message");
   const parallelEvidencePath = document.getElementById("parallel-evidence-path");
@@ -125,6 +126,7 @@
   function renderParallelRun(run) {
     parallelRunId.textContent = run.run_id;
     parallelProgress.textContent = `${run.completed + run.failed}/${run.total}`;
+    parallelSuccessRate.textContent = formatSuccessRate(run.items || []);
     parallelMessage.textContent = run.message;
     parallelEvidencePath.textContent = run.evidence_path || "-";
     parallelRunButton.disabled = run.status === "running";
@@ -178,6 +180,19 @@
       return "";
     }
     return item.classification ? "parallel-item-failure" : "";
+  }
+
+  function formatSuccessRate(items) {
+    const completedItems = items.filter((item) => item.classification === "completed").length;
+    const finishedItems = items.filter(
+      (item) => !["pending", "running"].includes(item.classification),
+    ).length;
+    const denominator = finishedItems || items.length;
+    if (denominator === 0) {
+      return "-";
+    }
+    const rate = (completedItems / denominator) * 100;
+    return `${completedItems}/${denominator} (${rate.toFixed(1)}%)`;
   }
 
   function formatAutomationSummary(automation) {

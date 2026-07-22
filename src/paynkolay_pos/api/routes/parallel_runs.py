@@ -72,7 +72,7 @@ FINAL_PAYMENT_LIST_STATUSES = {
     PaymentStatus.CAPTURED,
     PaymentStatus.FAILED,
 }
-CALLBACK_NOT_REACHED_PAYMENT_LIST_RETRY_DELAYS = (2.0, 5.0, 10.0, 20.0)
+SUBMITTED_3DS_PAYMENT_LIST_RETRY_DELAYS = (2.0, 5.0, 10.0, 20.0)
 
 PaymentInitializerDependency = Annotated[
     SupportsPaymentInitializer,
@@ -432,11 +432,7 @@ async def _record_provider_outcome(
             currency=currency,
             initializer=initializer,
             session_store=session_store,
-            retry_delays=(
-                CALLBACK_NOT_REACHED_PAYMENT_LIST_RETRY_DELAYS
-                if not automation_result.returned_to_callback
-                else None
-            ),
+            retry_delays=SUBMITTED_3DS_PAYMENT_LIST_RETRY_DELAYS,
         )
         classification = _classification_for_payment_list_status(
             session.payment_list_status.value if session.payment_list_status is not None else None

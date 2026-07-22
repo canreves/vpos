@@ -377,6 +377,7 @@ async def test_parallel_page_renders_parallel_run_screen(client: httpx.AsyncClie
     assert 'id="parallel-selection-body"' in response.text
     assert 'id="parallel-results-body"' in response.text
     assert 'id="parallel-evidence-path"' in response.text
+    assert 'id="parallel-success-rate"' in response.text
     assert 'id="parallel-concurrency" type="number" min="1" max="50"' in response.text
     assert 'id="parallel-random-count" type="number" min="1" max="50"' in response.text
     assert 'id="parallel-repeat-count" type="number" min="1" max="50"' in response.text
@@ -1374,6 +1375,8 @@ async def test_parallel_run_retries_payment_list_after_3ds_automation_submit(
     fake_initializer.status_outcomes = [
         PaymentProviderStatusVerificationError("provider payment status verification failed"),
         PaymentProviderStatusVerificationError("provider payment status verification failed"),
+        PaymentProviderStatusVerificationError("provider payment status verification failed"),
+        PaymentProviderStatusVerificationError("provider payment status verification failed"),
         TransactionStatusResponse(
             order_id="filled-by-test",
             provider_transaction_id="list-ref-retry",
@@ -1403,8 +1406,8 @@ async def test_parallel_run_retries_payment_list_after_3ds_automation_submit(
     assert payload["items"][0]["classification"] == "completed"
     assert payload["items"][0]["payment_list_status"] == "captured"
     assert payload["items"][0]["payment_list_error"] is None
-    assert fake_initializer.status_calls == [payload["items"][0]["order_id"]] * 3
-    assert sleep_calls == [2.0, 5.0]
+    assert fake_initializer.status_calls == [payload["items"][0]["order_id"]] * 5
+    assert sleep_calls == [2.0, 5.0, 10.0, 20.0]
 
 
 @pytest.mark.api
