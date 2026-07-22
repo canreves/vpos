@@ -6,7 +6,7 @@ and `README.md` if more context is needed.
 Never move private data into tracked files. `credentials/` is ignored and must remain the
 place for local-only card, merchant, SX, OTP, hash, and provider artifacts.
 
-## Final State - July 21, 2026
+## Final State - July 22, 2026
 
 The project is considered feature-complete and presentation-ready.
 
@@ -25,6 +25,14 @@ The current UI polish scope is also complete:
 - Payment screen was left untouched because it already works well.
 - Settings screen was left untouched because it already works well.
 - Parallel screen now uses the available page width instead of staying narrow.
+- Parallel result table is presentation-oriented and shows only:
+  `Card`, `Status`, `Class`, `PaymentList`, `3DS Auto`, and `Duration`.
+- Parallel result rows use light green for completed classifications and light red for
+  attention/failure classifications.
+- Parallel summary shows a success rate calculated from `classification == "completed"`
+  results, e.g. `19/20 (95.0%)`.
+- Parallel runs always use automatic 3DS completion from the UI. Manual 3DS mode remains
+  available on the single Payment screen only.
 - Reports screen now uses wider, more readable panels and tables.
 - Long strings in Parallel and Reports are less cramped for business analyst review.
 
@@ -81,6 +89,16 @@ Confirmed after the fix:
 - PaymentList status was `captured`.
 - 3DS automation showed `completed submitted source=visible_page reason=otp_submitted`.
 
+Current resilience tuning:
+
+- Parallel 3DS PaymentList verification uses the longer retry window
+  `2s, 5s, 10s, 20s` after OTP submit. This is meant to reduce transient
+  `payment_list_missing` / `provider payment status verification failed` results.
+- ACS initial HTML rendering timeout was raised to 60 seconds to reduce transient
+  `Page.set_content: Timeout 30000ms exceeded` failures under parallel UAT load.
+- These changes do not convert provider declines to success; they only give submitted
+  3DS flows more time to finalize and render.
+
 ## Parallel Run Limits
 
 The old 10-item cap was raised to 50.
@@ -101,6 +119,8 @@ than a simple UI limit change.
 Latest known local validation after headless 3DS work:
 
 ```text
+poetry run pytest tests/api/test_web_app.py -q          60 passed
+poetry run pytest tests/three_ds/test_acs_browser.py -q 12 passed
 poetry run pytest -q    342 passed, 5 skipped
 poetry run ruff check . passed
 git diff --check        passed

@@ -1,6 +1,6 @@
 # Handoff
 
-This project is ready for handoff as of July 21, 2026.
+This project is ready for handoff as of July 22, 2026.
 
 It is a Paynkolay Virtual POS test automation platform with a browser UI, API routes,
 parallel execution, headless 3D Secure automation, PaymentList verification, cancel smoke
@@ -12,6 +12,9 @@ support, and sanitized reporting.
 - MoTo and 3D Secure payment initialization.
 - Headless 3D Secure completion for supported simulator cards.
 - Parallel 3D Secure runs through the Parallel screen.
+- Parallel UI is auto-3DS only and shows a simplified results table:
+  `Card`, `Status`, `Class`, `PaymentList`, `3DS Auto`, `Duration`.
+- Parallel UI shows success rate from completed classifications, e.g. `19/20 (95.0%)`.
 - Runtime card and environment visibility through Settings.
 - Allure/report/evidence review through Reports.
 - Sanitized parallel evidence under `reports/parallel-runs/`.
@@ -85,9 +88,22 @@ If this regresses, look for:
 - `acs_browser_client_rejected`
 - `otp_selector_not_found`
 - `failed not-submitted source=no-source`
+- `provider payment status verification failed`
+- `otp_submitted_callback_not_reached`
+- `Page.set_content: Timeout 30000ms exceeded`
 
 `acs_browser_client_rejected` means the browser identity was rejected. `no-source` means no
 safe OTP source was found.
+
+Recent resilience tuning:
+
+- Submitted parallel 3DS flows now use PaymentList retry delays of `2s, 5s, 10s, 20s`.
+- ACS initial content rendering now allows 60 seconds before classifying a Playwright
+  content-load timeout.
+- `payment_list_missing` after `otp_submitted` usually means provider/PaymentList timing,
+  not a card decline.
+- `framework_error` with `Page.set_content` means the ACS browser automation timed out
+  before OTP processing.
 
 ## How To Start The UI
 
@@ -133,6 +149,8 @@ git diff --check
 Latest known status:
 
 ```text
+pytest api web     60 passed
+pytest acs browser 12 passed
 ruff check        passed
 mypy             passed
 pytest           342 passed, 5 skipped
