@@ -341,6 +341,21 @@ def test_payment_list_response_accepts_numeric_response_code() -> None:
 
 
 @pytest.mark.api
+def test_payment_list_response_accepts_flat_live_provider_payload() -> None:
+    response = PaynkolayPaymentListResponse.model_validate(
+        {
+            "RESPONSE_CODE": "2",
+            "RESPONSE_DATA": "Islem basarili",
+            "LIST": [payment_list_row_payload()],
+            "TimeStamp": None,
+        }
+    )
+
+    assert response.result.successful is True
+    assert response.rows_for_client_ref("order-1001")[0].reference_code == "IKSIRPF102168"
+
+
+@pytest.mark.api
 @pytest.mark.parametrize(
     ("transaction_type", "expected_status"),
     [

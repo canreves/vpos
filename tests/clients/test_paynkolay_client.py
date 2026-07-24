@@ -431,6 +431,50 @@ async def test_get_transaction_status_from_payment_list_rejects_missing_provider
             )
 
 
+@pytest.mark.api
+@pytest.mark.asyncio
+async def test_get_transaction_status_from_payment_list_accepts_flat_live_response() -> None:
+    settings = RuntimeSettings.model_validate(valid_settings_payload())
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code=200,
+            json={
+                "RESPONSE_CODE": "2",
+                "RESPONSE_DATA": "Islem basarili",
+                "LIST": [
+                    {
+                        "REFERENCE_CODE": "IKSIRPF102168",
+                        "AUTH_CODE": "S00586",
+                        "AUTHORIZATION_AMOUNT": "1.00",
+                        "TRANSACTION_AMOUNT": "1.00",
+                        "CLIENT_REFERENCE_CODE": "order-1001",
+                        "STATUS": "SUCCESS",
+                        "TRANSACTION_TYPE": "SALES",
+                        "TRX_DATE": "24.07.2026 09:45:00",
+                        "IS_3D": True,
+                        "INSTALLMENT_COUNT": "1",
+                    }
+                ],
+                "TimeStamp": None,
+            },
+        )
+
+    async with PaynkolayClient(
+        settings.current,
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        response = await client.get_transaction_status_from_payment_list(
+            "order-1001",
+            start_date="23.07.2026",
+            end_date="25.07.2026",
+        )
+
+    assert response.status is PaymentStatus.CAPTURED
+    assert response.order_id == "order-1001"
+    assert response.provider_transaction_id == "IKSIRPF102168"
+
+
 @pytest.mark.negative
 @pytest.mark.asyncio
 async def test_get_transaction_status_from_payment_list_rejects_service_failure() -> None:

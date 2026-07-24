@@ -343,6 +343,19 @@ class PaynkolayPaymentListResponse(PaynkolayProviderModel):
     id: str | None = None
     result: PaynkolayPaymentListResult
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_flat_provider_response(cls, payload: object) -> object:
+        """Accept both the documented result envelope and the live flat response."""
+
+        if (
+            isinstance(payload, dict)
+            and "result" not in payload
+            and "RESPONSE_CODE" in payload
+        ):
+            return {**payload, "result": payload}
+        return payload
+
     def rows_for_client_ref(self, client_ref_code: str) -> tuple[PaynkolayPaymentListRow, ...]:
         """Return all transaction rows matching a merchant client reference code."""
 
