@@ -73,6 +73,7 @@ FINAL_PAYMENT_LIST_STATUSES = {
     PaymentStatus.FAILED,
 }
 SUBMITTED_3DS_PAYMENT_LIST_RETRY_DELAYS = (2.0, 5.0, 10.0, 20.0)
+MAX_PARALLEL_3DS_AUTOMATIONS = 4
 
 PaymentInitializerDependency = Annotated[
     SupportsPaymentInitializer,
@@ -182,8 +183,11 @@ async def _execute_parallel_run(
     three_ds_form_store: ThreeDSFormStore,
     run_store: ParallelRunStore,
 ) -> None:
-    semaphore = asyncio.Semaphore((await run_store.get(run_id)).concurrency)
     run = await run_store.get(run_id)
+    semaphore = asyncio.Semaphore(run.concurrency)
+    three_ds_semaphore = asyncio.Semaphore(
+        min(run.concurrency, MAX_PARALLEL_3DS_AUTOMATIONS)
+    )
     serial_3ds_locks = _serial_3ds_locks_for_run(run.items, cards_by_alias)
     tasks = [
         _execute_item(
@@ -200,6 +204,7 @@ async def _execute_parallel_run(
             three_ds_form_store=three_ds_form_store,
             run_store=run_store,
             semaphore=semaphore,
+            three_ds_semaphore=three_ds_semaphore,
             serial_3ds_locks=serial_3ds_locks,
         )
         for item in run.items
@@ -224,6 +229,7 @@ async def _execute_item(
     three_ds_form_store: ThreeDSFormStore,
     run_store: ParallelRunStore,
     semaphore: asyncio.Semaphore,
+    three_ds_semaphore: asyncio.Semaphore,
     serial_3ds_locks: dict[str, asyncio.Lock],
 ) -> None:
     async with semaphore:
@@ -244,6 +250,7 @@ async def _execute_item(
                     session_store=session_store,
                     three_ds_form_store=three_ds_form_store,
                     run_store=run_store,
+                    three_ds_semaphore=three_ds_semaphore,
                 )
             else:
                 async with serial_lock:
@@ -260,6 +267,7 @@ async def _execute_item(
                         session_store=session_store,
                         three_ds_form_store=three_ds_form_store,
                         run_store=run_store,
+                        three_ds_semaphore=three_ds_semaphore,
                     )
         except PaymentProviderInitializationError as exc:
             classification = _classify_initialization_error(exc)
@@ -310,6 +318,7 @@ async def _execute_item_attempt(
     session_store: PaymentSessionStore,
     three_ds_form_store: ThreeDSFormStore,
     run_store: ParallelRunStore,
+    three_ds_semaphore: asyncio.Semaphore,
 ) -> None:
     request = _payment_form_request(
         card=card,
@@ -342,6 +351,7 @@ async def _execute_item_attempt(
         three_ds_form_store=three_ds_form_store,
         run_store=run_store,
         currency=request.currency,
+        three_ds_semaphore=three_ds_semaphore,
     )
 
 
@@ -373,6 +383,7 @@ async def _record_provider_outcome(
     three_ds_form_store: ThreeDSFormStore,
     run_store: ParallelRunStore,
     currency: Currency,
+    three_ds_semaphore: asyncio.Semaphore,
 ) -> None:
     provider_request = _provider_request_summary(outcome)
     provider_result = outcome.provider_result
@@ -403,12 +414,13 @@ async def _record_provider_outcome(
             order_id,
             ThreeDSAutomationSummary(status="running", reason="3DS automation started"),
         )
-        automation_result = await automator.complete(
-            html=provider_result.bank_request_message,
-            brand=card.brand,
-            configured_otp=card.expected_otp,
-            callback_url=outcome.success_url,
-        )
+        async with three_ds_semaphore:
+            automation_result = await automator.complete(
+                html=provider_result.bank_request_message,
+                brand=card.brand,
+                configured_otp=card.expected_otp,
+                callback_url=outcome.success_url,
+            )
         automation_summary = ThreeDSAutomationSummary.model_validate(
             automation_result.summary()
         )

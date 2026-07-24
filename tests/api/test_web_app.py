@@ -1260,6 +1260,62 @@ async def test_parallel_run_completes_3ds_item_after_automation_submit(
 
 @pytest.mark.api
 @pytest.mark.asyncio
+async def test_parallel_run_limits_automatic_3ds_browser_concurrency(
+    client: httpx.AsyncClient,
+    fake_automator: FakeThreeDSAutomator,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_parallel_runtime_config(
+        monkeypatch,
+        tmp_path,
+        [
+            _runtime_card(
+                alias="parallel_3ds",
+                pan="5555555555554444",
+                requires_3ds=True,
+                expected_otp="123456",
+            ),
+        ],
+    )
+    fake_automator.delay_seconds = 0.01
+    fake_automator.result = AcsBrowserAutomationResult(
+        completed=True,
+        submitted=True,
+        returned_to_callback=True,
+        reason="otp_submitted",
+        screen_classification="static_config_otp",
+        otp_resolution={
+            "status": "ready",
+            "source_type": "static_config",
+            "otp_present": True,
+            "should_auto_submit": True,
+            "reason": "resolved OTP from configured test card metadata",
+        },
+    )
+
+    response = await client.post(
+        "/api/parallel-runs",
+        json={
+            "mode": "manual",
+            "amount": "50.00",
+            "currency": "TRY",
+            "concurrency": 10,
+            "auto_complete_3ds": True,
+            "manual_cards": [{"alias": "parallel_3ds", "repeat_count": 10}],
+        },
+    )
+
+    assert response.status_code == 202
+    payload = await _wait_parallel_run(client, response.json()["run_id"])
+    assert payload["status"] == "completed"
+    assert payload["completed"] == 10
+    assert len(fake_automator.calls) == 10
+    assert fake_automator.max_active_calls == parallel_runs.MAX_PARALLEL_3DS_AUTOMATIONS
+
+
+@pytest.mark.api
+@pytest.mark.asyncio
 async def test_parallel_run_serializes_diagnostic_3ds_card_repeats(
     client: httpx.AsyncClient,
     fake_automator: FakeThreeDSAutomator,
